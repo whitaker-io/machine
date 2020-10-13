@@ -32,7 +32,7 @@ func (r RouterRule) Handler(list Payload) (t, f Payload) {
 	f = Payload{}
 
 	for _, ctx := range list {
-		if r(ctx.data) {
+		if r(ctx.Data) {
 			t = append(t, ctx)
 		} else {
 			f = append(f, ctx)
@@ -48,7 +48,7 @@ func (e RouterError) Handler(list Payload) (s, f Payload) {
 	f = Payload{}
 
 	for _, ctx := range list {
-		if ctx.err != nil {
+		if ctx.Error != nil {
 			f = append(f, ctx)
 		} else {
 			s = append(s, ctx)

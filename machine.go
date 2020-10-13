@@ -18,7 +18,7 @@ const end = "end"
 
 // Recorder type for providing a state recorder
 type Recorder interface {
-	Record(string, Payload)
+	Record(string, string, Payload)
 }
 
 // Vertex interface for defining a child node
@@ -95,11 +95,11 @@ func (m *Machine) begin(c context.Context) *outChannel {
 				list := Payload{}
 				for _, item := range data {
 					list = append(list, &Packet{
-						id:   uuid.New().String(),
-						data: item,
+						ID:   uuid.New().String(),
+						Data: item,
 					})
 				}
-				m.recorder.Record("start", list)
+				m.recorder.Record(m.id, "start", list)
 				channel.channel <- list
 			}
 		}
@@ -180,11 +180,11 @@ func (c *cap) cascade(ctx context.Context, output *outChannel, m *Machine) error
 
 		dataList := []map[string]interface{}{}
 		for _, v := range list {
-			dataList = append(dataList, v.data)
+			dataList = append(dataList, v.Data)
 		}
 		list.handleError(c.id, c.terminus(dataList))
 
-		c.recorder.Record(end, list)
+		c.recorder.Record(c.id, end, list)
 	}
 
 	go func() {
@@ -241,11 +241,11 @@ func run(ctx context.Context, id, name string, fifo bool, r func(list Payload), 
 			span.AddEventWithTimestamp(
 				metricsCtx,
 				t,
-				pkt.id,
+				pkt.ID,
 				append(
 					labels,
 					[]label.KeyValue{
-						label.String("pkt_id", pkt.id),
+						label.String("pkt_id", pkt.ID),
 						label.String("error", pkt.error()),
 					}...,
 				)...)
@@ -257,7 +257,7 @@ func run(ctx context.Context, id, name string, fifo bool, r func(list Payload), 
 
 		duration := time.Since(start)
 
-		recorder.Record(id, list)
+		recorder.Record(id, name, list)
 
 		span.End()
 

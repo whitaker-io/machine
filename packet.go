@@ -9,29 +9,29 @@ import (
 
 // Packet type that holds information traveling through the machine
 type Packet struct {
-	id   string
-	data map[string]interface{}
-	err  error
-	last map[string]interface{}
+	ID    string
+	Data  map[string]interface{}
+	Error error
+	last  map[string]interface{}
 }
 
 // Payload type that holds a slice of Packets
 type Payload []*Packet
 
 func (c *Packet) apply(id string, p func(map[string]interface{}) error) {
-	c.handleError(id, p(c.log(id).data))
+	c.handleError(id, p(c.log(id).Data))
 }
 
 func (c *Packet) handleError(id string, err error) *Packet {
 	if err != nil {
-		c.err = fmt.Errorf("%s %s %w", id, err.Error(), c.err)
+		c.Error = fmt.Errorf("%s %s %w", id, err.Error(), c.Error)
 	}
 
 	return c
 }
 
 func (c *Packet) log(id string) *Packet {
-	payload, err := copystructure.Copy(c.data)
+	payload, err := copystructure.Copy(c.Data)
 
 	if err != nil {
 		return c.handleError(id, err)
@@ -39,7 +39,7 @@ func (c *Packet) log(id string) *Packet {
 
 	m := payload.(map[string]interface{})
 
-	for k, v := range c.data {
+	for k, v := range c.Data {
 		if old, ok := m[k]; !ok || !reflect.DeepEqual(old, v) {
 			m[k] = v
 		} else {
@@ -48,7 +48,7 @@ func (c *Packet) log(id string) *Packet {
 	}
 
 	for k := range m {
-		if _, ok := c.data[k]; !ok {
+		if _, ok := c.Data[k]; !ok {
 			m[k] = fmt.Sprintf("REMOVED during: %s", id)
 		}
 	}
@@ -59,10 +59,10 @@ func (c *Packet) log(id string) *Packet {
 }
 
 func (c *Packet) error() string {
-	if c.err == nil {
+	if c.Error == nil {
 		return ""
 	}
-	return c.err.Error()
+	return c.Error.Error()
 }
 
 func (c Payload) handleError(id string, err error) {
@@ -76,7 +76,7 @@ func (c Payload) handleError(id string, err error) {
 func (c Payload) errorCount() int {
 	count := 0
 	for _, v := range c {
-		if v.err != nil {
+		if v.Error != nil {
 			count++
 		}
 	}
