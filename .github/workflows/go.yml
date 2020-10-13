@@ -1,0 +1,39 @@
+name: Go
+
+on:
+  push:
+    branches: [develop, master]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.14
+        id: go
+
+      - uses: actions/checkout@master
+        with:
+          # Fetches entire history, so we can analyze commits since last tag
+          fetch-depth: 0
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v1.2.1
+        with:
+          version: v1.30
+          github-token: ${{ github.token }}
+          only-new-issues: true
+
+      - name: Get dependencies
+        run: go mod vendor
+
+      - name: Bump version and push tag
+        if: github.ref == 'refs/heads/master'
+        uses: mathieudutour/github-tag-action@v4.5
+        with:
+          github_token: ${{ secrets.token }}
