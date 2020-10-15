@@ -14,11 +14,6 @@ import (
 	"go.opentelemetry.io/otel/label"
 )
 
-// Recorder type for providing a state recorder
-type Recorder interface {
-	Record(string, string, []*Packet)
-}
-
 // Vertex interface for defining a child node
 type vertex interface {
 	cascade(ctx context.Context, output *outChannel, machine *Machine) error
@@ -60,7 +55,7 @@ type info struct {
 	id       string
 	name     string
 	fifo     bool
-	recorder Recorder
+	recorder func(string, string, []*Packet)
 }
 
 // ID func to return the ID
@@ -97,7 +92,7 @@ func (m *Machine) begin(c context.Context) *outChannel {
 						Data: item,
 					})
 				}
-				m.recorder.Record(m.id, "start", payload)
+				m.recorder(m.id, "start", payload)
 				channel.channel <- payload
 			}
 		}
@@ -118,6 +113,7 @@ func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) err
 
 	m.nodes[pn.id] = pn
 	pn.input = output.convert()
+	pn.recorder = m.recorder
 
 	out := newOutChannel()
 
@@ -140,6 +136,7 @@ func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) er
 	}
 
 	r.input = output.convert()
+	r.recorder = m.recorder
 
 	left := newOutChannel()
 	right := newOutChannel()
@@ -170,6 +167,7 @@ func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machin
 	}
 
 	c.input = output.convert()
+	c.recorder = m.recorder
 
 	runner := func(payload []*Packet) {
 		if len(payload) < 1 {
@@ -189,7 +187,7 @@ func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machin
 			}
 		}
 
-		c.recorder.Record(c.id, "end", payload)
+		c.recorder(c.id, "end", payload)
 	}
 
 	go func() {
@@ -213,7 +211,7 @@ func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machin
 	return nil
 }
 
-func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder Recorder, output *outChannel) {
+func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder func(string, string, []*Packet), output *outChannel) {
 	meterName := fmt.Sprintf("machine.%s", id)
 	meter := global.Meter(meterName)
 	tracer := global.Tracer(meterName)
@@ -262,7 +260,7 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 
 		duration := time.Since(start)
 
-		recorder.Record(id, name, payload)
+		recorder(id, name, payload)
 
 		span.End()
 

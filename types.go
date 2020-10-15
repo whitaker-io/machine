@@ -32,7 +32,7 @@ type outChannel struct {
 }
 
 // Machine func for providing a Machine
-func (i Initium) convert(id, name string, fifo bool, recorder Recorder) *Machine {
+func (i Initium) convert(id, name string, fifo bool, recorder func(string, string, []*Packet)) *Machine {
 	return &Machine{
 		info: info{
 			id:       id,

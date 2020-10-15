@@ -18,7 +18,7 @@ type RouterBuilder struct {
 }
 
 // New func for providing an instance of MachineBuilder
-func New(id, name string, fifo bool, i Initium, recorder Recorder) *Builder {
+func New(id, name string, fifo bool, i Initium, recorder func(string, string, []*Packet)) *Builder {
 	return &Builder{
 		x: i.convert(id, name, fifo, recorder),
 	}
