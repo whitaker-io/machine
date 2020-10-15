@@ -1,42 +1,42 @@
 package machine
 
-// MachineBuilder builder type for starting a machine
-type MachineBuilder struct {
+// Builder builder type for starting a machine
+type Builder struct {
 	x *Machine
 }
 
 // VertexBuilder builder type for adding a processor to the machine
 type VertexBuilder struct {
-	m *MachineBuilder
+	m *Builder
 	x *node
 }
 
 // RouterBuilder builder type for adding a router to the machine
 type RouterBuilder struct {
-	m *MachineBuilder
+	m *Builder
 	x *router
 }
 
 // CapBuilder builder type for adding capping off a route in the machine
 type CapBuilder struct {
-	m *MachineBuilder
+	m *Builder
 	x vertex
 }
 
 // New func for providing an instance of MachineBuilder
-func New(id, name string, fifo bool, i Initium, recorder Recorder) *MachineBuilder {
-	return &MachineBuilder{
+func New(id, name string, fifo bool, i Initium, recorder Recorder) *Builder {
+	return &Builder{
 		x: i.machine(id, name, fifo, recorder),
 	}
 }
 
 // Build func for providing the underlying machine
-func (m *MachineBuilder) Build() *Machine {
+func (m *Builder) Build() *Machine {
 	return m.x
 }
 
 // Then func for sending the payload to a processor
-func (m *MachineBuilder) Then(id, name string, fifo bool, p Processus) *VertexBuilder {
+func (m *Builder) Then(id, name string, fifo bool, p Processus) *VertexBuilder {
 	x := p.convert(id, name, fifo)
 
 	m.x.child = x
@@ -49,7 +49,7 @@ func (m *MachineBuilder) Then(id, name string, fifo bool, p Processus) *VertexBu
 }
 
 // Route func for sending the payload to a router
-func (m *MachineBuilder) Route(id, name string, fifo bool, r RouteHandler) *RouterBuilder {
+func (m *Builder) Route(id, name string, fifo bool, r RouteHandler) *RouterBuilder {
 	x := r.convert(id, name, fifo)
 
 	m.x.child = x
@@ -61,7 +61,7 @@ func (m *MachineBuilder) Route(id, name string, fifo bool, r RouteHandler) *Rout
 }
 
 // Cap func for sending the payload to a cap
-func (m *MachineBuilder) Cap(id, name string, fifo bool, t Terminus) *CapBuilder {
+func (m *Builder) Cap(id, name string, fifo bool, t Terminus) *CapBuilder {
 	x := t.convert(id, name, fifo)
 
 	m.x.child = x
