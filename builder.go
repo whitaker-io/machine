@@ -17,16 +17,10 @@ type RouterBuilder struct {
 	x *router
 }
 
-// CapBuilder builder type for adding capping off a route in the machine
-type CapBuilder struct {
-	m *Builder
-	x vertex
-}
-
 // New func for providing an instance of MachineBuilder
 func New(id, name string, fifo bool, i Initium, recorder Recorder) *Builder {
 	return &Builder{
-		x: i.machine(id, name, fifo, recorder),
+		x: i.convert(id, name, fifo, recorder),
 	}
 }
 
@@ -60,16 +54,11 @@ func (m *Builder) Route(id, name string, fifo bool, r RouteHandler) *RouterBuild
 	}
 }
 
-// Cap func for sending the payload to a cap
-func (m *Builder) Cap(id, name string, fifo bool, t Terminus) *CapBuilder {
+// Terminate func for sending the payload to a cap
+func (m *Builder) Terminate(id, name string, fifo bool, t Terminus) {
 	x := t.convert(id, name, fifo)
 
 	m.x.child = x
-
-	return &CapBuilder{
-		m: m,
-		x: x,
-	}
 }
 
 // To func for sending the payload to a processor
@@ -109,16 +98,11 @@ func (m *VertexBuilder) Route(id, name string, fifo bool, r RouteHandler) *Route
 	}
 }
 
-// Cap func for sending the payload to a cap
-func (m *VertexBuilder) Cap(id, name string, fifo bool, t Terminus) *CapBuilder {
+// Terminate func for sending the payload to a cap
+func (m *VertexBuilder) Terminate(id, name string, fifo bool, t Terminus) {
 	x := t.convert(id, name, fifo)
 
 	m.x.child = x
-
-	return &CapBuilder{
-		m: m.m,
-		x: x,
-	}
 }
 
 // ToLeft func for sending the payload to a processor
@@ -158,16 +142,11 @@ func (m *RouterBuilder) RouteLeft(id, name string, fifo bool, r RouteHandler) *R
 	}
 }
 
-// CapLeft func for sending the payload to a cap
-func (m *RouterBuilder) CapLeft(id, name string, fifo bool, t Terminus) *CapBuilder {
+// TerminateLeft func for sending the payload to a cap
+func (m *RouterBuilder) TerminateLeft(id, name string, fifo bool, t Terminus) {
 	x := t.convert(id, name, fifo)
 
 	m.x.left = x
-
-	return &CapBuilder{
-		m: m.m,
-		x: x,
-	}
 }
 
 // ToRight func for sending the payload to a processor
@@ -207,14 +186,9 @@ func (m *RouterBuilder) RouteRight(id, name string, fifo bool, r RouteHandler) *
 	}
 }
 
-// CapRight func for sending the payload to a cap
-func (m *RouterBuilder) CapRight(id, name string, fifo bool, t Terminus) *CapBuilder {
+// TerminateRight func for sending the payload to a cap
+func (m *RouterBuilder) TerminateRight(id, name string, fifo bool, t Terminus) {
 	x := t.convert(id, name, fifo)
 
 	m.x.right = x
-
-	return &CapBuilder{
-		m: m.m,
-		x: x,
-	}
 }

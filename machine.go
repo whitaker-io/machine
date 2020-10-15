@@ -14,11 +14,9 @@ import (
 	"go.opentelemetry.io/otel/label"
 )
 
-const end = "end"
-
 // Recorder type for providing a state recorder
 type Recorder interface {
-	Record(string, string, Payload)
+	Record(string, string, []*Packet)
 }
 
 // Vertex interface for defining a child node
@@ -26,16 +24,9 @@ type vertex interface {
 	cascade(ctx context.Context, output *outChannel, machine *Machine) error
 }
 
-type labels struct {
-	id       string
-	name     string
-	fifo     bool
-	recorder Recorder
-}
-
 // Machine execution graph for a system
 type Machine struct {
-	labels
+	info
 	initium Initium
 	nodes   map[string]*node
 	child   vertex
@@ -43,7 +34,7 @@ type Machine struct {
 
 // node graph node for the Machine
 type node struct {
-	labels
+	info
 	processus Processus
 	child     vertex
 	input     *inChannel
@@ -51,18 +42,25 @@ type node struct {
 
 // router graph node for the Machine
 type router struct {
-	labels
-	handler func(list Payload) (Payload, Payload)
+	info
+	handler func([]*Packet) ([]*Packet, []*Packet)
 	left    vertex
 	right   vertex
 	input   *inChannel
 }
 
-// cap graph leaf for the Machine
-type cap struct {
-	labels
+// termination graph leaf for the Machine
+type termination struct {
+	info
 	terminus Terminus
 	input    *inChannel
+}
+
+type info struct {
+	id       string
+	name     string
+	fifo     bool
+	recorder Recorder
 }
 
 // ID func to return the ID
@@ -76,7 +74,7 @@ func (m *Machine) Run(ctx context.Context) error {
 }
 
 // Inject func to inject the logs into the machine
-func (m *Machine) Inject(logs map[string]Payload) {
+func (m *Machine) Inject(logs map[string][]*Packet) {
 	for node, list := range logs {
 		m.nodes[node].inject(list)
 	}
@@ -92,15 +90,15 @@ func (m *Machine) begin(c context.Context) *outChannel {
 			case <-c.Done():
 				break Loop
 			case data := <-input:
-				list := Payload{}
+				payload := []*Packet{}
 				for _, item := range data {
-					list = append(list, &Packet{
+					payload = append(payload, &Packet{
 						ID:   uuid.New().String(),
 						Data: item,
 					})
 				}
-				m.recorder.Record(m.id, "start", list)
-				channel.channel <- list
+				m.recorder.Record(m.id, "start", payload)
+				channel.channel <- payload
 			}
 		}
 	}()
@@ -108,13 +106,13 @@ func (m *Machine) begin(c context.Context) *outChannel {
 	return channel
 }
 
-func (pn *node) inject(payload Payload) {
+func (pn *node) inject(payload []*Packet) {
 	pn.input.channel <- payload
 }
 
 func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) error {
 	if pn.input != nil {
-		output.sendTo(pn.input)
+		output.sendTo(ctx, pn.input)
 		return nil
 	}
 
@@ -123,11 +121,11 @@ func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) err
 
 	out := newOutChannel()
 
-	fn := func(list Payload) {
-		for _, log := range list {
+	fn := func(payload []*Packet) {
+		for _, log := range payload {
 			log.apply(pn.id, pn.processus)
 		}
-		out.channel <- list
+		out.channel <- payload
 	}
 
 	run(ctx, pn.id, pn.name, pn.fifo, fn, pn.recorder, output)
@@ -137,7 +135,7 @@ func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) err
 
 func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) error {
 	if r.input != nil {
-		output.sendTo(r.input)
+		output.sendTo(ctx, r.input)
 		return nil
 	}
 
@@ -146,8 +144,8 @@ func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) er
 	left := newOutChannel()
 	right := newOutChannel()
 
-	fn := func(list Payload) {
-		l, r := r.handler(list)
+	fn := func(payload []*Packet) {
+		l, r := r.handler(payload)
 		left.channel <- l
 		right.channel <- r
 	}
@@ -163,28 +161,35 @@ func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) er
 	return nil
 }
 
-func (c *cap) cascade(ctx context.Context, output *outChannel, m *Machine) error {
+func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machine) error {
 	if m == nil {
 		return fmt.Errorf("missing machine")
 	} else if c.input != nil {
-		output.sendTo(c.input)
+		output.sendTo(ctx, c.input)
 		return nil
 	}
 
 	c.input = output.convert()
 
-	runner := func(list Payload) {
-		if len(list) < 1 {
+	runner := func(payload []*Packet) {
+		if len(payload) < 1 {
 			return
 		}
 
-		dataList := []map[string]interface{}{}
-		for _, v := range list {
-			dataList = append(dataList, v.Data)
+		data := []map[string]interface{}{}
+		for _, packet := range payload {
+			data = append(data, packet.Data)
 		}
-		list.handleError(c.id, c.terminus(dataList))
 
-		c.recorder.Record(c.id, end, list)
+		err := c.terminus(data)
+
+		if err != nil {
+			for _, packet := range payload {
+				packet.Error = fmt.Errorf(err.Error()+" %w", packet.error())
+			}
+		}
+
+		c.recorder.Record(c.id, "end", payload)
 	}
 
 	go func() {
@@ -203,12 +208,12 @@ func (c *cap) cascade(ctx context.Context, output *outChannel, m *Machine) error
 		}
 	}()
 
-	output.sendTo(c.input)
+	output.sendTo(ctx, c.input)
 
 	return nil
 }
 
-func run(ctx context.Context, id, name string, fifo bool, r func(list Payload), recorder Recorder, output *outChannel) {
+func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder Recorder, output *outChannel) {
 	meterName := fmt.Sprintf("machine.%s", id)
 	meter := global.Meter(meterName)
 	tracer := global.Tracer(meterName)
@@ -222,14 +227,14 @@ func run(ctx context.Context, id, name string, fifo bool, r func(list Payload), 
 	errorsTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.errors")
 	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
 
-	runner := func(list Payload) {
-		if len(list) < 1 {
+	runner := func(payload []*Packet) {
+		if len(payload) < 1 {
 			return
 		}
 
 		metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", id))
-		inCounter.Record(metricsCtx, int64(len(list)), labels...)
-		inTotalCounter.Add(metricsCtx, float64(len(list)), labels...)
+		inCounter.Record(metricsCtx, int64(len(payload)), labels...)
+		inTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
 
 		_, span := tracer.Start(
 			metricsCtx,
@@ -237,7 +242,7 @@ func run(ctx context.Context, id, name string, fifo bool, r func(list Payload), 
 			trace.WithAttributes(labels...),
 		)
 		t := time.Now()
-		for _, pkt := range list {
+		for _, pkt := range payload {
 			span.AddEventWithTimestamp(
 				metricsCtx,
 				t,
@@ -253,17 +258,24 @@ func run(ctx context.Context, id, name string, fifo bool, r func(list Payload), 
 
 		start := time.Now()
 
-		r(list)
+		r(payload)
 
 		duration := time.Since(start)
 
-		recorder.Record(id, name, list)
+		recorder.Record(id, name, payload)
 
 		span.End()
 
-		failures := list.errorCount()
-		outCounter.Record(metricsCtx, int64(len(list)), labels...)
-		outTotalCounter.Add(metricsCtx, float64(len(list)), labels...)
+		failures := 0
+
+		for _, packet := range payload {
+			if packet.Error != nil {
+				failures++
+			}
+		}
+
+		outCounter.Record(metricsCtx, int64(len(payload)), labels...)
+		outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
 		errorsCounter.Record(metricsCtx, int64(failures), labels...)
 		errorsTotalCounter.Add(metricsCtx, float64(failures), labels...)
 		batchDuration.Record(metricsCtx, int64(duration), labels...)

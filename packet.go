@@ -15,9 +15,6 @@ type Packet struct {
 	last  map[string]interface{}
 }
 
-// Payload type that holds a slice of Packets
-type Payload []*Packet
-
 func (c *Packet) apply(id string, p func(map[string]interface{}) error) {
 	c.handleError(id, p(c.log(id).Data))
 }
@@ -63,22 +60,4 @@ func (c *Packet) error() string {
 		return ""
 	}
 	return c.Error.Error()
-}
-
-func (c Payload) handleError(id string, err error) {
-	if err != nil {
-		for _, data := range c {
-			data.handleError(id, err)
-		}
-	}
-}
-
-func (c Payload) errorCount() int {
-	count := 0
-	for _, v := range c {
-		if v.Error != nil {
-			count++
-		}
-	}
-	return count
 }
