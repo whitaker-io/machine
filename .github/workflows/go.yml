@@ -36,7 +36,7 @@ jobs:
         run: go test -timeout 30s -coverprofile=coverage.out
 
       - name: Coverage
-        uses: brpaz/godacov-action@v1
+        uses: brpaz/godacov-action@v1.1.1
         with:
             reportPath: 'coverage.out'
             codacyToken: ${{ secrets.CODACY_TOKEN }}
