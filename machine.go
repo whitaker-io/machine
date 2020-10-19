@@ -94,6 +94,30 @@ func (m *Machine) begin(ctx context.Context) *outChannel {
 
 	input := m.initium(ctx)
 
+	fn := func(data []map[string]interface{}) {
+		metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", m.id))
+		inCounter.Record(metricsCtx, int64(len(data)), labels...)
+		inTotalCounter.Add(metricsCtx, float64(len(data)), labels...)
+
+		start := time.Now()
+
+		payload := []*Packet{}
+		for _, item := range data {
+			payload = append(payload, &Packet{
+				ID:   uuid.New().String(),
+				Data: item,
+			})
+		}
+
+		duration := time.Since(start)
+		m.recorder(m.id, "start", payload)
+		channel.channel <- payload
+
+		outCounter.Record(metricsCtx, int64(len(payload)), labels...)
+		outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
+		batchDuration.Record(metricsCtx, int64(duration), labels...)
+	}
+
 	go func() {
 	Loop:
 		for {
@@ -105,27 +129,11 @@ func (m *Machine) begin(ctx context.Context) *outChannel {
 					continue
 				}
 
-				metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", m.id))
-				inCounter.Record(metricsCtx, int64(len(data)), labels...)
-				inTotalCounter.Add(metricsCtx, float64(len(data)), labels...)
-
-				start := time.Now()
-
-				payload := []*Packet{}
-				for _, item := range data {
-					payload = append(payload, &Packet{
-						ID:   uuid.New().String(),
-						Data: item,
-					})
+				if m.fifo {
+					fn(data)
+				} else {
+					go fn(data)
 				}
-
-				duration := time.Since(start)
-				m.recorder(m.id, "start", payload)
-				channel.channel <- payload
-
-				outCounter.Record(metricsCtx, int64(len(payload)), labels...)
-				outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
-				batchDuration.Record(metricsCtx, int64(duration), labels...)
 			}
 		}
 	}()
