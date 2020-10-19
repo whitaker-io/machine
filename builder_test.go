@@ -22,7 +22,7 @@ func TestNew(t *testing.T) {
 			}()
 
 			return channel
-		}, func(id, name string, payload []*Packet) {})
+		})
 
 		node := m.Then("node_id", "node", true, func(m map[string]interface{}) error {
 			if _, ok := m["name"]; !ok {
@@ -49,7 +49,7 @@ func TestNew(t *testing.T) {
 			return nil
 		})
 
-		machine := m.Build()
+		machine := m.Build(func(id, name string, payload []*Packet) {})
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -89,7 +89,7 @@ func TestNew2(t *testing.T) {
 			}()
 
 			return channel
-		}, func(id, name string, payload []*Packet) {})
+		})
 
 		router := m.Route("route_id", "route", false, RouterError{}.Handler)
 
@@ -124,7 +124,7 @@ func TestNew2(t *testing.T) {
 			return nil
 		})
 
-		machine := m.Build()
+		machine := m.Build(func(id, name string, payload []*Packet) {})
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -164,7 +164,7 @@ func TestNew3(t *testing.T) {
 			}()
 
 			return channel
-		}, func(id, name string, payload []*Packet) {})
+		})
 
 		router := m.Route("route_id", "route", false, RouterError{}.Handler)
 
@@ -202,7 +202,7 @@ func TestNew3(t *testing.T) {
 			return nil
 		})
 
-		machine := m.Build()
+		machine := m.Build(func(id, name string, payload []*Packet) {})
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -243,7 +243,7 @@ func TestNew4(t *testing.T) {
 			}()
 
 			return channel
-		}, func(id, name string, payload []*Packet) {}).Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+		}).Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 			for i, packet := range list {
 				if !reflect.DeepEqual(packet, testList1[i]) {
 					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
@@ -263,7 +263,7 @@ func TestNew4(t *testing.T) {
 			}()
 
 			return channel
-		}, func(id, name string, payload []*Packet) {})
+		})
 
 		router := m.Route("route_id", "route", false, RouterError{}.Handler)
 
@@ -301,8 +301,8 @@ func TestNew4(t *testing.T) {
 			return nil
 		})
 
-		machine := m.Build()
-		machine1 := m1.Build()
+		machine := m.Build(func(id, name string, payload []*Packet) {})
+		machine1 := m1.Build(func(id, name string, payload []*Packet) {})
 
 		ctx, cancel := context.WithCancel(context.Background())
 

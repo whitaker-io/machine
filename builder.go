@@ -18,14 +18,19 @@ type RouterBuilder struct {
 }
 
 // New func for providing an instance of MachineBuilder
-func New(id, name string, fifo bool, i Initium, recorder func(string, string, []*Packet)) *Builder {
+func New(id, name string, fifo bool, i Initium) *Builder {
 	return &Builder{
-		x: i.convert(id, name, fifo, recorder),
+		x: i.convert(id, name, fifo, nil),
 	}
 }
 
 // Build func for providing the underlying machine
-func (m *Builder) Build() *Machine {
+func (m *Builder) Build(recorders ...func(string, string, []*Packet)) *Machine {
+	m.x.recorder = func(id, name string, payload []*Packet) {
+		for _, recorder := range recorders {
+			recorder(id, name, payload)
+		}
+	}
 	return m.x
 }
 
