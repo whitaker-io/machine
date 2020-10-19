@@ -73,25 +73,25 @@ func Test_New(t *testing.T) {
 			}()
 
 			return channel
-		}).To(
+		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("machine.begin() nissing name %v", m)
 					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 				}
 				return nil
-			}).To(
+			}).Then(
 				NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
 						t.Errorf("machine.begin() nissing name %v", m)
 						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).RouteTo(
+				}).Route(
 					NewRouter("route_id", "route", false, RouterError{}.Handler).
-						RouteToLeft(
+						RouteLeft(
 							NewRouter("route_id", "route", false, RouterError{}.Handler).
-								ToLeft(
+								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
 											t.Errorf("machine.begin() nissing name %v", m)
@@ -109,7 +109,7 @@ func Test_New(t *testing.T) {
 											return fmt.Errorf("error everything")
 										}),
 								).
-								ToRight(
+								ThenRight(
 									NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
 										t.Errorf("no errors expected")
 										return nil
@@ -120,7 +120,7 @@ func Test_New(t *testing.T) {
 										}),
 								),
 						).
-						RouteToRight(
+						RouteRight(
 							NewRouter("route_id", "route", false, RouterError{}.Handler).
 								TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									t.Errorf("no errors expected")
@@ -165,25 +165,25 @@ func Test_New_FIFO(t *testing.T) {
 			}()
 
 			return channel
-		}).To(
+		}).Then(
 			NewVertex("node_id1", "node1", true, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("machine.begin() nissing name %v", m)
 					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 				}
 				return nil
-			}).To(
+			}).Then(
 				NewVertex("node_id2", "node2", true, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
 						t.Errorf("machine.begin() nissing name %v", m)
 						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).RouteTo(
+				}).Route(
 					NewRouter("route_id", "route", true, RouterError{}.Handler).
-						RouteToLeft(
+						RouteLeft(
 							NewRouter("route_id", "route", true, RouterError{}.Handler).
-								ToLeft(
+								ThenLeft(
 									NewVertex("node_id3", "node3", true, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
 											t.Errorf("machine.begin() nissing name %v", m)
@@ -201,7 +201,7 @@ func Test_New_FIFO(t *testing.T) {
 											return fmt.Errorf("error everything")
 										}),
 								).
-								ToRight(
+								ThenRight(
 									NewVertex("node_id", "node", true, func(m map[string]interface{}) error {
 										t.Errorf("no errors expected")
 										return nil
@@ -212,7 +212,7 @@ func Test_New_FIFO(t *testing.T) {
 										}),
 								),
 						).
-						RouteToRight(
+						RouteRight(
 							NewRouter("route_id", "route", true, RouterError{}.Handler).
 								TerminateLeft("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
 									t.Errorf("no errors expected")
@@ -257,11 +257,11 @@ func Test_New_Router(t *testing.T) {
 			}()
 
 			return channel
-		}).RouteTo(
+		}).Route(
 			NewRouter("route_id", "route", false, RouterError{}.Handler).
-				RouteToLeft(
+				RouteLeft(
 					NewRouter("route_id", "route", false, RouterError{}.Handler).
-						ToLeft(
+						ThenLeft(
 							NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 								if _, ok := m["name"]; !ok {
 									t.Errorf("machine.begin() nissing name %v", m)
@@ -279,7 +279,7 @@ func Test_New_Router(t *testing.T) {
 									return fmt.Errorf("error everything")
 								}),
 						).
-						ToRight(
+						ThenRight(
 							NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
 								t.Errorf("no errors expected")
 								return nil
@@ -290,7 +290,7 @@ func Test_New_Router(t *testing.T) {
 								}),
 						),
 				).
-				RouteToRight(
+				RouteRight(
 					NewRouter("route_id", "route", false, RouterError{}.Handler).
 						TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 							t.Errorf("no errors expected")
@@ -410,25 +410,25 @@ func Test_New_Cancellation(t *testing.T) {
 			}()
 
 			return channel
-		}).To(
+		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("machine.begin() nissing name %v", m)
 					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 				}
 				return nil
-			}).To(
+			}).Then(
 				NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
 						t.Errorf("machine.begin() nissing name %v", m)
 						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).RouteTo(
+				}).Route(
 					NewRouter("route_id", "route", false, RouterError{}.Handler).
-						RouteToLeft(
+						RouteLeft(
 							NewRouter("route_id", "route", false, RouterError{}.Handler).
-								ToLeft(
+								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
 											t.Errorf("machine.begin() nissing name %v", m)
@@ -446,15 +446,15 @@ func Test_New_Cancellation(t *testing.T) {
 											return fmt.Errorf("error everything")
 										}),
 								).
-								ToRight(
+								ThenRight(
 									NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										RouteTo(router),
+										Route(router),
 								),
 						).
-						RouteToRight(router),
+						RouteRight(router),
 				),
 			),
 		).Build(func(s1, s2 string, p []*Packet) {})
@@ -494,25 +494,25 @@ func Test_New_Missing_Termination(t *testing.T) {
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
 			return channel
-		}).To(
+		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("machine.begin() nissing name %v", m)
 					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 				}
 				return nil
-			}).To(
+			}).Then(
 				NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
 						t.Errorf("machine.begin() nissing name %v", m)
 						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).RouteTo(
+				}).Route(
 					NewRouter("route_id", "route", false, RouterError{}.Handler).
-						RouteToLeft(
+						RouteLeft(
 							NewRouter("route_id", "route", false, RouterError{}.Handler).
-								ToLeft(
+								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
 											t.Errorf("machine.begin() nissing name %v", m)
@@ -521,12 +521,12 @@ func Test_New_Missing_Termination(t *testing.T) {
 										return nil
 									}),
 								).
-								ToRight(
+								ThenRight(
 									NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										RouteTo(router),
+										Route(router),
 								),
 						),
 				),
@@ -553,7 +553,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 		m3 := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
 			return channel
-		}).To(
+		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("machine.begin() nissing name %v", m)
@@ -584,7 +584,7 @@ func Test_New_Duplication(t *testing.T) {
 			}()
 
 			return channel
-		}).RouteTo(
+		}).Route(
 			NewRouter("route_id", "route", false, RouterDuplicate{}.Handler).
 				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
@@ -636,7 +636,7 @@ func Test_New_Rule(t *testing.T) {
 			}()
 
 			return channel
-		}).RouteTo(
+		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return true }).Handler).
 				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
@@ -701,7 +701,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 			return channel
 		}).
-			To(node).
+			Then(node).
 			Build(func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
@@ -719,7 +719,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 			return channel
 		}).
-			To(node).Build()
+			Then(node).Build()
 
 		if err := m2.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -751,14 +751,14 @@ func Test_New_RouterError_Error(t *testing.T) {
 			}()
 
 			return channel
-		}).To(
+		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("machine.begin() nissing name %v", m)
 					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
 				}
 				return fmt.Errorf("fail everything")
-			}).RouteTo(
+			}).Route(
 				NewRouter("route_id", "route", false, RouterError{}.Handler).
 					TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 						t.Errorf("no errors expected")
@@ -806,7 +806,7 @@ func Test_New_Rule_False(t *testing.T) {
 			}()
 
 			return channel
-		}).RouteTo(
+		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return false }).Handler).
 				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					t.Errorf("no errors expected")
@@ -853,9 +853,9 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 			}()
 
 			return channel
-		}).RouteTo(
+		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return false }).Handler).
-				ToLeft(
+				ThenLeft(
 					NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 						if _, ok := m["name"]; !ok {
 							t.Errorf("machine.begin() nissing name %v", m)
@@ -895,13 +895,13 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 			}()
 
 			return channel
-		}).RouteTo(
+		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return false }).Handler).
 				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					t.Errorf("no errors expected")
 					return nil
 				}).
-				ToRight(
+				ThenRight(
 					NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 						if _, ok := m["name"]; !ok {
 							t.Errorf("machine.begin() nissing name %v", m)

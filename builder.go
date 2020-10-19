@@ -46,14 +46,14 @@ func (m *Builder) Build(recorders ...func(string, string, []*Packet)) *Machine {
 	return m.x
 }
 
-// To func for sending the payload to a processor
-func (m *Builder) To(v *VertexBuilder) *Builder {
+// Then func for sending the payload to a processor
+func (m *Builder) Then(v *VertexBuilder) *Builder {
 	m.x.child = v.x
 	return m
 }
 
-// RouteTo func for sending the payload to a router
-func (m *Builder) RouteTo(r *RouterBuilder) *Builder {
+// Route func for sending the payload to a router
+func (m *Builder) Route(r *RouterBuilder) *Builder {
 	m.x.child = r.x
 	return m
 }
@@ -66,14 +66,14 @@ func (m *Builder) Terminate(id, name string, fifo bool, t Terminus) *Builder {
 	return m
 }
 
-// To func for sending the payload to a processor
-func (m *VertexBuilder) To(v *VertexBuilder) *VertexBuilder {
+// Then func for sending the payload to a processor
+func (m *VertexBuilder) Then(v *VertexBuilder) *VertexBuilder {
 	m.x.child = v.x
 	return m
 }
 
-// RouteTo func for sending the payload to a router
-func (m *VertexBuilder) RouteTo(r *RouterBuilder) *VertexBuilder {
+// Route func for sending the payload to a router
+func (m *VertexBuilder) Route(r *RouterBuilder) *VertexBuilder {
 	m.x.child = r.x
 	return m
 }
@@ -86,14 +86,14 @@ func (m *VertexBuilder) Terminate(id, name string, fifo bool, t Terminus) *Verte
 	return m
 }
 
-// ToLeft func for sending the payload to a processor
-func (m *RouterBuilder) ToLeft(left *VertexBuilder) *RouterBuilder {
+// ThenLeft func for sending the payload to a processor
+func (m *RouterBuilder) ThenLeft(left *VertexBuilder) *RouterBuilder {
 	m.x.left = left.x
 	return m
 }
 
-// RouteToLeft func for sending the payload to a router
-func (m *RouterBuilder) RouteToLeft(left *RouterBuilder) *RouterBuilder {
+// RouteLeft func for sending the payload to a router
+func (m *RouterBuilder) RouteLeft(left *RouterBuilder) *RouterBuilder {
 	m.x.left = left.x
 	return m
 }
@@ -104,14 +104,14 @@ func (m *RouterBuilder) TerminateLeft(id, name string, fifo bool, t Terminus) *R
 	return m
 }
 
-// ToRight func for sending the payload to a processor
-func (m *RouterBuilder) ToRight(right *VertexBuilder) *RouterBuilder {
+// ThenRight func for sending the payload to a processor
+func (m *RouterBuilder) ThenRight(right *VertexBuilder) *RouterBuilder {
 	m.x.right = right.x
 	return m
 }
 
-// RouteToRight func for sending the payload to a router
-func (m *RouterBuilder) RouteToRight(right *RouterBuilder) *RouterBuilder {
+// RouteRight func for sending the payload to a router
+func (m *RouterBuilder) RouteRight(right *RouterBuilder) *RouterBuilder {
 	m.x.right = right.x
 	return m
 }
