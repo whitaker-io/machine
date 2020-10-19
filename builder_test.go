@@ -479,7 +479,7 @@ func Test_New_Cancellation(t *testing.T) {
 
 		cancel()
 
-		<-time.After(2 * time.Second)
+		<-time.After(time.Second)
 	})
 }
 
