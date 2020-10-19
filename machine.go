@@ -65,6 +65,10 @@ func (m *Machine) ID() string {
 
 // Run func to start the Machine
 func (m *Machine) Run(ctx context.Context) error {
+	if m.child == nil {
+		return fmt.Errorf("non-terminated machine")
+	}
+
 	return m.child.cascade(ctx, m.begin(ctx), m)
 }
 
@@ -75,16 +79,38 @@ func (m *Machine) Inject(logs map[string][]*Packet) {
 	}
 }
 
-func (m *Machine) begin(c context.Context) *outChannel {
+func (m *Machine) begin(ctx context.Context) *outChannel {
+	meterName := fmt.Sprintf("machine.%s", m.id)
+	meter := global.Meter(meterName)
+	labels := []label.KeyValue{label.String("id", m.id), label.String("type", m.name)}
+
+	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
+	outCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".outgoing")
+	inTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.incoming")
+	outTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.outgoing")
+	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
+
 	channel := newOutChannel()
-	input := m.initium(c)
+
+	input := m.initium(ctx)
+
 	go func() {
 	Loop:
 		for {
 			select {
-			case <-c.Done():
+			case <-ctx.Done():
 				break Loop
 			case data := <-input:
+				if len(data) < 1 {
+					continue
+				}
+
+				metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", m.id))
+				inCounter.Record(metricsCtx, int64(len(data)), labels...)
+				inTotalCounter.Add(metricsCtx, float64(len(data)), labels...)
+
+				start := time.Now()
+
 				payload := []*Packet{}
 				for _, item := range data {
 					payload = append(payload, &Packet{
@@ -92,8 +118,14 @@ func (m *Machine) begin(c context.Context) *outChannel {
 						Data: item,
 					})
 				}
+
+				duration := time.Since(start)
 				m.recorder(m.id, "start", payload)
 				channel.channel <- payload
+
+				outCounter.Record(metricsCtx, int64(len(payload)), labels...)
+				outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
+				batchDuration.Record(metricsCtx, int64(duration), labels...)
 			}
 		}
 	}()
@@ -106,7 +138,9 @@ func (pn *node) inject(payload []*Packet) {
 }
 
 func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) error {
-	if pn.input != nil {
+	if m == nil {
+		return fmt.Errorf("missing machine")
+	} else if pn.input != nil {
 		output.sendTo(ctx, pn.input)
 		return nil
 	}
@@ -118,19 +152,25 @@ func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) err
 	out := newOutChannel()
 
 	fn := func(payload []*Packet) {
-		for _, log := range payload {
-			log.apply(pn.id, pn.processus)
+		for _, packet := range payload {
+			packet.apply(pn.id, pn.processus)
 		}
 		out.channel <- payload
 	}
 
 	run(ctx, pn.id, pn.name, pn.fifo, fn, pn.recorder, output)
 
+	if pn.child == nil {
+		return fmt.Errorf("non-terminated node")
+	}
+
 	return pn.child.cascade(ctx, out, m)
 }
 
 func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) error {
-	if r.input != nil {
+	if m == nil {
+		return fmt.Errorf("missing machine")
+	} else if r.input != nil {
 		output.sendTo(ctx, r.input)
 		return nil
 	}
@@ -149,7 +189,9 @@ func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) er
 
 	run(ctx, r.id, "route", r.fifo, fn, r.recorder, output)
 
-	if err := r.left.cascade(ctx, left, m); err != nil {
+	if r.left == nil || r.right == nil {
+		return fmt.Errorf("non-terminated router")
+	} else if err := r.left.cascade(ctx, left, m); err != nil {
 		return err
 	} else if err := r.right.cascade(ctx, right, m); err != nil {
 		return err
@@ -183,7 +225,7 @@ func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machin
 
 		if err != nil {
 			for _, packet := range payload {
-				packet.Error = fmt.Errorf(err.Error()+" %w", packet.error())
+				packet.handleError(c.id, err)
 			}
 		}
 
@@ -225,12 +267,13 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 	errorsTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.errors")
 	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
 
+	metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", id))
+
 	runner := func(payload []*Packet) {
 		if len(payload) < 1 {
 			return
 		}
 
-		metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", id))
 		inCounter.Record(metricsCtx, int64(len(payload)), labels...)
 		inTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
 
@@ -249,18 +292,17 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 					labels,
 					[]label.KeyValue{
 						label.String("pkt_id", pkt.ID),
-						label.String("error", pkt.error()),
 					}...,
 				)...)
 		}
+
+		recorder(id, name, payload)
 
 		start := time.Now()
 
 		r(payload)
 
 		duration := time.Since(start)
-
-		recorder(id, name, payload)
 
 		span.End()
 

@@ -55,10 +55,11 @@ func (m *Builder) Route(id, name string, fifo bool, r RouteHandler) *RouterBuild
 }
 
 // Terminate func for sending the payload to a cap
-func (m *Builder) Terminate(id, name string, fifo bool, t Terminus) {
+func (m *Builder) Terminate(id, name string, fifo bool, t Terminus) *Builder {
 	x := t.convert(id, name, fifo)
 
 	m.x.child = x
+	return m
 }
 
 // To func for sending the payload to a processor
@@ -99,10 +100,11 @@ func (m *VertexBuilder) Route(id, name string, fifo bool, r RouteHandler) *Route
 }
 
 // Terminate func for sending the payload to a cap
-func (m *VertexBuilder) Terminate(id, name string, fifo bool, t Terminus) {
+func (m *VertexBuilder) Terminate(id, name string, fifo bool, t Terminus) *Builder {
 	x := t.convert(id, name, fifo)
 
 	m.x.child = x
+	return m.m
 }
 
 // ToLeft func for sending the payload to a processor
@@ -143,10 +145,11 @@ func (m *RouterBuilder) RouteLeft(id, name string, fifo bool, r RouteHandler) *R
 }
 
 // TerminateLeft func for sending the payload to a cap
-func (m *RouterBuilder) TerminateLeft(id, name string, fifo bool, t Terminus) {
+func (m *RouterBuilder) TerminateLeft(id, name string, fifo bool, t Terminus) *Builder {
 	x := t.convert(id, name, fifo)
 
 	m.x.left = x
+	return m.m
 }
 
 // ToRight func for sending the payload to a processor
@@ -187,8 +190,9 @@ func (m *RouterBuilder) RouteRight(id, name string, fifo bool, r RouteHandler) *
 }
 
 // TerminateRight func for sending the payload to a cap
-func (m *RouterBuilder) TerminateRight(id, name string, fifo bool, t Terminus) {
+func (m *RouterBuilder) TerminateRight(id, name string, fifo bool, t Terminus) *Builder {
 	x := t.convert(id, name, fifo)
 
 	m.x.right = x
+	return m.m
 }

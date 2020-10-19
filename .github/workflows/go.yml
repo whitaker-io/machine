@@ -32,6 +32,16 @@ jobs:
       - name: Get dependencies
         run: go mod vendor
 
+      - name: Go Test
+        run: go test -timeout 30s -coverprofile=coverage.out
+
+      - name: Coverage
+        uses: brpaz/godacov-action@v1
+        with:
+            reportPath: 'coverage.out'
+            codacyToken: ${{ secrets.CODACY_TOKEN }}
+            commitId: ${{ github.sha }}
+
       - name: Bump version and push tag
         if: github.ref == 'refs/heads/master'
         uses: mathieudutour/github-tag-action@v4.5

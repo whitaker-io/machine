@@ -1,6 +1,16 @@
 package machine
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
+
+// Packet type that holds information traveling through the machine
+type Packet struct {
+	ID    string
+	Data  map[string]interface{}
+	Error error
+}
 
 // Initium type for providing the data to flow into the system
 type Initium func(context.Context) chan []map[string]interface{}
@@ -31,6 +41,16 @@ type outChannel struct {
 	channel chan []*Packet
 }
 
+func (c *Packet) apply(id string, p func(map[string]interface{}) error) {
+	c.handleError(id, p(c.Data))
+}
+
+func (c *Packet) handleError(id string, err error) {
+	if err != nil {
+		c.Error = fmt.Errorf("%s %s %w", id, err.Error(), c.Error)
+	}
+}
+
 // Machine func for providing a Machine
 func (i Initium) convert(id, name string, fifo bool, recorder func(string, string, []*Packet)) *Machine {
 	return &Machine{
@@ -41,6 +61,7 @@ func (i Initium) convert(id, name string, fifo bool, recorder func(string, strin
 			recorder: recorder,
 		},
 		initium: i,
+		nodes:   map[string]*node{},
 	}
 }
 
