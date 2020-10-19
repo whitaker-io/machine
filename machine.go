@@ -138,9 +138,7 @@ func (pn *node) inject(payload []*Packet) {
 }
 
 func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) error {
-	if m == nil {
-		return fmt.Errorf("missing machine")
-	} else if pn.input != nil {
+	if pn.input != nil {
 		output.sendTo(ctx, pn.input)
 		return nil
 	}
@@ -168,9 +166,7 @@ func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) err
 }
 
 func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) error {
-	if m == nil {
-		return fmt.Errorf("missing machine")
-	} else if r.input != nil {
+	if r.input != nil {
 		output.sendTo(ctx, r.input)
 		return nil
 	}
@@ -201,13 +197,6 @@ func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) er
 }
 
 func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machine) error {
-	if m == nil {
-		return fmt.Errorf("missing machine")
-	} else if c.input != nil {
-		output.sendTo(ctx, c.input)
-		return nil
-	}
-
 	c.input = output.convert()
 	c.recorder = m.recorder
 
