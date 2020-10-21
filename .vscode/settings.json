@@ -1,0 +1,13 @@
+{
+    "editor.suggestSelection": "first",
+    "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
+    "workbench.colorTheme": "Tokyo Night Storm",
+    "go.formatTool": "goimports",
+    "go.useLanguageServer": true,
+    "workbench.iconTheme": "material-icon-theme",
+    "vsicons.dontShowNewVersionMessage": true,
+    "window.zoomLevel": 3,
+    "eslint.autoFixOnSave": true,
+    "files.autoSave": "afterDelay",
+    "editor.tabSize": 2
+}
