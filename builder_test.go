@@ -85,9 +85,9 @@ func Benchmark_Test_New(b *testing.B) {
 				}
 				return nil
 			}).Route(
-				NewRouter("route_id", "route", false, RouterError{}.Handler).
+				NewRouter("route_id", "route", false, RouterError).
 					RouteLeft(
-						NewRouter("route_id", "route", false, RouterError{}.Handler).
+						NewRouter("route_id", "route", false, RouterError).
 							ThenLeft(
 								NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 									if _, ok := m["name"]; !ok {
@@ -113,7 +113,7 @@ func Benchmark_Test_New(b *testing.B) {
 							),
 					).
 					RouteRight(
-						NewRouter("route_id", "route", false, RouterError{}.Handler).
+						NewRouter("route_id", "route", false, RouterError).
 							TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 								b.Errorf("no errors expected")
 								return nil
@@ -125,7 +125,7 @@ func Benchmark_Test_New(b *testing.B) {
 					),
 			),
 		),
-	).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+	).Build(bufferSize)
 
 	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
@@ -174,9 +174,9 @@ func Test_New(t *testing.T) {
 					}
 					return nil
 				}).Route(
-					NewRouter("route_id", "route", false, RouterError{}.Handler).
+					NewRouter("route_id", "route", false, RouterError).
 						RouteLeft(
-							NewRouter("route_id", "route", false, RouterError{}.Handler).
+							NewRouter("route_id", "route", false, RouterError).
 								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
@@ -207,7 +207,7 @@ func Test_New(t *testing.T) {
 								),
 						).
 						RouteRight(
-							NewRouter("route_id", "route", false, RouterError{}.Handler).
+							NewRouter("route_id", "route", false, RouterError).
 								TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									t.Errorf("no errors expected")
 									return nil
@@ -238,13 +238,13 @@ func Test_New(t *testing.T) {
 
 func Test_New_FIFO(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		term := NewTermination("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
-									t.Errorf("no errors expected")
-									return nil
-								})
+			t.Errorf("no errors expected")
+			return nil
+		})
 
 		m := New("machine_id", "machine", true, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -271,9 +271,9 @@ func Test_New_FIFO(t *testing.T) {
 					}
 					return nil
 				}).Route(
-					NewRouter("route_id", "route", true, RouterError{}.Handler).
+					NewRouter("route_id", "route", true, RouterError).
 						RouteLeft(
-							NewRouter("route_id", "route", true, RouterError{}.Handler).
+							NewRouter("route_id", "route", true, RouterError).
 								ThenLeft(
 									NewVertex("node_id3", "node3", true, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
@@ -301,7 +301,7 @@ func Test_New_FIFO(t *testing.T) {
 								),
 						).
 						RouteRight(
-							NewRouter("route_id", "route", true, RouterError{}.Handler).
+							NewRouter("route_id", "route", true, RouterError).
 								TerminateLeft(term).
 								TerminateRight(term),
 						),
@@ -326,7 +326,7 @@ func Test_New_FIFO(t *testing.T) {
 
 func Test_New_Router(t *testing.T) {
 	t.Run("Test_New_Router", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -340,9 +340,9 @@ func Test_New_Router(t *testing.T) {
 
 			return channel
 		}).Route(
-			NewRouter("route_id", "route", false, RouterError{}.Handler).
+			NewRouter("route_id", "route", false, RouterError).
 				RouteLeft(
-					NewRouter("route_id", "route", false, RouterError{}.Handler).
+					NewRouter("route_id", "route", false, RouterError).
 						ThenLeft(
 							NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 								if _, ok := m["name"]; !ok {
@@ -373,7 +373,7 @@ func Test_New_Router(t *testing.T) {
 						),
 				).
 				RouteRight(
-					NewRouter("route_id", "route", false, RouterError{}.Handler).
+					NewRouter("route_id", "route", false, RouterError).
 						TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 							t.Errorf("no errors expected")
 							return nil
@@ -402,7 +402,7 @@ func Test_New_Router(t *testing.T) {
 
 func Test_New_Empty_Payload(t *testing.T) {
 	t.Run("Test_New_Termination", func(t *testing.T) {
-		count := 100000
+		count := 10000
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -428,7 +428,7 @@ func Test_New_Empty_Payload(t *testing.T) {
 
 func Test_New_Termination(t *testing.T) {
 	t.Run("Test_New_Termination", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -468,11 +468,11 @@ func Test_New_Termination(t *testing.T) {
 }
 
 func Test_New_Cancellation(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+	t.Run("Test_New_Cancellation", func(t *testing.T) {
+		count := 10000
 		out := make(chan []map[string]interface{})
 
-		router := NewRouter("route_id", "route", false, RouterError{}.Handler).
+		router := NewRouter("route_id", "route", false, RouterError).
 			TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
@@ -507,9 +507,9 @@ func Test_New_Cancellation(t *testing.T) {
 					}
 					return nil
 				}).Route(
-					NewRouter("route_id", "route", false, RouterError{}.Handler).
+					NewRouter("route_id", "route", false, RouterError).
 						RouteLeft(
-							NewRouter("route_id", "route", false, RouterError{}.Handler).
+							NewRouter("route_id", "route", false, RouterError).
 								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
@@ -539,7 +539,7 @@ func Test_New_Cancellation(t *testing.T) {
 						RouteRight(router),
 				),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -552,7 +552,7 @@ func Test_New_Cancellation(t *testing.T) {
 		}
 
 		go func() {
-			for {
+			for i := 0; i < count; i++ {
 				m.Inject(x)
 			}
 		}()
@@ -567,7 +567,7 @@ func Test_New_Cancellation(t *testing.T) {
 
 func Test_New_Missing_Termination(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		router := NewRouter("route_id", "route", false, RouterError{}.Handler).
+		router := NewRouter("route_id", "route", false, RouterError).
 			TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
@@ -591,9 +591,9 @@ func Test_New_Missing_Termination(t *testing.T) {
 					}
 					return nil
 				}).Route(
-					NewRouter("route_id", "route", false, RouterError{}.Handler).
+					NewRouter("route_id", "route", false, RouterError).
 						RouteLeft(
-							NewRouter("route_id", "route", false, RouterError{}.Handler).
+							NewRouter("route_id", "route", false, RouterError).
 								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
@@ -653,7 +653,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 
 func Test_New_Duplication(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -667,7 +667,7 @@ func Test_New_Duplication(t *testing.T) {
 
 			return channel
 		}).Route(
-			NewRouter("route_id", "route", false, RouterDuplicate{}.Handler).
+			NewRouter("route_id", "route", false, RouterDuplicate).
 				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList1[i]) {
@@ -686,7 +686,7 @@ func Test_New_Duplication(t *testing.T) {
 					out <- list
 					return nil
 				})),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize)
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -705,7 +705,7 @@ func Test_New_Duplication(t *testing.T) {
 
 func Test_New_Rule(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -752,7 +752,7 @@ func Test_New_Rule(t *testing.T) {
 
 func Test_New_Reuse_Node(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		node := NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
@@ -821,7 +821,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 func Test_New_RouterError_Error(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -842,7 +842,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 				}
 				return fmt.Errorf("fail everything")
 			}).Route(
-				NewRouter("route_id", "route", false, RouterError{}.Handler).
+				NewRouter("route_id", "route", false, RouterError).
 					TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 						t.Errorf("no errors expected")
 						return nil
@@ -876,7 +876,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 
 func Test_New_Rule_False(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -923,7 +923,7 @@ func Test_New_Rule_False(t *testing.T) {
 
 func Test_New_Rule_Left_Error(t *testing.T) {
 	t.Run("Test_New_Rule_Left_Error", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -966,7 +966,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 
 func Test_New_Rule_Right_Error(t *testing.T) {
 	t.Run("Test_New_Rule_Right_Error", func(t *testing.T) {
-		count := 100000
+		count := 10000
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
