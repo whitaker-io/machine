@@ -238,7 +238,7 @@ func Test_New(t *testing.T) {
 
 func Test_New_FIFO(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		term := NewTermination("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
@@ -326,7 +326,7 @@ func Test_New_FIFO(t *testing.T) {
 
 func Test_New_Router(t *testing.T) {
 	t.Run("Test_New_Router", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -402,7 +402,7 @@ func Test_New_Router(t *testing.T) {
 
 func Test_New_Empty_Payload(t *testing.T) {
 	t.Run("Test_New_Termination", func(t *testing.T) {
-		count := 100000
+		count := 10000
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -428,7 +428,7 @@ func Test_New_Empty_Payload(t *testing.T) {
 
 func Test_New_Termination(t *testing.T) {
 	t.Run("Test_New_Termination", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -469,7 +469,7 @@ func Test_New_Termination(t *testing.T) {
 
 func Test_New_Cancellation(t *testing.T) {
 	t.Run("Test_New_Cancellation", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		router := NewRouter("route_id", "route", false, RouterError).
@@ -653,7 +653,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 
 func Test_New_Duplication(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -705,7 +705,7 @@ func Test_New_Duplication(t *testing.T) {
 
 func Test_New_Rule(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -752,7 +752,7 @@ func Test_New_Rule(t *testing.T) {
 
 func Test_New_Reuse_Node(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		node := NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
@@ -821,7 +821,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 func Test_New_RouterError_Error(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -876,7 +876,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 
 func Test_New_Rule_False(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -923,7 +923,7 @@ func Test_New_Rule_False(t *testing.T) {
 
 func Test_New_Rule_Left_Error(t *testing.T) {
 	t.Run("Test_New_Rule_Left_Error", func(t *testing.T) {
-		count := 100000
+		count := 10000
 		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -966,7 +966,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 
 func Test_New_Rule_Right_Error(t *testing.T) {
 	t.Run("Test_New_Rule_Right_Error", func(t *testing.T) {
-		count := 100000
+		count := 10000
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
