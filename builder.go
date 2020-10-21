@@ -5,6 +5,8 @@
 
 package machine
 
+import "github.com/mitchellh/copystructure"
+
 // Builder builder type for starting a machine
 type Builder struct {
 	x *Machine
@@ -57,8 +59,11 @@ func NewTermination(id, name string, fifo bool, t Terminus) *TerminationBuilder 
 func (m *Builder) Build(bufferSize int, recorders ...func(string, string, []*Packet)) *Machine {
 	m.x.bufferSize = bufferSize
 	m.x.recorder = func(id, name string, payload []*Packet) {
-		for _, recorder := range recorders {
-			recorder(id, name, payload)
+		if len(recorders) > 0 {
+			output, _ := copystructure.Copy(payload)
+			for _, recorder := range recorders {
+				recorder(id, name, output.([]*Packet))
+			}
 		}
 	}
 	return m.x

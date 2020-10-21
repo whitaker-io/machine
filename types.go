@@ -10,6 +10,37 @@ import (
 	"fmt"
 )
 
+var (
+	// RouterDuplicate is a RouteHandler that sends data to both outputs
+	RouterDuplicate RouteHandler = func(payload []*Packet) (a, b []*Packet) {
+		a = []*Packet{}
+		b = []*Packet{}
+
+		for _, packet := range payload {
+			a = append(a, packet)
+			b = append(b, packet)
+		}
+
+		return a, b
+	}
+
+	// RouterError is a RouteHandler for splitting errors from successes
+	RouterError RouteHandler = func(payload []*Packet) (s, f []*Packet) {
+		s = []*Packet{}
+		f = []*Packet{}
+
+		for _, packet := range payload {
+			if packet.Error != nil {
+				f = append(f, packet)
+			} else {
+				s = append(s, packet)
+			}
+		}
+
+		return s, f
+	}
+)
+
 // Packet type that holds information traveling through the machine
 type Packet struct {
 	ID    string
@@ -24,16 +55,10 @@ type Initium func(context.Context) chan []map[string]interface{}
 type Processus func(map[string]interface{}) error
 
 // RouteHandler func for splitting a payload into 2
-type RouteHandler func(list []*Packet) (t, f []*Packet)
+type RouteHandler func(list []*Packet) (a, b []*Packet)
 
 // RouterRule type for validating a context at the beginning of a Machine
 type RouterRule func(map[string]interface{}) bool
-
-// RouterError type for splitting errors from successes
-type RouterError struct{}
-
-// RouterDuplicate type for splitting errors from successes
-type RouterDuplicate struct{}
 
 // Terminus type for ending a chain and returning an error if exists
 type Terminus func([]map[string]interface{}) error
@@ -103,35 +128,6 @@ func (r RouterRule) Handler(payload []*Packet) (t, f []*Packet) {
 	}
 
 	return t, f
-}
-
-// Handler func for providing a RouteHandler
-func (e RouterError) Handler(payload []*Packet) (s, f []*Packet) {
-	s = []*Packet{}
-	f = []*Packet{}
-
-	for _, packet := range payload {
-		if packet.Error != nil {
-			f = append(f, packet)
-		} else {
-			s = append(s, packet)
-		}
-	}
-
-	return s, f
-}
-
-// Handler func for providing a RouteHandler
-func (d RouterDuplicate) Handler(payload []*Packet) (a, b []*Packet) {
-	a = []*Packet{}
-	b = []*Packet{}
-
-	for _, packet := range payload {
-		a = append(a, packet)
-		b = append(b, packet)
-	}
-
-	return a, b
 }
 
 // Convert func for providing a Cap
