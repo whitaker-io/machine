@@ -1,3 +1,8 @@
+// Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file.
+
 package machine
 
 // Builder builder type for starting a machine
@@ -13,6 +18,11 @@ type VertexBuilder struct {
 // RouterBuilder builder type for adding a router to the machine
 type RouterBuilder struct {
 	x *router
+}
+
+// TerminationBuilder builder type for adding a termination to the machine
+type TerminationBuilder struct {
+	x vertex
 }
 
 // New func for providing an instance of Builder
@@ -36,8 +46,16 @@ func NewRouter(id, name string, fifo bool, r RouteHandler) *RouterBuilder {
 	}
 }
 
+// NewTermination func for providing an instance of TerminationBuilder
+func NewTermination(id, name string, fifo bool, t Terminus) *TerminationBuilder {
+	return &TerminationBuilder{
+		x: t.convert(id, name, fifo),
+	}
+}
+
 // Build func for providing the underlying machine
-func (m *Builder) Build(recorders ...func(string, string, []*Packet)) *Machine {
+func (m *Builder) Build(bufferSize int, recorders ...func(string, string, []*Packet)) *Machine {
+	m.x.bufferSize = bufferSize
 	m.x.recorder = func(id, name string, payload []*Packet) {
 		for _, recorder := range recorders {
 			recorder(id, name, payload)
@@ -59,10 +77,8 @@ func (m *Builder) Route(r *RouterBuilder) *Builder {
 }
 
 // Terminate func for sending the payload to a cap
-func (m *Builder) Terminate(id, name string, fifo bool, t Terminus) *Builder {
-	x := t.convert(id, name, fifo)
-
-	m.x.child = x
+func (m *Builder) Terminate(t *TerminationBuilder) *Builder {
+	m.x.child = t.x
 	return m
 }
 
@@ -79,10 +95,8 @@ func (m *VertexBuilder) Route(r *RouterBuilder) *VertexBuilder {
 }
 
 // Terminate func for sending the payload to a cap
-func (m *VertexBuilder) Terminate(id, name string, fifo bool, t Terminus) *VertexBuilder {
-	x := t.convert(id, name, fifo)
-
-	m.x.child = x
+func (m *VertexBuilder) Terminate(t *TerminationBuilder) *VertexBuilder {
+	m.x.child = t.x
 	return m
 }
 
@@ -99,8 +113,8 @@ func (m *RouterBuilder) RouteLeft(left *RouterBuilder) *RouterBuilder {
 }
 
 // TerminateLeft func for sending the payload to a cap
-func (m *RouterBuilder) TerminateLeft(id, name string, fifo bool, t Terminus) *RouterBuilder {
-	m.x.left = t.convert(id, name, fifo)
+func (m *RouterBuilder) TerminateLeft(t *TerminationBuilder) *RouterBuilder {
+	m.x.left = t.x
 	return m
 }
 
@@ -117,7 +131,7 @@ func (m *RouterBuilder) RouteRight(right *RouterBuilder) *RouterBuilder {
 }
 
 // TerminateRight func for sending the payload to a cap
-func (m *RouterBuilder) TerminateRight(id, name string, fifo bool, t Terminus) *RouterBuilder {
-	m.x.right = t.convert(id, name, fifo)
+func (m *RouterBuilder) TerminateRight(t *TerminationBuilder) *RouterBuilder {
+	m.x.right = t.x
 	return m
 }

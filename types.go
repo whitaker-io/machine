@@ -1,3 +1,8 @@
+// Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file.
+
 package machine
 
 import (
@@ -33,11 +38,7 @@ type RouterDuplicate struct{}
 // Terminus type for ending a chain and returning an error if exists
 type Terminus func([]map[string]interface{}) error
 
-type inChannel struct {
-	channel chan []*Packet
-}
-
-type outChannel struct {
+type channel struct {
 	channel chan []*Packet
 }
 
@@ -142,29 +143,16 @@ func (t Terminus) convert(id, name string, fifo bool) vertex {
 			fifo: fifo,
 		},
 		terminus: t,
-		input:    newInChannel(),
 	}
 }
 
-func newInChannel() *inChannel {
-	return &inChannel{
-		make(chan []*Packet),
+func newChannel(bufferSize int) *channel {
+	return &channel{
+		make(chan []*Packet, bufferSize),
 	}
 }
 
-func newOutChannel() *outChannel {
-	return &outChannel{
-		make(chan []*Packet),
-	}
-}
-
-func (out *outChannel) convert() *inChannel {
-	return &inChannel{
-		channel: out.channel,
-	}
-}
-
-func (out *outChannel) sendTo(ctx context.Context, in *inChannel) {
+func (out *channel) sendTo(ctx context.Context, in *channel) {
 	go func() {
 	Loop:
 		for {

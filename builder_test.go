@@ -1,3 +1,8 @@
+// Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file.
+
 package machine
 
 import (
@@ -58,10 +63,91 @@ var testPayload = []*Packet{
 	},
 }
 
+var bufferSize = 0
+
+func Benchmark_Test_New(b *testing.B) {
+	out := make(chan []map[string]interface{})
+	channel := make(chan []map[string]interface{})
+	m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
+		return channel
+	}).Then(
+		NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return nil
+		}).Then(
+			NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+				}
+				return nil
+			}).Route(
+				NewRouter("route_id", "route", false, RouterError{}.Handler).
+					RouteLeft(
+						NewRouter("route_id", "route", false, RouterError{}.Handler).
+							ThenLeft(
+								NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
+									if _, ok := m["name"]; !ok {
+										b.Errorf("packet missing name %v", m)
+										return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+									}
+									return nil
+								}).
+									Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+										out <- list
+										return nil
+									})),
+							).
+							ThenRight(
+								NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
+									b.Errorf("no errors expected")
+									return nil
+								}).
+									Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+										b.Errorf("no errors expected")
+										return nil
+									})),
+							),
+					).
+					RouteRight(
+						NewRouter("route_id", "route", false, RouterError{}.Handler).
+							TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+								b.Errorf("no errors expected")
+								return nil
+							})).
+							TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+								b.Errorf("no errors expected")
+								return nil
+							})),
+					),
+			),
+		),
+	).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+
+	if err := m.Run(context.Background()); err != nil {
+		b.Error(err)
+	}
+
+	for n := 0; n < b.N; n++ {
+		go func() {
+			channel <- testList1
+		}()
+
+		list := <-out
+
+		if len(list) != len(testList1) {
+			b.Errorf("incorrect data have %v want %v", list, testList1)
+		}
+	}
+}
+
 func Test_New(t *testing.T) {
+	count := 100000
+	out := make(chan []map[string]interface{})
 	t.Run("Test_New", func(t *testing.T) {
-		count := 100000
-		out := make(chan []map[string]interface{})
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -76,15 +162,15 @@ func Test_New(t *testing.T) {
 		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
-					t.Errorf("machine.begin() nissing name %v", m)
-					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+					t.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return nil
 			}).Then(
 				NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
-						t.Errorf("machine.begin() nissing name %v", m)
-						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+						t.Errorf("packet missing name %v", m)
+						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
 				}).Route(
@@ -94,46 +180,46 @@ func Test_New(t *testing.T) {
 								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
-											t.Errorf("machine.begin() nissing name %v", m)
-											return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+											t.Errorf("packet missing name %v", m)
+											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 										}
 										return nil
 									}).
-										Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+										Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList1[i]) {
-													t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+													t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 												}
 											}
 											out <- list
 											return fmt.Errorf("error everything")
-										}),
+										})),
 								).
 								ThenRight(
 									NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+										Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 											t.Errorf("no errors expected")
 											return nil
-										}),
+										})),
 								),
 						).
 						RouteRight(
 							NewRouter("route_id", "route", false, RouterError{}.Handler).
-								TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+								TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									t.Errorf("no errors expected")
 									return nil
-								}).
-								TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+								})).
+								TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									t.Errorf("no errors expected")
 									return nil
-								}),
+								})),
 						),
 				),
 			),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Error(err)
@@ -143,7 +229,7 @@ func Test_New(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -154,6 +240,11 @@ func Test_New_FIFO(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
 		count := 100000
 		out := make(chan []map[string]interface{})
+
+		term := NewTermination("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
+									t.Errorf("no errors expected")
+									return nil
+								})
 
 		m := New("machine_id", "machine", true, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -168,15 +259,15 @@ func Test_New_FIFO(t *testing.T) {
 		}).Then(
 			NewVertex("node_id1", "node1", true, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
-					t.Errorf("machine.begin() nissing name %v", m)
-					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+					t.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return nil
 			}).Then(
 				NewVertex("node_id2", "node2", true, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
-						t.Errorf("machine.begin() nissing name %v", m)
-						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+						t.Errorf("packet missing name %v", m)
+						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
 				}).Route(
@@ -186,46 +277,37 @@ func Test_New_FIFO(t *testing.T) {
 								ThenLeft(
 									NewVertex("node_id3", "node3", true, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
-											t.Errorf("machine.begin() nissing name %v", m)
-											return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+											t.Errorf("packet missing name %v", m)
+											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 										}
 										return nil
 									}).
-										Terminate("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
+										Terminate(NewTermination("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList1[i]) {
-													t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+													t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 												}
 											}
 											out <- list
 											return fmt.Errorf("error everything")
-										}),
+										})),
 								).
 								ThenRight(
 									NewVertex("node_id", "node", true, func(m map[string]interface{}) error {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Terminate("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
-											t.Errorf("no errors expected")
-											return nil
-										}),
+										Terminate(term),
 								),
 						).
 						RouteRight(
 							NewRouter("route_id", "route", true, RouterError{}.Handler).
-								TerminateLeft("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
-									t.Errorf("no errors expected")
-									return nil
-								}).
-								TerminateRight("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
-									t.Errorf("no errors expected")
-									return nil
-								}),
+								TerminateLeft(term).
+								TerminateRight(term),
 						),
 				),
 			),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Error(err)
@@ -235,7 +317,7 @@ func Test_New_FIFO(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -264,44 +346,44 @@ func Test_New_Router(t *testing.T) {
 						ThenLeft(
 							NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 								if _, ok := m["name"]; !ok {
-									t.Errorf("machine.begin() nissing name %v", m)
-									return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+									t.Errorf("packet missing name %v", m)
+									return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 								}
 								return nil
 							}).
-								Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+								Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									for i, packet := range list {
 										if !reflect.DeepEqual(packet, testList1[i]) {
-											t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+											t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 										}
 									}
 									out <- list
 									return fmt.Errorf("error everything")
-								}),
+								})),
 						).
 						ThenRight(
 							NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
 								t.Errorf("no errors expected")
 								return nil
 							}).
-								Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+								Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									t.Errorf("no errors expected")
 									return nil
-								}),
+								})),
 						),
 				).
 				RouteRight(
 					NewRouter("route_id", "route", false, RouterError{}.Handler).
-						TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+						TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 							t.Errorf("no errors expected")
 							return nil
-						}).
-						TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+						})).
+						TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 							t.Errorf("no errors expected")
 							return nil
-						}),
+						})),
 				),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Error(err)
@@ -311,7 +393,7 @@ func Test_New_Router(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -333,10 +415,10 @@ func Test_New_Empty_Payload(t *testing.T) {
 
 			return channel
 		}).
-			Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
-			}).Build(func(s1, s2 string, p []*Packet) {})
+			})).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Error(err)
@@ -360,15 +442,15 @@ func Test_New_Termination(t *testing.T) {
 
 			return channel
 		}).
-			Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				for i, packet := range list {
 					if !reflect.DeepEqual(packet, testList1[i]) {
-						t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+						t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 					}
 				}
 				out <- list
 				return fmt.Errorf("error everything")
-			}).Build(func(s1, s2 string, p []*Packet) {})
+			})).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Error(err)
@@ -378,7 +460,7 @@ func Test_New_Termination(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -391,14 +473,14 @@ func Test_New_Cancellation(t *testing.T) {
 		out := make(chan []map[string]interface{})
 
 		router := NewRouter("route_id", "route", false, RouterError{}.Handler).
-			TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+			TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
-			}).
-			TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+			})).
+			TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
-			})
+			}))
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -413,15 +495,15 @@ func Test_New_Cancellation(t *testing.T) {
 		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
-					t.Errorf("machine.begin() nissing name %v", m)
-					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+					t.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return nil
 			}).Then(
 				NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
-						t.Errorf("machine.begin() nissing name %v", m)
-						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+						t.Errorf("packet missing name %v", m)
+						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
 				}).Route(
@@ -431,20 +513,20 @@ func Test_New_Cancellation(t *testing.T) {
 								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
-											t.Errorf("machine.begin() nissing name %v", m)
-											return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+											t.Errorf("packet missing name %v", m)
+											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 										}
 										return nil
 									}).
-										Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+										Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList1[i]) {
-													t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+													t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 												}
 											}
 											out <- list
 											return fmt.Errorf("error everything")
-										}),
+										})),
 								).
 								ThenRight(
 									NewVertex("node_id", "node", false, func(m map[string]interface{}) error {
@@ -457,7 +539,7 @@ func Test_New_Cancellation(t *testing.T) {
 						RouteRight(router),
 				),
 			),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		ctx, cancel := context.WithCancel(context.Background())
 
@@ -486,10 +568,10 @@ func Test_New_Cancellation(t *testing.T) {
 func Test_New_Missing_Termination(t *testing.T) {
 	t.Run("Test_New", func(t *testing.T) {
 		router := NewRouter("route_id", "route", false, RouterError{}.Handler).
-			TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+			TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
-			})
+			}))
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -497,15 +579,15 @@ func Test_New_Missing_Termination(t *testing.T) {
 		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
-					t.Errorf("machine.begin() nissing name %v", m)
-					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+					t.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return nil
 			}).Then(
 				NewVertex("node_id2", "node2", false, func(m map[string]interface{}) error {
 					if _, ok := m["name"]; !ok {
-						t.Errorf("machine.begin() nissing name %v", m)
-						return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+						t.Errorf("packet missing name %v", m)
+						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
 				}).Route(
@@ -515,8 +597,8 @@ func Test_New_Missing_Termination(t *testing.T) {
 								ThenLeft(
 									NewVertex("node_id3", "node3", false, func(m map[string]interface{}) error {
 										if _, ok := m["name"]; !ok {
-											t.Errorf("machine.begin() nissing name %v", m)
-											return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+											t.Errorf("packet missing name %v", m)
+											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 										}
 										return nil
 									}),
@@ -531,7 +613,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 						),
 				),
 			),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
@@ -540,7 +622,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 		m2 := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
 			return channel
-		}).Build(func(s1, s2 string, p []*Packet) {})
+		}).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if m2.ID() != "machine_id" {
 			t.Errorf("incorrect id have %s want %s", m2.ID(), "machine_id")
@@ -556,12 +638,12 @@ func Test_New_Missing_Termination(t *testing.T) {
 		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
-					t.Errorf("machine.begin() nissing name %v", m)
-					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+					t.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return nil
 			}),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m3.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
@@ -586,25 +668,25 @@ func Test_New_Duplication(t *testing.T) {
 			return channel
 		}).Route(
 			NewRouter("route_id", "route", false, RouterDuplicate{}.Handler).
-				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 						}
 					}
 					out <- list
 					return nil
-				}).
-				TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				})).
+				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 						}
 					}
 					out <- list
 					return nil
-				}),
-		).Build(func(s1, s2 string, p []*Packet) {})
+				})),
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -614,7 +696,7 @@ func Test_New_Duplication(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -638,20 +720,20 @@ func Test_New_Rule(t *testing.T) {
 			return channel
 		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return true }).Handler).
-				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 						}
 					}
 					out <- list
 					return nil
-				}).
-				TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				})).
+				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					t.Errorf("no errors expected")
 					return nil
-				}),
-		).Build(func(s1, s2 string, p []*Packet) {})
+				})),
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -661,7 +743,7 @@ func Test_New_Rule(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -675,20 +757,20 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 		node := NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 			if _, ok := m["name"]; !ok {
-				t.Errorf("machine.begin() nissing name %v", m)
-				return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+				t.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return fmt.Errorf("fail everything")
 		}).
-			Terminate("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				for i, packet := range list {
 					if !reflect.DeepEqual(packet, testList1[i]) {
-						t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+						t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 					}
 				}
 				out <- list
 				return nil
-			})
+			}))
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
@@ -702,7 +784,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 			return channel
 		}).
 			Then(node).
-			Build(func(s1, s2 string, p []*Packet) {})
+			Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -719,7 +801,8 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 			return channel
 		}).
-			Then(node).Build()
+			Then(node).
+			Build(bufferSize)
 
 		if err := m2.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -729,7 +812,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -754,27 +837,27 @@ func Test_New_RouterError_Error(t *testing.T) {
 		}).Then(
 			NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 				if _, ok := m["name"]; !ok {
-					t.Errorf("machine.begin() nissing name %v", m)
-					return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+					t.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return fmt.Errorf("fail everything")
 			}).Route(
 				NewRouter("route_id", "route", false, RouterError{}.Handler).
-					TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+					TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 						t.Errorf("no errors expected")
 						return nil
-					}).
-					TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+					})).
+					TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 						for i, packet := range list {
 							if !reflect.DeepEqual(packet, testList1[i]) {
-								t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+								t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 							}
 						}
 						out <- list
 						return nil
-					}),
+					})),
 			),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -784,7 +867,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -808,20 +891,20 @@ func Test_New_Rule_False(t *testing.T) {
 			return channel
 		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return false }).Handler).
-				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					t.Errorf("no errors expected")
 					return nil
-				}).
-				TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				})).
+				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 						}
 					}
 					out <- list
 					return nil
-				}),
-		).Build(func(s1, s2 string, p []*Packet) {})
+				})),
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -831,7 +914,7 @@ func Test_New_Rule_False(t *testing.T) {
 			list1 := <-out
 			for i, packet := range list1 {
 				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 				}
 			}
 		}
@@ -858,22 +941,22 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 				ThenLeft(
 					NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 						if _, ok := m["name"]; !ok {
-							t.Errorf("machine.begin() nissing name %v", m)
-							return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+							t.Errorf("packet missing name %v", m)
+							return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 						}
 						return fmt.Errorf("fail everything")
 					}),
 				).
-				TerminateRight("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("machine.begin() incorrect data have %v want %v", packet, testList1[i])
+							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
 						}
 					}
 					out <- list
 					return nil
-				}),
-		).Build(func(s1, s2 string, p []*Packet) {})
+				})),
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
@@ -897,20 +980,20 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 			return channel
 		}).Route(
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return false }).Handler).
-				TerminateLeft("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
+				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					t.Errorf("no errors expected")
 					return nil
-				}).
+				})).
 				ThenRight(
 					NewVertex("node_id1", "node1", false, func(m map[string]interface{}) error {
 						if _, ok := m["name"]; !ok {
-							t.Errorf("machine.begin() nissing name %v", m)
-							return fmt.Errorf("node.cascade() incorrect data have %v want %v", m, "name field")
+							t.Errorf("packet missing name %v", m)
+							return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 						}
 						return fmt.Errorf("fail everything")
 					}),
 				),
-		).Build(func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
