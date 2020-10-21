@@ -1,3 +1,8 @@
+// Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
+//
+// Use of this source code is governed by an MIT-style
+// license that can be found in the LICENSE file.
+
 package machine
 
 import (
@@ -16,15 +21,16 @@ import (
 
 // Vertex interface for defining a child node
 type vertex interface {
-	cascade(ctx context.Context, output *outChannel, machine *Machine) error
+	cascade(ctx context.Context, output *channel, machine *Machine) error
 }
 
 // Machine execution graph for a system
 type Machine struct {
 	info
-	initium Initium
-	nodes   map[string]*node
-	child   vertex
+	initium    Initium
+	nodes      map[string]*node
+	child      vertex
+	bufferSize int
 }
 
 // node graph node for the Machine
@@ -32,7 +38,7 @@ type node struct {
 	info
 	processus Processus
 	child     vertex
-	input     *inChannel
+	input     *channel
 }
 
 // router graph node for the Machine
@@ -41,14 +47,14 @@ type router struct {
 	handler func([]*Packet) ([]*Packet, []*Packet)
 	left    vertex
 	right   vertex
-	input   *inChannel
+	input   *channel
 }
 
 // termination graph leaf for the Machine
 type termination struct {
 	info
 	terminus Terminus
-	input    *inChannel
+	input    *channel
 }
 
 type info struct {
@@ -79,7 +85,7 @@ func (m *Machine) Inject(logs map[string][]*Packet) {
 	}
 }
 
-func (m *Machine) begin(ctx context.Context) *outChannel {
+func (m *Machine) begin(ctx context.Context) *channel {
 	meterName := fmt.Sprintf("machine.%s", m.id)
 	meter := global.Meter(meterName)
 	labels := []label.KeyValue{label.String("id", m.id), label.String("type", m.name)}
@@ -90,7 +96,7 @@ func (m *Machine) begin(ctx context.Context) *outChannel {
 	outTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.outgoing")
 	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
 
-	channel := newOutChannel()
+	channel := newChannel(m.bufferSize)
 
 	input := m.initium(ctx)
 
@@ -145,17 +151,17 @@ func (pn *node) inject(payload []*Packet) {
 	pn.input.channel <- payload
 }
 
-func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) error {
+func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error {
 	if pn.input != nil {
 		output.sendTo(ctx, pn.input)
 		return nil
 	}
 
 	m.nodes[pn.id] = pn
-	pn.input = output.convert()
+	pn.input = output
 	pn.recorder = m.recorder
 
-	out := newOutChannel()
+	out := newChannel(m.bufferSize)
 
 	fn := func(payload []*Packet) {
 		for _, packet := range payload {
@@ -173,17 +179,17 @@ func (pn *node) cascade(ctx context.Context, output *outChannel, m *Machine) err
 	return pn.child.cascade(ctx, out, m)
 }
 
-func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) error {
+func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error {
 	if r.input != nil {
 		output.sendTo(ctx, r.input)
 		return nil
 	}
 
-	r.input = output.convert()
+	r.input = output
 	r.recorder = m.recorder
 
-	left := newOutChannel()
-	right := newOutChannel()
+	left := newChannel(m.bufferSize)
+	right := newChannel(m.bufferSize)
 
 	fn := func(payload []*Packet) {
 		l, r := r.handler(payload)
@@ -204,8 +210,13 @@ func (r *router) cascade(ctx context.Context, output *outChannel, m *Machine) er
 	return nil
 }
 
-func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machine) error {
-	c.input = output.convert()
+func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) error {
+	if c.input != nil {
+		output.sendTo(ctx, c.input)
+		return nil
+	}
+
+	c.input = output
 	c.recorder = m.recorder
 
 	runner := func(payload []*Packet) {
@@ -250,7 +261,7 @@ func (c *termination) cascade(ctx context.Context, output *outChannel, m *Machin
 	return nil
 }
 
-func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder func(string, string, []*Packet), output *outChannel) {
+func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder func(string, string, []*Packet), output *channel) {
 	meterName := fmt.Sprintf("machine.%s", id)
 	meter := global.Meter(meterName)
 	tracer := global.Tracer(meterName)
