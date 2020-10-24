@@ -6,6 +6,13 @@
 
 `Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
 
+### **Installation**
+
+
+```bash
+  go get -u github.com/whitaker-io/machine
+```
+
 ***
 ## [Usage Overview](#usage-overview)
 
