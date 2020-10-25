@@ -44,7 +44,6 @@ func Initium(v *viper.Viper) machine.Initium {
 						packet := map[string]interface{}{}
 						if message, err := r.ReadMessage(ctx); err != nil {
 							log.Printf("error pulling message: %v", err)
-							break Loop
 						} else if err := json.Unmarshal(message.Value, &packet); err != nil {
 							payload = append(payload, packet)
 						}
