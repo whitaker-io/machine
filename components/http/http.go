@@ -14,7 +14,7 @@ import (
 	"github.com/whitaker-io/machine"
 )
 
-// Initium func for providing a kafka based Initium
+// Initium func for providing a fiber.Handler based Initium
 func Initium(v *viper.Viper) machine.Initium {
 	serverName := v.GetString("name")
 	port := v.GetString("port")
@@ -72,7 +72,7 @@ func Initium(v *viper.Viper) machine.Initium {
 	}
 }
 
-// Terminus func for providing a kafka based Terminus
+// Terminus func for providing a http client based Terminus
 func Terminus(v *viper.Viper) machine.Terminus {
 	host := v.GetString("host")
 	timeout := v.GetDuration("timeout")
