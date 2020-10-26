@@ -21,8 +21,8 @@ func (l loader) Load(v []bigquery.Value, s bigquery.Schema) error {
 	return nil
 }
 
-func (l loader) Save() (map[string]bigquery.Value, string, error) {
-	row := map[string]bigquery.Value{}
+func (l loader) Save() (row map[string]bigquery.Value, id string, err error) {
+	row = map[string]bigquery.Value{}
 
 	for k, v := range l {
 		row[k] = v

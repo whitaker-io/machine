@@ -8,6 +8,8 @@ package machine
 import (
 	"context"
 	"fmt"
+
+	"go.opentelemetry.io/otel/api/trace"
 )
 
 var (
@@ -46,6 +48,7 @@ type Packet struct {
 	ID    string
 	Data  map[string]interface{}
 	Error error
+	span  trace.Span
 }
 
 // Initium type for providing the data to flow into the system
