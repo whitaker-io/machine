@@ -125,9 +125,9 @@ func Benchmark_Test_New(b *testing.B) {
 					),
 			),
 		),
-	).Build(bufferSize)
+	)
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Run(context.Background(), bufferSize); err != nil {
 		b.Error(err)
 	}
 
@@ -219,9 +219,9 @@ func Test_New(t *testing.T) {
 						),
 				),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		)
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize, func(s1, s2 string, p []*Packet) {}); err != nil {
 			t.Error(err)
 		}
 
@@ -307,9 +307,9 @@ func Test_New_FIFO(t *testing.T) {
 						),
 				),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		)
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 
@@ -383,9 +383,9 @@ func Test_New_Router(t *testing.T) {
 							return nil
 						})),
 				),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		)
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 
@@ -418,9 +418,9 @@ func Test_New_Empty_Payload(t *testing.T) {
 			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
-			})).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+			}))
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 	})
@@ -450,9 +450,9 @@ func Test_New_Termination(t *testing.T) {
 				}
 				out <- list
 				return fmt.Errorf("error everything")
-			})).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+			}))
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 

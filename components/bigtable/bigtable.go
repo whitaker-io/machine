@@ -11,7 +11,10 @@ import (
 	"github.com/whitaker-io/machine"
 )
 
+// Filter type for testing if a row should be included
 type Filter func(r bigtable.Row) bool
+
+// Mutation func for converting a []map[string]interface{} to (rowKeys []string, muts []*bigtable.Mutation)
 type Mutation func(m []map[string]interface{}) (rowKeys []string, muts []*bigtable.Mutation)
 
 // Initium func for providing a bigquery based Initium
@@ -58,7 +61,7 @@ func (f Filter) Initium(v *viper.Viper) machine.Initium {
 								m[k] = v
 							}
 
-							payload = append(payload)
+							payload = append(payload, m)
 							return true
 						}
 						return false
@@ -75,7 +78,7 @@ func (f Filter) Initium(v *viper.Viper) machine.Initium {
 	}
 }
 
-// Terminus func for providing a bigquery based Terminus
+// Terminus func for providing a bigtable based Terminus
 func (muter Mutation) Terminus(v *viper.Viper) machine.Terminus {
 	projectID := v.GetString("project_id")
 	instance := v.GetString("instance")
