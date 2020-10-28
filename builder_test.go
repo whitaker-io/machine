@@ -553,7 +553,7 @@ func Test_New_Cancellation(t *testing.T) {
 
 		go func() {
 			for i := 0; i < count; i++ {
-				m.Inject(x)
+				m.Inject(ctx, x)
 			}
 		}()
 

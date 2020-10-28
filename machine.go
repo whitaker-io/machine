@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
 	"go.opentelemetry.io/otel/api/trace"
@@ -79,9 +78,9 @@ func (m *Machine) Run(ctx context.Context) error {
 }
 
 // Inject func to inject the logs into the machine
-func (m *Machine) Inject(logs map[string][]*Packet) {
+func (m *Machine) Inject(ctx context.Context, logs map[string][]*Packet) {
 	for node, list := range logs {
-		m.nodes[node].inject(list)
+		m.nodes[node].inject(ctx, list)
 	}
 }
 
@@ -102,16 +101,15 @@ func (m *Machine) begin(ctx context.Context) *channel {
 	input := m.initium(ctx)
 
 	fn := func(data []map[string]interface{}) {
-		metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", m.id))
-		inCounter.Record(metricsCtx, int64(len(data)), labels...)
-		inTotalCounter.Add(metricsCtx, float64(len(data)), labels...)
+		inCounter.Record(ctx, int64(len(data)), labels...)
+		inTotalCounter.Add(ctx, float64(len(data)), labels...)
 
 		start := time.Now()
 
 		payload := []*Packet{}
 		for _, item := range data {
 			_, span := tracer.Start(
-				metricsCtx,
+				ctx,
 				m.name,
 				trace.WithAttributes(labels...),
 			)
@@ -132,9 +130,9 @@ func (m *Machine) begin(ctx context.Context) *channel {
 		m.recorder(m.id, "start", payload)
 		channel.channel <- payload
 
-		outCounter.Record(metricsCtx, int64(len(payload)), labels...)
-		outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
-		batchDuration.Record(metricsCtx, int64(duration), labels...)
+		outCounter.Record(ctx, int64(len(payload)), labels...)
+		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
+		batchDuration.Record(ctx, int64(duration), labels...)
 	}
 
 	go func() {
@@ -160,12 +158,12 @@ func (m *Machine) begin(ctx context.Context) *channel {
 	return channel
 }
 
-func (pn *node) inject(payload []*Packet) {
+func (pn *node) inject(ctx context.Context, payload []*Packet) {
 	meterName := fmt.Sprintf("node.inject.%s", pn.id)
 	tracer := global.Tracer(meterName)
 	for _, packet := range payload {
 		_, span := tracer.Start(
-			context.Background(),
+			ctx,
 			pn.name,
 			trace.WithAttributes(
 				label.String("id", pn.id),
@@ -173,7 +171,7 @@ func (pn *node) inject(payload []*Packet) {
 			),
 		)
 		packet.span = span
-		packet.span.AddEvent(context.Background(), pn.name+"-inject",
+		packet.span.AddEvent(ctx, pn.name+"-inject",
 			label.String("id", pn.id),
 			label.String("name", pn.name),
 			label.Bool("error", packet.Error != nil),
