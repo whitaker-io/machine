@@ -60,18 +60,26 @@ func NewTermination(id, name string, fifo bool, t Terminus) *TerminationBuilder 
 }
 
 // Run func for starting the machine
-func (m *Builder) Run(ctx context.Context, bufferSize int, recorders ...func(string, string, []*Packet)) error {
+func (m *Builder) Run(ctx context.Context, bufferSize int, recorders ...func(string, string, string, []*Packet)) error {
 	return m.Build(bufferSize, recorders...).Run(ctx)
 }
 
 // Build func for getting the machine
-func (m *Builder) Build(bufferSize int, recorders ...func(string, string, []*Packet)) *Machine {
+func (m *Builder) Build(bufferSize int, recorders ...func(string, string, string, []*Packet)) *Machine {
 	m.x.bufferSize = bufferSize
-	m.x.recorder = func(id, name string, payload []*Packet) {
+	m.x.recorder = func(id, name string, state string, payload []*Packet) {
 		if len(recorders) > 0 {
-			output, _ := copystructure.Copy(payload)
+			out := []*Packet{}
+			for _, v := range payload {
+				x, _ := copystructure.Copy(v.Data)
+				out = append(out, &Packet{
+					ID:    v.ID,
+					Data:  x.(map[string]interface{}),
+					Error: v.Error,
+				})
+			}
 			for _, recorder := range recorders {
-				recorder(id, name, output.([]*Packet))
+				recorder(id, name, state, out)
 			}
 		}
 	}

@@ -81,16 +81,16 @@ func (c *Packet) handleError(id string, err error) {
 }
 
 // Machine func for providing a Machine
-func (i Initium) convert(id, name string, fifo bool, recorder func(string, string, []*Packet)) *Machine {
+func (i Initium) convert(id, name string, fifo bool, recorder func(string, string, string, []*Packet)) *Machine {
 	return &Machine{
 		info: info{
-			id:       id,
-			name:     name,
-			fifo:     fifo,
-			recorder: recorder,
+			id:   id,
+			name: name,
+			fifo: fifo,
 		},
-		initium: i,
-		nodes:   map[string]*node{},
+		initium:  i,
+		recorder: recorder,
+		nodes:    map[string]*node{},
 	}
 }
 

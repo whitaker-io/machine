@@ -221,7 +221,7 @@ func Test_New(t *testing.T) {
 			),
 		)
 
-		if err := m.Run(context.Background(), bufferSize, func(s1, s2 string, p []*Packet) {}); err != nil {
+		if err := m.Run(context.Background(), bufferSize, func(s1, s2, s3 string, p []*Packet) {}); err != nil {
 			t.Error(err)
 		}
 
@@ -548,7 +548,8 @@ func Test_New_Cancellation(t *testing.T) {
 		}
 
 		x := map[string][]*Packet{
-			"node_id1": testPayload,
+			"node_id1":   testPayload,
+			"machine_id": testPayload,
 		}
 
 		go func() {
@@ -613,7 +614,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 						),
 				),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
@@ -622,7 +623,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 		m2 := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
 			channel := make(chan []map[string]interface{})
 			return channel
-		}).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		}).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if m2.ID() != "machine_id" {
 			t.Errorf("incorrect id have %s want %s", m2.ID(), "machine_id")
@@ -643,7 +644,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 				}
 				return nil
 			}),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m3.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
@@ -733,7 +734,7 @@ func Test_New_Rule(t *testing.T) {
 					t.Errorf("no errors expected")
 					return nil
 				})),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -784,7 +785,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 			return channel
 		}).
 			Then(node).
-			Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+			Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -857,7 +858,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 						return nil
 					})),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -904,7 +905,7 @@ func Test_New_Rule_False(t *testing.T) {
 					out <- list
 					return nil
 				})),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
@@ -956,7 +957,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 					out <- list
 					return nil
 				})),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
@@ -993,7 +994,7 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 						return fmt.Errorf("fail everything")
 					}),
 				),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		).Build(bufferSize, func(s1, s2, s3 string, p []*Packet) {})
 
 		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")

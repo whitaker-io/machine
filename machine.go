@@ -29,7 +29,9 @@ type Machine struct {
 	initium    Initium
 	nodes      map[string]*node
 	child      vertex
+	output     *channel
 	bufferSize int
+	recorder   func(string, string, string, []*Packet)
 }
 
 // node graph node for the Machine
@@ -57,10 +59,9 @@ type termination struct {
 }
 
 type info struct {
-	id       string
-	name     string
-	fifo     bool
-	recorder func(string, string, []*Packet)
+	id   string
+	name string
+	fifo bool
 }
 
 // ID func to return the ID
@@ -79,8 +80,14 @@ func (m *Machine) Run(ctx context.Context) error {
 
 // Inject func to inject the logs into the machine
 func (m *Machine) Inject(ctx context.Context, logs map[string][]*Packet) {
+	if list, ok := logs[m.id]; ok {
+		m.output.channel <- list
+	}
+
 	for node, list := range logs {
-		m.nodes[node].inject(ctx, list)
+		if node, ok := m.nodes[node]; ok {
+			node.inject(ctx, list)
+		}
 	}
 }
 
@@ -96,7 +103,7 @@ func (m *Machine) begin(ctx context.Context) *channel {
 	outTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.outgoing")
 	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
 
-	channel := newChannel(m.bufferSize)
+	m.output = newChannel(m.bufferSize)
 
 	input := m.initium(ctx)
 
@@ -127,8 +134,9 @@ func (m *Machine) begin(ctx context.Context) *channel {
 		}
 
 		duration := time.Since(start)
-		m.recorder(m.id, "start", payload)
-		channel.channel <- payload
+		m.recorder(m.id, m.name, "start", payload)
+		m.output.channel <- payload
+		m.recorder(m.id, m.name, "done", payload)
 
 		outCounter.Record(ctx, int64(len(payload)), labels...)
 		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
@@ -155,7 +163,7 @@ func (m *Machine) begin(ctx context.Context) *channel {
 		}
 	}()
 
-	return channel
+	return m.output
 }
 
 func (pn *node) inject(ctx context.Context, payload []*Packet) {
@@ -188,7 +196,6 @@ func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error 
 
 	m.nodes[pn.id] = pn
 	pn.input = output
-	pn.recorder = m.recorder
 
 	out := newChannel(m.bufferSize)
 
@@ -206,7 +213,7 @@ func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error 
 		out.channel <- payload
 	}
 
-	run(ctx, pn.id, pn.name, pn.fifo, fn, pn.recorder, output)
+	run(ctx, pn.id, pn.name, pn.fifo, fn, m, output)
 
 	if pn.child == nil {
 		return fmt.Errorf("non-terminated node")
@@ -222,7 +229,6 @@ func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error
 	}
 
 	r.input = output
-	r.recorder = m.recorder
 
 	left := newChannel(m.bufferSize)
 	right := newChannel(m.bufferSize)
@@ -250,7 +256,7 @@ func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error
 		right.channel <- rpayload
 	}
 
-	run(ctx, r.id, "route", r.fifo, fn, r.recorder, output)
+	run(ctx, r.id, "route", r.fifo, fn, m, output)
 
 	if r.left == nil || r.right == nil {
 		return fmt.Errorf("non-terminated router")
@@ -270,9 +276,10 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 	}
 
 	c.input = output
-	c.recorder = m.recorder
 
 	runner := func(payload []*Packet) {
+		m.recorder(c.id, c.name, "start", payload)
+
 		if len(payload) < 1 {
 			return
 		}
@@ -283,6 +290,7 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 		}
 
 		err := c.terminus(data)
+		m.recorder(c.id, c.name, "end", payload)
 
 		for _, packet := range payload {
 			if err != nil {
@@ -295,8 +303,6 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 			}
 			packet.span.End()
 		}
-
-		c.recorder(c.id, "end", payload)
 	}
 
 	go func() {
@@ -320,7 +326,7 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 	return nil
 }
 
-func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder func(string, string, []*Packet), output *channel) {
+func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), m *Machine, output *channel) {
 	meterName := fmt.Sprintf("machine.%s", id)
 	meter := global.Meter(meterName)
 	labels := []label.KeyValue{label.String("id", id), label.String("type", name)}
@@ -341,11 +347,11 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 		inCounter.Record(ctx, int64(len(payload)), labels...)
 		inTotalCounter.Add(ctx, float64(len(payload)), labels...)
 
-		recorder(id, name, payload)
-
 		start := time.Now()
 
+		m.recorder(id, name, "start", payload)
 		r(payload)
+		m.recorder(id, name, "done", payload)
 
 		duration := time.Since(start)
 
