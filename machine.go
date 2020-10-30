@@ -81,6 +81,24 @@ func (m *Machine) Run(ctx context.Context) error {
 // Inject func to inject the logs into the machine
 func (m *Machine) Inject(ctx context.Context, logs map[string][]*Packet) {
 	if list, ok := logs[m.id]; ok {
+		meterName := fmt.Sprintf("machine.%s", m.id)
+		tracer := global.Tracer(meterName)
+		for _, packet := range list {
+			_, span := tracer.Start(
+				ctx,
+				m.name,
+				trace.WithAttributes(
+					label.String("id", m.id),
+					label.String("name", m.name),
+				),
+			)
+			packet.span = span
+			packet.span.AddEvent(ctx, m.name+"-inject",
+				label.String("id", m.id),
+				label.String("name", m.name),
+				label.Bool("error", packet.Error != nil),
+			)
+		}
 		m.output.channel <- list
 	}
 

@@ -3,8 +3,6 @@ run:
 # include test files or not, default is true
   tests: false
 linters-settings:
-  dupl:
-    threshold: 100
   exhaustive:
     default-signifies-exhaustive: false
   funlen:
