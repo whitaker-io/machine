@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var testList1 = []map[string]interface{}{
+var testList = []map[string]interface{}{
 	{
 		"name":  "data0",
 		"value": 0,
@@ -125,21 +125,21 @@ func Benchmark_Test_New(b *testing.B) {
 					),
 			),
 		),
-	).Build(bufferSize)
+	)
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Run(context.Background(), bufferSize); err != nil {
 		b.Error(err)
 	}
 
 	for n := 0; n < b.N; n++ {
 		go func() {
-			channel <- testList1
+			channel <- testList
 		}()
 
 		list := <-out
 
-		if len(list) != len(testList1) {
-			b.Errorf("incorrect data have %v want %v", list, testList1)
+		if len(list) != len(testList) {
+			b.Errorf("incorrect data have %v want %v", list, testList)
 		}
 	}
 }
@@ -154,7 +154,7 @@ func Test_New(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -187,8 +187,8 @@ func Test_New(t *testing.T) {
 									}).
 										Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList1[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+												if !reflect.DeepEqual(packet, testList[i]) {
+													t.Errorf("incorrect data have %v want %v", packet, testList[i])
 												}
 											}
 											out <- list
@@ -219,17 +219,17 @@ func Test_New(t *testing.T) {
 						),
 				),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		)
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize, func(s1, s2 string, p []*Packet) {}); err != nil {
 			t.Error(err)
 		}
 
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -237,7 +237,7 @@ func Test_New(t *testing.T) {
 }
 
 func Test_New_FIFO(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_FIFO", func(t *testing.T) {
 		count := 10000
 		out := make(chan []map[string]interface{})
 
@@ -251,7 +251,7 @@ func Test_New_FIFO(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -284,8 +284,8 @@ func Test_New_FIFO(t *testing.T) {
 									}).
 										Terminate(NewTermination("terminus_id", "terminus", true, func(list []map[string]interface{}) error {
 											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList1[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+												if !reflect.DeepEqual(packet, testList[i]) {
+													t.Errorf("incorrect data have %v want %v", packet, testList[i])
 												}
 											}
 											out <- list
@@ -307,17 +307,17 @@ func Test_New_FIFO(t *testing.T) {
 						),
 				),
 			),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		)
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -334,7 +334,7 @@ func Test_New_Router(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -353,8 +353,8 @@ func Test_New_Router(t *testing.T) {
 							}).
 								Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 									for i, packet := range list {
-										if !reflect.DeepEqual(packet, testList1[i]) {
-											t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+										if !reflect.DeepEqual(packet, testList[i]) {
+											t.Errorf("incorrect data have %v want %v", packet, testList[i])
 										}
 									}
 									out <- list
@@ -383,17 +383,17 @@ func Test_New_Router(t *testing.T) {
 							return nil
 						})),
 				),
-		).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+		)
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -401,7 +401,7 @@ func Test_New_Router(t *testing.T) {
 }
 
 func Test_New_Empty_Payload(t *testing.T) {
-	t.Run("Test_New_Termination", func(t *testing.T) {
+	t.Run("Test_New_Empty_Payload", func(t *testing.T) {
 		count := 10000
 
 		m := New("machine_id", "machine", false, func(c context.Context) chan []map[string]interface{} {
@@ -418,9 +418,9 @@ func Test_New_Empty_Payload(t *testing.T) {
 			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
 				return nil
-			})).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+			}))
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 	})
@@ -436,7 +436,7 @@ func Test_New_Termination(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -444,23 +444,23 @@ func Test_New_Termination(t *testing.T) {
 		}).
 			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				for i, packet := range list {
-					if !reflect.DeepEqual(packet, testList1[i]) {
-						t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+					if !reflect.DeepEqual(packet, testList[i]) {
+						t.Errorf("incorrect data have %v want %v", packet, testList[i])
 					}
 				}
 				out <- list
 				return fmt.Errorf("error everything")
-			})).Build(bufferSize, func(s1, s2 string, p []*Packet) {})
+			}))
 
-		if err := m.Run(context.Background()); err != nil {
+		if err := m.Run(context.Background(), bufferSize); err != nil {
 			t.Error(err)
 		}
 
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -487,7 +487,7 @@ func Test_New_Cancellation(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -520,8 +520,8 @@ func Test_New_Cancellation(t *testing.T) {
 									}).
 										Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList1[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+												if !reflect.DeepEqual(packet, testList[i]) {
+													t.Errorf("incorrect data have %v want %v", packet, testList[i])
 												}
 											}
 											out <- list
@@ -553,7 +553,7 @@ func Test_New_Cancellation(t *testing.T) {
 
 		go func() {
 			for i := 0; i < count; i++ {
-				m.Inject(x)
+				m.Inject(ctx, x)
 			}
 		}()
 
@@ -566,7 +566,7 @@ func Test_New_Cancellation(t *testing.T) {
 }
 
 func Test_New_Missing_Termination(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_Missing_Termination", func(t *testing.T) {
 		router := NewRouter("route_id", "route", false, RouterError).
 			TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				t.Errorf("no errors expected")
@@ -652,7 +652,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 }
 
 func Test_New_Duplication(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_Duplication", func(t *testing.T) {
 		count := 10000
 		out := make(chan []map[string]interface{})
 
@@ -661,7 +661,7 @@ func Test_New_Duplication(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -670,8 +670,8 @@ func Test_New_Duplication(t *testing.T) {
 			NewRouter("route_id", "route", false, RouterDuplicate).
 				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+						if !reflect.DeepEqual(packet, testList[i]) {
+							t.Errorf("incorrect data have %v want %v", packet, testList[i])
 						}
 					}
 					out <- list
@@ -679,8 +679,8 @@ func Test_New_Duplication(t *testing.T) {
 				})).
 				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+						if !reflect.DeepEqual(packet, testList[i]) {
+							t.Errorf("incorrect data have %v want %v", packet, testList[i])
 						}
 					}
 					out <- list
@@ -695,8 +695,8 @@ func Test_New_Duplication(t *testing.T) {
 		for i := 0; i < count*2; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -704,7 +704,7 @@ func Test_New_Duplication(t *testing.T) {
 }
 
 func Test_New_Rule(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_Rule", func(t *testing.T) {
 		count := 10000
 		out := make(chan []map[string]interface{})
 
@@ -713,7 +713,7 @@ func Test_New_Rule(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -722,8 +722,8 @@ func Test_New_Rule(t *testing.T) {
 			NewRouter("route_id", "route", false, RouterRule(func(m map[string]interface{}) bool { return true }).Handler).
 				TerminateLeft(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+						if !reflect.DeepEqual(packet, testList[i]) {
+							t.Errorf("incorrect data have %v want %v", packet, testList[i])
 						}
 					}
 					out <- list
@@ -742,8 +742,8 @@ func Test_New_Rule(t *testing.T) {
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -751,7 +751,7 @@ func Test_New_Rule(t *testing.T) {
 }
 
 func Test_New_Reuse_Node(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_Reuse_Node", func(t *testing.T) {
 		count := 10000
 		out := make(chan []map[string]interface{})
 
@@ -764,8 +764,8 @@ func Test_New_Reuse_Node(t *testing.T) {
 		}).
 			Terminate(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 				for i, packet := range list {
-					if !reflect.DeepEqual(packet, testList1[i]) {
-						t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+					if !reflect.DeepEqual(packet, testList[i]) {
+						t.Errorf("incorrect data have %v want %v", packet, testList[i])
 					}
 				}
 				out <- list
@@ -777,7 +777,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -795,7 +795,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -811,8 +811,8 @@ func Test_New_Reuse_Node(t *testing.T) {
 		for i := 0; i < count*2; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -820,7 +820,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 }
 
 func Test_New_RouterError_Error(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_RouterError_Error", func(t *testing.T) {
 		count := 10000
 		out := make(chan []map[string]interface{})
 
@@ -829,7 +829,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -849,8 +849,8 @@ func Test_New_RouterError_Error(t *testing.T) {
 					})).
 					TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 						for i, packet := range list {
-							if !reflect.DeepEqual(packet, testList1[i]) {
-								t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+							if !reflect.DeepEqual(packet, testList[i]) {
+								t.Errorf("incorrect data have %v want %v", packet, testList[i])
 							}
 						}
 						out <- list
@@ -866,8 +866,8 @@ func Test_New_RouterError_Error(t *testing.T) {
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -875,7 +875,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 }
 
 func Test_New_Rule_False(t *testing.T) {
-	t.Run("Test_New", func(t *testing.T) {
+	t.Run("Test_New_Rule_False", func(t *testing.T) {
 		count := 10000
 		out := make(chan []map[string]interface{})
 
@@ -884,7 +884,7 @@ func Test_New_Rule_False(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -897,8 +897,8 @@ func Test_New_Rule_False(t *testing.T) {
 				})).
 				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+						if !reflect.DeepEqual(packet, testList[i]) {
+							t.Errorf("incorrect data have %v want %v", packet, testList[i])
 						}
 					}
 					out <- list
@@ -913,8 +913,8 @@ func Test_New_Rule_False(t *testing.T) {
 		for i := 0; i < count; i++ {
 			list1 := <-out
 			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList1[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+				if !reflect.DeepEqual(packet, testList[i]) {
+					t.Errorf("incorrect data have %v want %v", packet, testList[i])
 				}
 			}
 		}
@@ -931,7 +931,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 
@@ -949,8 +949,8 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 				).
 				TerminateRight(NewTermination("terminus_id", "terminus", false, func(list []map[string]interface{}) error {
 					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList1[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList1[i])
+						if !reflect.DeepEqual(packet, testList[i]) {
+							t.Errorf("incorrect data have %v want %v", packet, testList[i])
 						}
 					}
 					out <- list
@@ -973,7 +973,7 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 
 			go func() {
 				for i := 0; i < count; i++ {
-					channel <- testList1
+					channel <- testList
 				}
 			}()
 

@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
 	"go.opentelemetry.io/otel/api/trace"
@@ -79,15 +78,16 @@ func (m *Machine) Run(ctx context.Context) error {
 }
 
 // Inject func to inject the logs into the machine
-func (m *Machine) Inject(logs map[string][]*Packet) {
+func (m *Machine) Inject(ctx context.Context, logs map[string][]*Packet) {
 	for node, list := range logs {
-		m.nodes[node].inject(list)
+		m.nodes[node].inject(ctx, list)
 	}
 }
 
 func (m *Machine) begin(ctx context.Context) *channel {
 	meterName := fmt.Sprintf("machine.%s", m.id)
 	meter := global.Meter(meterName)
+	tracer := global.Tracer(meterName)
 	labels := []label.KeyValue{label.String("id", m.id), label.String("type", m.name)}
 
 	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
@@ -101,27 +101,38 @@ func (m *Machine) begin(ctx context.Context) *channel {
 	input := m.initium(ctx)
 
 	fn := func(data []map[string]interface{}) {
-		metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", m.id))
-		inCounter.Record(metricsCtx, int64(len(data)), labels...)
-		inTotalCounter.Add(metricsCtx, float64(len(data)), labels...)
+		inCounter.Record(ctx, int64(len(data)), labels...)
+		inTotalCounter.Add(ctx, float64(len(data)), labels...)
 
 		start := time.Now()
 
 		payload := []*Packet{}
 		for _, item := range data {
-			payload = append(payload, &Packet{
+			_, span := tracer.Start(
+				ctx,
+				m.name,
+				trace.WithAttributes(labels...),
+			)
+			packet := &Packet{
 				ID:   uuid.New().String(),
 				Data: item,
-			})
+				span: span,
+			}
+			packet.span.AddEvent(ctx, m.name+"-start",
+				label.String("id", m.id),
+				label.String("name", m.name),
+				label.Bool("error", packet.Error != nil),
+			)
+			payload = append(payload, packet)
 		}
 
 		duration := time.Since(start)
 		m.recorder(m.id, "start", payload)
 		channel.channel <- payload
 
-		outCounter.Record(metricsCtx, int64(len(payload)), labels...)
-		outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
-		batchDuration.Record(metricsCtx, int64(duration), labels...)
+		outCounter.Record(ctx, int64(len(payload)), labels...)
+		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
+		batchDuration.Record(ctx, int64(duration), labels...)
 	}
 
 	go func() {
@@ -147,7 +158,25 @@ func (m *Machine) begin(ctx context.Context) *channel {
 	return channel
 }
 
-func (pn *node) inject(payload []*Packet) {
+func (pn *node) inject(ctx context.Context, payload []*Packet) {
+	meterName := fmt.Sprintf("node.inject.%s", pn.id)
+	tracer := global.Tracer(meterName)
+	for _, packet := range payload {
+		_, span := tracer.Start(
+			ctx,
+			pn.name,
+			trace.WithAttributes(
+				label.String("id", pn.id),
+				label.String("name", pn.name),
+			),
+		)
+		packet.span = span
+		packet.span.AddEvent(ctx, pn.name+"-inject",
+			label.String("id", pn.id),
+			label.String("name", pn.name),
+			label.Bool("error", packet.Error != nil),
+		)
+	}
 	pn.input.channel <- payload
 }
 
@@ -166,7 +195,14 @@ func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error 
 	fn := func(payload []*Packet) {
 		for _, packet := range payload {
 			packet.apply(pn.id, pn.processus)
+
+			packet.span.AddEvent(ctx, pn.name,
+				label.String("id", pn.id),
+				label.String("name", pn.name),
+				label.Bool("error", packet.Error != nil),
+			)
 		}
+
 		out.channel <- payload
 	}
 
@@ -192,9 +228,26 @@ func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error
 	right := newChannel(m.bufferSize)
 
 	fn := func(payload []*Packet) {
-		l, r := r.handler(payload)
-		left.channel <- l
-		right.channel <- r
+		lpayload, rpayload := r.handler(payload)
+
+		for _, packet := range lpayload {
+			packet.span.AddEvent(ctx, r.name+"-left",
+				label.String("id", r.id),
+				label.String("name", r.name),
+				label.Bool("error", packet.Error != nil),
+			)
+		}
+
+		for _, packet := range rpayload {
+			packet.span.AddEvent(ctx, r.name+"-right",
+				label.String("id", r.id),
+				label.String("name", r.name),
+				label.Bool("error", packet.Error != nil),
+			)
+		}
+
+		left.channel <- lpayload
+		right.channel <- rpayload
 	}
 
 	run(ctx, r.id, "route", r.fifo, fn, r.recorder, output)
@@ -231,10 +284,16 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 
 		err := c.terminus(data)
 
-		if err != nil {
-			for _, packet := range payload {
+		for _, packet := range payload {
+			if err != nil {
 				packet.handleError(c.id, err)
+				packet.span.AddEvent(ctx, c.name+"-error",
+					label.String("id", c.id),
+					label.String("name", c.name),
+					label.Bool("error", packet.Error != nil),
+				)
 			}
+			packet.span.End()
 		}
 
 		c.recorder(c.id, "end", payload)
@@ -264,7 +323,6 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), recorder func(string, string, []*Packet), output *channel) {
 	meterName := fmt.Sprintf("machine.%s", id)
 	meter := global.Meter(meterName)
-	tracer := global.Tracer(meterName)
 	labels := []label.KeyValue{label.String("id", id), label.String("type", name)}
 
 	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
@@ -275,34 +333,13 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 	errorsTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.errors")
 	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
 
-	metricsCtx := otel.ContextWithBaggageValues(ctx, label.String("node_id", id))
-
 	runner := func(payload []*Packet) {
 		if len(payload) < 1 {
 			return
 		}
 
-		inCounter.Record(metricsCtx, int64(len(payload)), labels...)
-		inTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
-
-		_, span := tracer.Start(
-			metricsCtx,
-			name,
-			trace.WithAttributes(labels...),
-		)
-		t := time.Now()
-		for _, pkt := range payload {
-			span.AddEventWithTimestamp(
-				metricsCtx,
-				t,
-				pkt.ID,
-				append(
-					labels,
-					[]label.KeyValue{
-						label.String("pkt_id", pkt.ID),
-					}...,
-				)...)
-		}
+		inCounter.Record(ctx, int64(len(payload)), labels...)
+		inTotalCounter.Add(ctx, float64(len(payload)), labels...)
 
 		recorder(id, name, payload)
 
@@ -312,8 +349,6 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 
 		duration := time.Since(start)
 
-		span.End()
-
 		failures := 0
 
 		for _, packet := range payload {
@@ -322,11 +357,11 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), rec
 			}
 		}
 
-		outCounter.Record(metricsCtx, int64(len(payload)), labels...)
-		outTotalCounter.Add(metricsCtx, float64(len(payload)), labels...)
-		errorsCounter.Record(metricsCtx, int64(failures), labels...)
-		errorsTotalCounter.Add(metricsCtx, float64(failures), labels...)
-		batchDuration.Record(metricsCtx, int64(duration), labels...)
+		outCounter.Record(ctx, int64(len(payload)), labels...)
+		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
+		errorsCounter.Record(ctx, int64(failures), labels...)
+		errorsTotalCounter.Add(ctx, float64(failures), labels...)
+		batchDuration.Record(ctx, int64(duration), labels...)
 	}
 
 	go func() {

@@ -5,7 +5,11 @@
 
 package machine
 
-import "github.com/mitchellh/copystructure"
+import (
+	"context"
+
+	"github.com/mitchellh/copystructure"
+)
 
 // Builder builder type for starting a machine
 type Builder struct {
@@ -55,7 +59,12 @@ func NewTermination(id, name string, fifo bool, t Terminus) *TerminationBuilder 
 	}
 }
 
-// Build func for providing the underlying machine
+// Run func for starting the machine
+func (m *Builder) Run(ctx context.Context, bufferSize int, recorders ...func(string, string, []*Packet)) error {
+	return m.Build(bufferSize, recorders...).Run(ctx)
+}
+
+// Build func for getting the machine
 func (m *Builder) Build(bufferSize int, recorders ...func(string, string, []*Packet)) *Machine {
 	m.x.bufferSize = bufferSize
 	m.x.recorder = func(id, name string, payload []*Packet) {
