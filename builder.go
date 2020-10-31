@@ -8,6 +8,7 @@ package machine
 import (
 	"context"
 
+	"github.com/karlseguin/typed"
 	"github.com/mitchellh/copystructure"
 )
 
@@ -77,7 +78,7 @@ func (m *Builder) Run(ctx context.Context, recorders ...func(string, string, str
 				x, _ := copystructure.Copy(v.Data)
 				out = append(out, &Packet{
 					ID:    v.ID,
-					Data:  x.(map[string]interface{}),
+					Data:  x.(typed.Typed),
 					Error: v.Error,
 				})
 			}
