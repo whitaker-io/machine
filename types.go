@@ -41,6 +41,12 @@ var (
 
 		return s, f
 	}
+
+	defaultOptions = &Option{
+		FIFO:       boolP(false),
+		Idempotent: boolP(false),
+		BufferSize: intP(0),
+	}
 )
 
 // Packet type that holds information traveling through the machine
@@ -49,6 +55,13 @@ type Packet struct {
 	Data  map[string]interface{}
 	Error error
 	span  trace.Span
+}
+
+// Option type for holding machine settings
+type Option struct {
+	FIFO       *bool
+	Idempotent *bool
+	BufferSize *int
 }
 
 // Initium type for providing the data to flow into the system
@@ -80,39 +93,58 @@ func (c *Packet) handleError(id string, err error) {
 	}
 }
 
+func (o *Option) merge(options ...*Option) *Option {
+	if len(options) < 1 {
+		return o
+	} else if len(options) == 1 {
+		return o.join(options[0])
+	}
+
+	return o.join(options[0]).merge(options[1:]...)
+}
+
+func (o *Option) join(option *Option) *Option {
+	out := &Option{
+		FIFO:       o.FIFO,
+		BufferSize: o.BufferSize,
+		Idempotent: o.Idempotent,
+	}
+
+	if option.FIFO != nil {
+		out.FIFO = option.FIFO
+	}
+
+	if option.BufferSize != nil {
+		out.BufferSize = option.BufferSize
+	}
+
+	if option.Idempotent != nil {
+		out.Idempotent = option.Idempotent
+	}
+
+	return out
+}
+
 // Machine func for providing a Machine
-func (i Initium) convert(id, name string, fifo bool, recorder func(string, string, string, []*Packet)) *Machine {
-	return &Machine{
-		info: info{
-			id:   id,
-			name: name,
-			fifo: fifo,
-		},
-		initium:  i,
-		recorder: recorder,
-		nodes:    map[string]*node{},
+func (i Initium) convert(id string) *root {
+	return &root{
+		id:      id,
+		initium: i,
+		nodes:   map[string]*node{},
 	}
 }
 
 // Convert func for providing a Cap
-func (p Processus) convert(id, name string, fifo bool) *node {
+func (p Processus) convert(id string) *node {
 	return &node{
-		info: info{
-			id:   id,
-			name: name,
-			fifo: fifo,
-		},
+		id:        id,
 		processus: p,
 	}
 }
 
-func (r RouteHandler) convert(id, name string, fifo bool) *router {
+func (r RouteHandler) convert(id string) *router {
 	return &router{
-		info: info{
-			id:   id,
-			name: name,
-			fifo: fifo,
-		},
+		id:      id,
 		handler: r,
 	}
 }
@@ -134,13 +166,9 @@ func (r RouterRule) Handler(payload []*Packet) (t, f []*Packet) {
 }
 
 // Convert func for providing a Cap
-func (t Terminus) convert(id, name string, fifo bool) vertex {
+func (t Terminus) convert(id string) vertex {
 	return &termination{
-		info: info{
-			id:   id,
-			name: name,
-			fifo: fifo,
-		},
+		id:       id,
 		terminus: t,
 	}
 }
@@ -165,4 +193,12 @@ func (out *channel) sendTo(ctx context.Context, in *channel) {
 			}
 		}
 	}()
+}
+
+func boolP(v bool) *bool {
+	return &v
+}
+
+func intP(v int) *int {
+	return &v
 }

@@ -20,31 +20,31 @@ import (
 
 // Vertex interface for defining a child node
 type vertex interface {
-	cascade(ctx context.Context, output *channel, machine *Machine) error
+	cascade(ctx context.Context, output *channel, machine *root) error
 }
 
-// Machine execution graph for a system
-type Machine struct {
-	info
-	initium    Initium
-	nodes      map[string]*node
-	child      vertex
-	output     *channel
-	bufferSize int
-	recorder   func(string, string, string, []*Packet)
+// root execution graph for a system
+type root struct {
+	id       string
+	initium  Initium
+	nodes    map[string]*node
+	next     vertex
+	output   *channel
+	recorder func(string, string, string, []*Packet)
+	option   *Option
 }
 
 // node graph node for the Machine
 type node struct {
-	info
+	id        string
 	processus Processus
-	child     vertex
+	next      vertex
 	input     *channel
 }
 
 // router graph node for the Machine
 type router struct {
-	info
+	id      string
 	handler func([]*Packet) ([]*Packet, []*Packet)
 	left    vertex
 	right   vertex
@@ -53,49 +53,38 @@ type router struct {
 
 // termination graph leaf for the Machine
 type termination struct {
-	info
+	id       string
 	terminus Terminus
 	input    *channel
 }
 
-type info struct {
-	id   string
-	name string
-	fifo bool
-}
-
-// ID func to return the ID
-func (m *Machine) ID() string {
-	return m.id
-}
-
-// Run func to start the Machine
-func (m *Machine) Run(ctx context.Context) error {
-	if m.child == nil {
+// run func to start the Machine
+func (m *root) run(ctx context.Context) error {
+	if m.next == nil {
 		return fmt.Errorf("non-terminated machine")
 	}
 
-	return m.child.cascade(ctx, m.begin(ctx), m)
+	return m.next.cascade(ctx, m.begin(ctx), m)
 }
 
-// Inject func to inject the logs into the machine
-func (m *Machine) Inject(ctx context.Context, logs map[string][]*Packet) {
+// inject func to inject the logs into the machine
+func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 	if list, ok := logs[m.id]; ok {
 		meterName := fmt.Sprintf("machine.%s", m.id)
 		tracer := global.Tracer(meterName)
 		for _, packet := range list {
 			_, span := tracer.Start(
 				ctx,
-				m.name,
+				packet.ID,
 				trace.WithAttributes(
-					label.String("id", m.id),
-					label.String("name", m.name),
+					label.String("machine_id", m.id),
+					label.String("packet_id", packet.ID),
 				),
 			)
 			packet.span = span
-			packet.span.AddEvent(ctx, m.name+"-inject",
-				label.String("id", m.id),
-				label.String("name", m.name),
+			packet.span.AddEvent(ctx, m.id+"-inject",
+				label.String("machine_id", m.id),
+				label.String("packet_id", packet.ID),
 				label.Bool("error", packet.Error != nil),
 			)
 		}
@@ -109,11 +98,11 @@ func (m *Machine) Inject(ctx context.Context, logs map[string][]*Packet) {
 	}
 }
 
-func (m *Machine) begin(ctx context.Context) *channel {
+func (m *root) begin(ctx context.Context) *channel {
 	meterName := fmt.Sprintf("machine.%s", m.id)
 	meter := global.Meter(meterName)
 	tracer := global.Tracer(meterName)
-	labels := []label.KeyValue{label.String("id", m.id), label.String("type", m.name)}
+	labels := []label.KeyValue{label.String("id", m.id), label.String("type", "initium")}
 
 	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
 	outCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".outgoing")
@@ -121,7 +110,7 @@ func (m *Machine) begin(ctx context.Context) *channel {
 	outTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.outgoing")
 	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
 
-	m.output = newChannel(m.bufferSize)
+	m.output = newChannel(*m.option.BufferSize)
 
 	input := m.initium(ctx)
 
@@ -133,28 +122,32 @@ func (m *Machine) begin(ctx context.Context) *channel {
 
 		payload := []*Packet{}
 		for _, item := range data {
+			id := uuid.New().String()
 			_, span := tracer.Start(
 				ctx,
-				m.name,
-				trace.WithAttributes(labels...),
+				id,
+				trace.WithAttributes(
+					label.String("machine_id", m.id),
+					label.String("packet_id", id),
+				),
 			)
 			packet := &Packet{
-				ID:   uuid.New().String(),
+				ID:   id,
 				Data: item,
 				span: span,
 			}
-			packet.span.AddEvent(ctx, m.name+"-start",
-				label.String("id", m.id),
-				label.String("name", m.name),
+			packet.span.AddEvent(ctx, m.id+"-start",
+				label.String("machine_id", m.id),
+				label.String("packet_id", packet.ID),
 				label.Bool("error", packet.Error != nil),
 			)
 			payload = append(payload, packet)
 		}
 
 		duration := time.Since(start)
-		m.recorder(m.id, m.name, "start", payload)
+		m.recorder(m.id, "initium", "start", payload)
 		m.output.channel <- payload
-		m.recorder(m.id, m.name, "done", payload)
+		m.recorder(m.id, "initium", "done", payload)
 
 		outCounter.Record(ctx, int64(len(payload)), labels...)
 		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
@@ -172,7 +165,7 @@ func (m *Machine) begin(ctx context.Context) *channel {
 					continue
 				}
 
-				if m.fifo {
+				if *m.option.FIFO {
 					fn(data)
 				} else {
 					go fn(data)
@@ -190,23 +183,23 @@ func (pn *node) inject(ctx context.Context, payload []*Packet) {
 	for _, packet := range payload {
 		_, span := tracer.Start(
 			ctx,
-			pn.name,
+			packet.ID,
 			trace.WithAttributes(
-				label.String("id", pn.id),
-				label.String("name", pn.name),
+				label.String("node_id", pn.id),
+				label.String("packet_id", packet.ID),
 			),
 		)
 		packet.span = span
-		packet.span.AddEvent(ctx, pn.name+"-inject",
-			label.String("id", pn.id),
-			label.String("name", pn.name),
+		packet.span.AddEvent(ctx, pn.id+"-inject",
+			label.String("node_id", pn.id),
+			label.String("packet_id", packet.ID),
 			label.Bool("error", packet.Error != nil),
 		)
 	}
 	pn.input.channel <- payload
 }
 
-func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error {
+func (pn *node) cascade(ctx context.Context, output *channel, m *root) error {
 	if pn.input != nil {
 		output.sendTo(ctx, pn.input)
 		return nil
@@ -215,15 +208,15 @@ func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error 
 	m.nodes[pn.id] = pn
 	pn.input = output
 
-	out := newChannel(m.bufferSize)
+	out := newChannel(*m.option.BufferSize)
 
 	fn := func(payload []*Packet) {
 		for _, packet := range payload {
 			packet.apply(pn.id, pn.processus)
 
-			packet.span.AddEvent(ctx, pn.name,
-				label.String("id", pn.id),
-				label.String("name", pn.name),
+			packet.span.AddEvent(ctx, packet.ID,
+				label.String("node_id", pn.id),
+				label.String("packet_id", packet.ID),
 				label.Bool("error", packet.Error != nil),
 			)
 		}
@@ -231,16 +224,16 @@ func (pn *node) cascade(ctx context.Context, output *channel, m *Machine) error 
 		out.channel <- payload
 	}
 
-	run(ctx, pn.id, pn.name, pn.fifo, fn, m, output)
+	run(ctx, pn.id, "processus", fn, m, output)
 
-	if pn.child == nil {
+	if pn.next == nil {
 		return fmt.Errorf("non-terminated node")
 	}
 
-	return pn.child.cascade(ctx, out, m)
+	return pn.next.cascade(ctx, out, m)
 }
 
-func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error {
+func (r *router) cascade(ctx context.Context, output *channel, m *root) error {
 	if r.input != nil {
 		output.sendTo(ctx, r.input)
 		return nil
@@ -248,24 +241,24 @@ func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error
 
 	r.input = output
 
-	left := newChannel(m.bufferSize)
-	right := newChannel(m.bufferSize)
+	left := newChannel(*m.option.BufferSize)
+	right := newChannel(*m.option.BufferSize)
 
 	fn := func(payload []*Packet) {
 		lpayload, rpayload := r.handler(payload)
 
 		for _, packet := range lpayload {
-			packet.span.AddEvent(ctx, r.name+"-left",
-				label.String("id", r.id),
-				label.String("name", r.name),
+			packet.span.AddEvent(ctx, "router-left",
+				label.String("router_id", r.id),
+				label.String("packet_id", packet.ID),
 				label.Bool("error", packet.Error != nil),
 			)
 		}
 
 		for _, packet := range rpayload {
-			packet.span.AddEvent(ctx, r.name+"-right",
-				label.String("id", r.id),
-				label.String("name", r.name),
+			packet.span.AddEvent(ctx, "router-right",
+				label.String("router_id", r.id),
+				label.String("packet_id", packet.ID),
 				label.Bool("error", packet.Error != nil),
 			)
 		}
@@ -274,7 +267,7 @@ func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error
 		right.channel <- rpayload
 	}
 
-	run(ctx, r.id, "route", r.fifo, fn, m, output)
+	run(ctx, r.id, "router", fn, m, output)
 
 	if r.left == nil || r.right == nil {
 		return fmt.Errorf("non-terminated router")
@@ -287,7 +280,7 @@ func (r *router) cascade(ctx context.Context, output *channel, m *Machine) error
 	return nil
 }
 
-func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) error {
+func (c *termination) cascade(ctx context.Context, output *channel, m *root) error {
 	if c.input != nil {
 		output.sendTo(ctx, c.input)
 		return nil
@@ -296,7 +289,7 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 	c.input = output
 
 	runner := func(payload []*Packet) {
-		m.recorder(c.id, c.name, "start", payload)
+		m.recorder(c.id, "terminus", "start", payload)
 
 		if len(payload) < 1 {
 			return
@@ -308,14 +301,14 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 		}
 
 		err := c.terminus(data)
-		m.recorder(c.id, c.name, "end", payload)
+		m.recorder(c.id, "terminus", "end", payload)
 
 		for _, packet := range payload {
 			if err != nil {
 				packet.handleError(c.id, err)
-				packet.span.AddEvent(ctx, c.name+"-error",
-					label.String("id", c.id),
-					label.String("name", c.name),
+				packet.span.AddEvent(ctx, "terminus-error",
+					label.String("terminus_id", c.id),
+					label.String("packet_id", packet.ID),
 					label.Bool("error", packet.Error != nil),
 				)
 			}
@@ -330,7 +323,7 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 			case <-ctx.Done():
 				break Loop
 			case list := <-c.input.channel:
-				if c.fifo {
+				if *m.option.FIFO {
 					runner(list)
 				} else {
 					go runner(list)
@@ -344,10 +337,10 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *Machine) 
 	return nil
 }
 
-func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), m *Machine, output *channel) {
+func run(ctx context.Context, id, vertexType string, r func([]*Packet), m *root, output *channel) {
 	meterName := fmt.Sprintf("machine.%s", id)
 	meter := global.Meter(meterName)
-	labels := []label.KeyValue{label.String("id", id), label.String("type", name)}
+	labels := []label.KeyValue{label.String("id", id), label.String("type", vertexType)}
 
 	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
 	outCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".outgoing")
@@ -367,9 +360,9 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), m *
 
 		start := time.Now()
 
-		m.recorder(id, name, "start", payload)
+		m.recorder(id, vertexType, "start", payload)
 		r(payload)
-		m.recorder(id, name, "done", payload)
+		m.recorder(id, vertexType, "done", payload)
 
 		duration := time.Since(start)
 
@@ -395,7 +388,7 @@ func run(ctx context.Context, id, name string, fifo bool, r func([]*Packet), m *
 			case <-ctx.Done():
 				break Loop
 			case list := <-output.channel:
-				if fifo {
+				if *m.option.FIFO {
 					runner(list)
 				} else {
 					go runner(list)
