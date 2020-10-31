@@ -219,7 +219,7 @@ func Benchmark_Test_New(b *testing.B) {
 }
 
 func Test_New(t *testing.T) {
-	count := 100000
+	count := 50000
 	out := make(chan []typed.Typed)
 	t.Run("Test_New", func(t *testing.T) {
 
