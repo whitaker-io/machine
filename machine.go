@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/karlseguin/typed"
 
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
@@ -114,7 +115,7 @@ func (m *root) begin(ctx context.Context) *channel {
 
 	input := m.initium(ctx)
 
-	fn := func(data []map[string]interface{}) {
+	fn := func(data []typed.Typed) {
 		inCounter.Record(ctx, int64(len(data)), labels...)
 		inTotalCounter.Add(ctx, float64(len(data)), labels...)
 
@@ -295,7 +296,7 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *root) err
 			return
 		}
 
-		data := []map[string]interface{}{}
+		data := []typed.Typed{}
 		for _, packet := range payload {
 			data = append(data, packet.Data)
 		}
