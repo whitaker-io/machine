@@ -13,7 +13,7 @@ import (
 
 // Builder builder type for starting a machine
 type Builder struct {
-	x *Machine
+	x *root
 }
 
 // VertexBuilder builder type for adding a processor to the machine
@@ -32,41 +32,44 @@ type TerminationBuilder struct {
 }
 
 // New func for providing an instance of Builder
-func New(id, name string, fifo bool, i Initium) *Builder {
-	return &Builder{
-		x: i.convert(id, name, fifo, nil),
+func New(id string, i Initium, options ...*Option) *Builder {
+	b := &Builder{
+		x: i.convert(id),
 	}
+
+	b.x.option = defaultOptions.merge(options...)
+
+	return b
 }
 
 // NewVertex func for providing an instance of VertexBuilder
-func NewVertex(id, name string, fifo bool, p Processus) *VertexBuilder {
+func NewVertex(id string, p Processus) *VertexBuilder {
 	return &VertexBuilder{
-		x: p.convert(id, name, fifo),
+		x: p.convert(id),
 	}
 }
 
 // NewRouter func for providing an instance of RouterBuilder
-func NewRouter(id, name string, fifo bool, r RouteHandler) *RouterBuilder {
+func NewRouter(id string, r RouteHandler) *RouterBuilder {
 	return &RouterBuilder{
-		x: r.convert(id, name, fifo),
+		x: r.convert(id),
 	}
 }
 
 // NewTermination func for providing an instance of TerminationBuilder
-func NewTermination(id, name string, fifo bool, t Terminus) *TerminationBuilder {
+func NewTermination(id string, t Terminus) *TerminationBuilder {
 	return &TerminationBuilder{
-		x: t.convert(id, name, fifo),
+		x: t.convert(id),
 	}
 }
 
-// Run func for starting the machine
-func (m *Builder) Run(ctx context.Context, bufferSize int, recorders ...func(string, string, string, []*Packet)) error {
-	return m.Build(bufferSize, recorders...).Run(ctx)
+// ID func to return the ID for the machine
+func (m *Builder) ID() string {
+	return m.x.id
 }
 
-// Build func for getting the machine
-func (m *Builder) Build(bufferSize int, recorders ...func(string, string, string, []*Packet)) *Machine {
-	m.x.bufferSize = bufferSize
+// Run func for starting the machine
+func (m *Builder) Run(ctx context.Context, recorders ...func(string, string, string, []*Packet)) error {
 	m.x.recorder = func(id, name string, state string, payload []*Packet) {
 		if len(recorders) > 0 {
 			out := []*Packet{}
@@ -83,42 +86,47 @@ func (m *Builder) Build(bufferSize int, recorders ...func(string, string, string
 			}
 		}
 	}
-	return m.x
+	return m.x.run(ctx)
+}
+
+// Inject func for injecting events into the machine
+func (m *Builder) Inject(ctx context.Context, events map[string][]*Packet) {
+	m.x.inject(ctx, events)
 }
 
 // Then func for sending the payload to a processor
 func (m *Builder) Then(v *VertexBuilder) *Builder {
-	m.x.child = v.x
+	m.x.next = v.x
 	return m
 }
 
 // Route func for sending the payload to a router
 func (m *Builder) Route(r *RouterBuilder) *Builder {
-	m.x.child = r.x
+	m.x.next = r.x
 	return m
 }
 
 // Terminate func for sending the payload to a cap
 func (m *Builder) Terminate(t *TerminationBuilder) *Builder {
-	m.x.child = t.x
+	m.x.next = t.x
 	return m
 }
 
 // Then func for sending the payload to a processor
 func (m *VertexBuilder) Then(v *VertexBuilder) *VertexBuilder {
-	m.x.child = v.x
+	m.x.next = v.x
 	return m
 }
 
 // Route func for sending the payload to a router
 func (m *VertexBuilder) Route(r *RouterBuilder) *VertexBuilder {
-	m.x.child = r.x
+	m.x.next = r.x
 	return m
 }
 
 // Terminate func for sending the payload to a cap
 func (m *VertexBuilder) Terminate(t *TerminationBuilder) *VertexBuilder {
-	m.x.child = t.x
+	m.x.next = t.x
 	return m
 }
 

@@ -18,14 +18,14 @@ type Wrapper struct {
 }
 
 // Builder func for defining the Builder for which the Wrapper wraps
-func (w *Wrapper) Builder(id, name string, fifo bool) *machine.Builder {
+func (w *Wrapper) Builder(id string, options ...*machine.Option) *machine.Builder {
 	w.input = make(chan []map[string]interface{})
 	w.output = make(chan []map[string]interface{})
 	initium := func(c context.Context) chan []map[string]interface{} {
 		return w.input
 	}
 
-	return machine.New(id, name, fifo, initium)
+	return machine.New(id, initium, options...)
 }
 
 // Terminus func for providing the machine.Terminus that must be used to return values from the machine.Processus
