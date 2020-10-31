@@ -15,7 +15,6 @@ import (
 
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
-	"go.opentelemetry.io/otel/api/trace"
 	"go.opentelemetry.io/otel/label"
 )
 
@@ -71,77 +70,59 @@ func (m *root) run(ctx context.Context) error {
 // inject func to inject the logs into the machine
 func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 	if list, ok := logs[m.id]; ok {
-		meterName := fmt.Sprintf("machine.%s", m.id)
-		tracer := global.Tracer(meterName)
-		for _, packet := range list {
-			_, span := tracer.Start(
-				ctx,
-				packet.ID,
-				trace.WithAttributes(
-					label.String("machine_id", m.id),
-					label.String("packet_id", packet.ID),
-				),
-			)
-			packet.span = span
-			packet.span.AddEvent(ctx, m.id+"-inject",
-				label.String("machine_id", m.id),
-				label.String("packet_id", packet.ID),
-				label.Bool("error", packet.Error != nil),
-			)
+		if *m.option.Span {
+			tracer := global.Tracer("initium.inject")
+			for _, packet := range list {
+				packet.newSpan(ctx, tracer, "initium.inject", m.id, "initium")
+			}
 		}
 		m.output.channel <- list
 	}
 
-	for node, list := range logs {
+	for node, payload := range logs {
 		if node, ok := m.nodes[node]; ok {
-			node.inject(ctx, list)
+			if *m.option.Span {
+				tracer := global.Tracer("processus.inject")
+				for _, packet := range payload {
+					packet.newSpan(ctx, tracer, "processus.inject", node.id, "processus")
+				}
+			}
+			node.inject(payload)
 		}
 	}
 }
 
 func (m *root) begin(ctx context.Context) *channel {
-	meterName := fmt.Sprintf("machine.%s", m.id)
-	meter := global.Meter(meterName)
-	tracer := global.Tracer(meterName)
-	labels := []label.KeyValue{label.String("id", m.id), label.String("type", "initium")}
+	meter := global.Meter("initium.begin")
+	tracer := global.Tracer("initium.begin")
+	labels := []label.KeyValue{label.String("vertex_id", m.id), label.String("vertex_type", "initium")}
 
-	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
-	outCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".outgoing")
-	inTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.incoming")
-	outTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.outgoing")
-	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
+	inCounter := metric.Must(meter).NewInt64ValueRecorder(m.id + ".incoming")
+	outCounter := metric.Must(meter).NewInt64ValueRecorder(m.id + ".outgoing")
+	inTotalCounter := metric.Must(meter).NewFloat64Counter(m.id + ".total.incoming")
+	outTotalCounter := metric.Must(meter).NewFloat64Counter(m.id + ".total.outgoing")
+	batchDuration := metric.Must(meter).NewInt64ValueRecorder(m.id + ".duration")
 
 	m.output = newChannel(*m.option.BufferSize)
 
 	input := m.initium(ctx)
 
 	fn := func(data []typed.Typed) {
-		inCounter.Record(ctx, int64(len(data)), labels...)
-		inTotalCounter.Add(ctx, float64(len(data)), labels...)
-
+		if *m.option.Metrics {
+			inCounter.Record(ctx, int64(len(data)), labels...)
+			inTotalCounter.Add(ctx, float64(len(data)), labels...)
+		}
 		start := time.Now()
 
 		payload := []*Packet{}
 		for _, item := range data {
-			id := uuid.New().String()
-			_, span := tracer.Start(
-				ctx,
-				id,
-				trace.WithAttributes(
-					label.String("machine_id", m.id),
-					label.String("packet_id", id),
-				),
-			)
 			packet := &Packet{
-				ID:   id,
+				ID:   uuid.New().String(),
 				Data: item,
-				span: span,
 			}
-			packet.span.AddEvent(ctx, m.id+"-start",
-				label.String("machine_id", m.id),
-				label.String("packet_id", packet.ID),
-				label.Bool("error", packet.Error != nil),
-			)
+			if *m.option.Span {
+				packet.newSpan(ctx, tracer, "initium.begin", m.id, "initium")
+			}
 			payload = append(payload, packet)
 		}
 
@@ -150,9 +131,11 @@ func (m *root) begin(ctx context.Context) *channel {
 		m.output.channel <- payload
 		m.recorder(m.id, "initium", "done", payload)
 
-		outCounter.Record(ctx, int64(len(payload)), labels...)
-		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
-		batchDuration.Record(ctx, int64(duration), labels...)
+		if *m.option.Metrics {
+			outCounter.Record(ctx, int64(len(payload)), labels...)
+			outTotalCounter.Add(ctx, float64(len(payload)), labels...)
+			batchDuration.Record(ctx, int64(duration), labels...)
+		}
 	}
 
 	go func() {
@@ -178,25 +161,7 @@ func (m *root) begin(ctx context.Context) *channel {
 	return m.output
 }
 
-func (pn *node) inject(ctx context.Context, payload []*Packet) {
-	meterName := fmt.Sprintf("node.inject.%s", pn.id)
-	tracer := global.Tracer(meterName)
-	for _, packet := range payload {
-		_, span := tracer.Start(
-			ctx,
-			packet.ID,
-			trace.WithAttributes(
-				label.String("node_id", pn.id),
-				label.String("packet_id", packet.ID),
-			),
-		)
-		packet.span = span
-		packet.span.AddEvent(ctx, pn.id+"-inject",
-			label.String("node_id", pn.id),
-			label.String("packet_id", packet.ID),
-			label.Bool("error", packet.Error != nil),
-		)
-	}
+func (pn *node) inject(payload []*Packet) {
 	pn.input.channel <- payload
 }
 
@@ -214,12 +179,6 @@ func (pn *node) cascade(ctx context.Context, output *channel, m *root) error {
 	fn := func(payload []*Packet) {
 		for _, packet := range payload {
 			packet.apply(pn.id, pn.processus)
-
-			packet.span.AddEvent(ctx, packet.ID,
-				label.String("node_id", pn.id),
-				label.String("packet_id", packet.ID),
-				label.Bool("error", packet.Error != nil),
-			)
 		}
 
 		out.channel <- payload
@@ -248,20 +207,22 @@ func (r *router) cascade(ctx context.Context, output *channel, m *root) error {
 	fn := func(payload []*Packet) {
 		lpayload, rpayload := r.handler(payload)
 
-		for _, packet := range lpayload {
-			packet.span.AddEvent(ctx, "router-left",
-				label.String("router_id", r.id),
-				label.String("packet_id", packet.ID),
-				label.Bool("error", packet.Error != nil),
-			)
-		}
+		if *m.option.Span {
+			for _, packet := range lpayload {
+				packet.span.AddEvent(ctx, "router-left",
+					label.String("vertex_id", r.id),
+					label.String("vertex_type", "router"),
+					label.String("packet_id", packet.ID),
+				)
+			}
 
-		for _, packet := range rpayload {
-			packet.span.AddEvent(ctx, "router-right",
-				label.String("router_id", r.id),
-				label.String("packet_id", packet.ID),
-				label.Bool("error", packet.Error != nil),
-			)
+			for _, packet := range rpayload {
+				packet.span.AddEvent(ctx, "router-right",
+					label.String("vertex_id", r.id),
+					label.String("vertex_type", "router"),
+					label.String("packet_id", packet.ID),
+				)
+			}
 		}
 
 		left.channel <- lpayload
@@ -290,109 +251,108 @@ func (c *termination) cascade(ctx context.Context, output *channel, m *root) err
 	c.input = output
 
 	runner := func(payload []*Packet) {
-		m.recorder(c.id, "terminus", "start", payload)
-
-		if len(payload) < 1 {
-			return
-		}
-
 		data := []typed.Typed{}
 		for _, packet := range payload {
 			data = append(data, packet.Data)
 		}
 
 		err := c.terminus(data)
-		m.recorder(c.id, "terminus", "end", payload)
 
 		for _, packet := range payload {
 			if err != nil {
 				packet.handleError(c.id, err)
-				packet.span.AddEvent(ctx, "terminus-error",
-					label.String("terminus_id", c.id),
-					label.String("packet_id", packet.ID),
-					label.Bool("error", packet.Error != nil),
-				)
 			}
-			packet.span.End()
 		}
 	}
 
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break Loop
-			case list := <-c.input.channel:
-				if *m.option.FIFO {
-					runner(list)
-				} else {
-					go runner(list)
-				}
-			}
-		}
-	}()
-
-	output.sendTo(ctx, c.input)
+	run(ctx, c.id, "terminus", runner, m, c.input)
 
 	return nil
 }
 
-func run(ctx context.Context, id, vertexType string, r func([]*Packet), m *root, output *channel) {
-	meterName := fmt.Sprintf("machine.%s", id)
-	meter := global.Meter(meterName)
-	labels := []label.KeyValue{label.String("id", id), label.String("type", vertexType)}
+func run(ctx context.Context, id, vertexType string, handler func([]*Packet), m *root, input *channel) {
+	meter := global.Meter(vertexType)
+	labels := []label.KeyValue{
+		label.String("vertex_id", id),
+		label.String("vertex_type", vertexType),
+	}
 
-	inCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".incoming")
-	outCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".outgoing")
-	errorsCounter := metric.Must(meter).NewInt64ValueRecorder(meterName + ".errors")
-	inTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.incoming")
-	outTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.outgoing")
-	errorsTotalCounter := metric.Must(meter).NewFloat64Counter(meterName + ".total.errors")
-	batchDuration := metric.Must(meter).NewInt64ValueRecorder(meterName + ".duration")
+	inCounter := metric.Must(meter).NewInt64ValueRecorder(id + ".incoming")
+	outCounter := metric.Must(meter).NewInt64ValueRecorder(id + ".outgoing")
+	errorsCounter := metric.Must(meter).NewInt64ValueRecorder(id + ".errors")
+	inTotalCounter := metric.Must(meter).NewFloat64Counter(id + ".total.incoming")
+	outTotalCounter := metric.Must(meter).NewFloat64Counter(id + ".total.outgoing")
+	errorsTotalCounter := metric.Must(meter).NewFloat64Counter(id + ".total.errors")
+	batchDuration := metric.Must(meter).NewInt64ValueRecorder(id + ".duration")
 
 	runner := func(payload []*Packet) {
-		if len(payload) < 1 {
-			return
+		if *m.option.Metrics {
+			inCounter.Record(ctx, int64(len(payload)), labels...)
+			inTotalCounter.Add(ctx, float64(len(payload)), labels...)
 		}
-
-		inCounter.Record(ctx, int64(len(payload)), labels...)
-		inTotalCounter.Add(ctx, float64(len(payload)), labels...)
-
 		start := time.Now()
 
+		if *m.option.Span {
+			for _, packet := range payload {
+				packet.span.AddEvent(ctx, "vertex",
+					label.String("vertex_id", id),
+					label.String("vertex_type", vertexType),
+					label.String("packet_id", packet.ID),
+					label.Int64("when", start.UnixNano()),
+				)
+			}
+		}
+
 		m.recorder(id, vertexType, "start", payload)
-		r(payload)
+		handler(payload)
 		m.recorder(id, vertexType, "done", payload)
 
 		duration := time.Since(start)
 
 		failures := 0
 
-		for _, packet := range payload {
-			if packet.Error != nil {
-				failures++
+		if *m.option.Span {
+			for _, packet := range payload {
+				if packet.Error != nil {
+					failures++
+					packet.span.AddEvent(ctx, "error",
+						label.String("vertex_id", id),
+						label.String("vertex_type", vertexType),
+						label.String("packet_id", packet.ID),
+						label.Bool("error", packet.Error != nil),
+					)
+				}
 			}
 		}
 
-		outCounter.Record(ctx, int64(len(payload)), labels...)
-		outTotalCounter.Add(ctx, float64(len(payload)), labels...)
-		errorsCounter.Record(ctx, int64(failures), labels...)
-		errorsTotalCounter.Add(ctx, float64(failures), labels...)
-		batchDuration.Record(ctx, int64(duration), labels...)
+		if *m.option.Metrics {
+			outCounter.Record(ctx, int64(len(payload)), labels...)
+			outTotalCounter.Add(ctx, float64(len(payload)), labels...)
+			errorsCounter.Record(ctx, int64(failures), labels...)
+			errorsTotalCounter.Add(ctx, float64(failures), labels...)
+			batchDuration.Record(ctx, int64(duration), labels...)
+		}
 	}
 
-	go func() {
+	go do(ctx, *m.option.FIFO, runner, input.channel)
+}
+
+func do(ctx context.Context, fifo bool, runner func([]*Packet), channel chan []*Packet) {
+	func() {
 	Loop:
 		for {
 			select {
 			case <-ctx.Done():
 				break Loop
-			case list := <-output.channel:
-				if *m.option.FIFO {
-					runner(list)
+			case data := <-channel:
+				if len(data) < 1 {
+					continue
+				}
+
+				if fifo {
+					runner(data)
 				} else {
-					go runner(list)
+					go runner(data)
 				}
 			}
 		}

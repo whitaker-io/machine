@@ -11,6 +11,7 @@ import (
 
 	"github.com/karlseguin/typed"
 	"go.opentelemetry.io/otel/api/trace"
+	"go.opentelemetry.io/otel/label"
 )
 
 var (
@@ -46,6 +47,8 @@ var (
 	defaultOptions = &Option{
 		FIFO:       boolP(false),
 		Idempotent: boolP(false),
+		Metrics:    boolP(true),
+		Span:       boolP(true),
 		BufferSize: intP(0),
 	}
 )
@@ -63,6 +66,8 @@ type Option struct {
 	FIFO       *bool
 	Idempotent *bool
 	BufferSize *int
+	Span       *bool
+	Metrics    *bool
 }
 
 // Initium type for providing the data to flow into the system
@@ -94,6 +99,24 @@ func (c *Packet) handleError(id string, err error) {
 	}
 }
 
+func (c *Packet) newSpan(ctx context.Context, tracer trace.Tracer, name, vertexID, vertexType string) {
+	_, span := tracer.Start(
+		ctx,
+		c.ID,
+		trace.WithAttributes(
+			label.String("vertex_id", vertexID),
+			label.String("vertex_type", vertexType),
+			label.String("packet_id", c.ID),
+		),
+	)
+	c.span = span
+	c.span.AddEvent(ctx, name,
+		label.String("vertex_id", vertexID),
+		label.String("vertex_type", vertexType),
+		label.String("packet_id", c.ID),
+	)
+}
+
 func (o *Option) merge(options ...*Option) *Option {
 	if len(options) < 1 {
 		return o
@@ -109,6 +132,8 @@ func (o *Option) join(option *Option) *Option {
 		FIFO:       o.FIFO,
 		BufferSize: o.BufferSize,
 		Idempotent: o.Idempotent,
+		Metrics:    o.Metrics,
+		Span:       o.Span,
 	}
 
 	if option.FIFO != nil {
@@ -121,6 +146,14 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.Idempotent != nil {
 		out.Idempotent = option.Idempotent
+	}
+
+	if option.Metrics != nil {
+		out.Metrics = option.Metrics
+	}
+
+	if option.Span != nil {
+		out.Span = option.Span
 	}
 
 	return out

@@ -32,6 +32,30 @@ var testList = []typed.Typed{
 		"name":  "data3",
 		"value": 3,
 	},
+	{
+		"name":  "data4",
+		"value": 4,
+	},
+	{
+		"name":  "data5",
+		"value": 5,
+	},
+	{
+		"name":  "data6",
+		"value": 6,
+	},
+	{
+		"name":  "data7",
+		"value": 7,
+	},
+	{
+		"name":  "data8",
+		"value": 8,
+	},
+	{
+		"name":  "data9",
+		"value": 9,
+	},
 }
 
 var testPayload = []*Packet{
@@ -63,6 +87,48 @@ var testPayload = []*Packet{
 			"value": 3,
 		},
 	},
+	{
+		ID: "ID_4",
+		Data: typed.Typed{
+			"name":  "data4",
+			"value": 4,
+		},
+	},
+	{
+		ID: "ID_5",
+		Data: typed.Typed{
+			"name":  "data5",
+			"value": 5,
+		},
+	},
+	{
+		ID: "ID_6",
+		Data: typed.Typed{
+			"name":  "data6",
+			"value": 6,
+		},
+	},
+	{
+		ID: "ID_7",
+		Data: typed.Typed{
+			"name":  "data7",
+			"value": 7,
+		},
+	},
+	{
+		ID: "ID_8",
+		Data: typed.Typed{
+			"name":  "data8",
+			"value": 8,
+		},
+	},
+	{
+		ID: "ID_9",
+		Data: typed.Typed{
+			"name":  "data9",
+			"value": 9,
+		},
+	},
 }
 
 var bufferSize = 0
@@ -72,7 +138,13 @@ func Benchmark_Test_New(b *testing.B) {
 	channel := make(chan []typed.Typed)
 	m := New("machine_id", func(c context.Context) chan []typed.Typed {
 		return channel
-	}).Then(
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	).Then(
 		NewVertex("node_id1", func(m typed.Typed) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
@@ -346,7 +418,13 @@ func Test_New_All_Options(t *testing.T) {
 			}()
 
 			return channel
-		}, &Option{FIFO: boolP(true)}, &Option{Idempotent: boolP(true)}, &Option{BufferSize: intP(10)}).Then(
+		},
+			&Option{FIFO: boolP(true)},
+			&Option{Idempotent: boolP(true)},
+			&Option{Metrics: boolP(false)},
+			&Option{Span: boolP(false)},
+			&Option{BufferSize: intP(10)},
+		).Then(
 			NewVertex("node_id1", func(m typed.Typed) error {
 				if _, ok := m["name"]; !ok {
 					t.Errorf("packet missing name %v", m)
