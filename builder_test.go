@@ -904,7 +904,7 @@ func Test_New_Rule(t *testing.T) {
 				})),
 		)
 
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
 		}
 
@@ -954,7 +954,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 		}).
 			Then(node)
 
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
 		}
 
@@ -971,7 +971,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 		}).
 			Then(node)
 
-		if err := m2.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		if err := m2.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
 		}
 
@@ -1026,7 +1026,7 @@ func Test_New_RouterError_Error(t *testing.T) {
 			),
 		)
 
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
 		}
 
@@ -1073,7 +1073,7 @@ func Test_New_Rule_False(t *testing.T) {
 				})),
 		)
 
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		if err := m.Run(context.Background()); err != nil {
 			t.Errorf("did not find errors")
 		}
 
@@ -1125,7 +1125,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 				})),
 		)
 
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err == nil {
+		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
 		}
 	})
@@ -1162,7 +1162,7 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 				),
 		)
 
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err == nil {
+		if err := m.Run(context.Background()); err == nil {
 			t.Errorf("did not find errors")
 		}
 	})
