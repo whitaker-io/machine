@@ -1174,3 +1174,24 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 		}
 	})
 }
+
+func Test_mergeRecorders(t *testing.T) {
+	count := 10000
+	out1 := make(chan []*Packet)
+	out2 := make(chan []*Packet)
+
+	r1 := func(s1, s2, s3 string, p []*Packet) {
+		go func() { out1 <- p }()
+	}
+	r2 := func(s1, s2, s3 string, p []*Packet) {
+		go func() { out2 <- p }()
+	}
+
+	r := mergeRecorders(r1, r2)
+
+	for i := 0; i < count; i++ {
+		r("test", "test", "test", testPayload)
+		<-out1
+		<-out2
+	}
+}
