@@ -141,34 +141,81 @@ func Benchmark_Test_New(b *testing.B) {
 	},
 		&Option{FIFO: boolP(false)},
 		&Option{Idempotent: boolP(true)},
-		&Option{Metrics: boolP(false)},
+		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Then(NewVertex("vertex_id", func(t typed.Typed) error {
-		return nil
-	}).Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
-		out <- list
-		return nil
-	})))
+	).Then(
+		NewVertex("node_id1", func(m typed.Typed) error {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return nil
+		}).Then(
+			NewVertex("node_id2", func(m typed.Typed) error {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+				}
+				return nil
+			}).Split(
+				NewSplitter("route_id", SplitError).
+					SplitLeft(
+						NewSplitter("route_id", SplitError).
+							ThenLeft(
+								NewVertex("node_id3", func(m typed.Typed) error {
+									if _, ok := m["name"]; !ok {
+										b.Errorf("packet missing name %v", m)
+										return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+									}
+									return nil
+								}).
+									Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										out <- list
+										return nil
+									})),
+							).
+							ThenRight(
+								NewVertex("node_id", func(m typed.Typed) error {
+									b.Errorf("no errors expected")
+									return nil
+								}).
+									Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										b.Errorf("no errors expected")
+										return nil
+									})),
+							),
+					).
+					SplitRight(
+						NewSplitter("route_id", SplitError).
+							TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+								b.Errorf("no errors expected")
+								return nil
+							})).
+							TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+								b.Errorf("no errors expected")
+								return nil
+							})),
+					),
+			),
+		),
+	)
 
 	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 	}
 
-	b.Run("Benchmark_Test_New_sub", func(x *testing.B) {
-		x.ReportAllocs()
-		for n := 0; n < x.N; n++ {
-			go func() {
-				channel <- testList
-			}()
+	for n := 0; n < b.N; n++ {
+		go func() {
+			channel <- testList
+		}()
 
-			list := <-out
+		list := <-out
 
-			if len(list) != len(testList) {
-				x.Errorf("incorrect data have %v want %v", list, testList)
-			}
+		if len(list) != len(testList) {
+			b.Errorf("incorrect data have %v want %v", list, testList)
 		}
-	})
+	}
 }
 
 func Test_New(t *testing.T) {
