@@ -158,9 +158,9 @@ func Benchmark_Test_New(b *testing.B) {
 					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return nil
-			}).Route(
+			}).Split(
 				NewSplitter("route_id", SplitError).
-					RouteLeft(
+					SplitLeft(
 						NewSplitter("route_id", SplitError).
 							ThenLeft(
 								NewVertex("node_id3", func(m typed.Typed) error {
@@ -170,7 +170,7 @@ func Benchmark_Test_New(b *testing.B) {
 									}
 									return nil
 								}).
-									Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+									Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 										out <- list
 										return nil
 									})),
@@ -180,19 +180,19 @@ func Benchmark_Test_New(b *testing.B) {
 									b.Errorf("no errors expected")
 									return nil
 								}).
-									Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+									Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 										b.Errorf("no errors expected")
 										return nil
 									})),
 							),
 					).
-					RouteRight(
+					SplitRight(
 						NewSplitter("route_id", SplitError).
-							TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+							TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 								b.Errorf("no errors expected")
 								return nil
 							})).
-							TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+							TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 								b.Errorf("no errors expected")
 								return nil
 							})),
@@ -247,9 +247,9 @@ func Test_New(t *testing.T) {
 						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).Route(
+				}).Split(
 					NewSplitter("route_id", SplitError).
-						RouteLeft(
+						SplitLeft(
 							NewSplitter("route_id", SplitError).
 								ThenLeft(
 									NewVertex("node_id3", func(m typed.Typed) error {
@@ -259,7 +259,7 @@ func Test_New(t *testing.T) {
 										}
 										return nil
 									}).
-										Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList[i]) {
 													t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -274,19 +274,19 @@ func Test_New(t *testing.T) {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 											t.Errorf("no errors expected")
 											return nil
 										})),
 								),
 						).
-						RouteRight(
+						SplitRight(
 							NewSplitter("route_id", SplitError).
-								TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+								TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 									t.Errorf("no errors expected")
 									return nil
 								})).
-								TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+								TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 									t.Errorf("no errors expected")
 									return nil
 								})),
@@ -344,9 +344,9 @@ func Test_New_FIFO(t *testing.T) {
 						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).Route(
+				}).Split(
 					NewSplitter("route_id", SplitError).
-						RouteLeft(
+						SplitLeft(
 							NewSplitter("route_id", SplitError).
 								ThenLeft(
 									NewVertex("node_id3", func(m typed.Typed) error {
@@ -356,7 +356,7 @@ func Test_New_FIFO(t *testing.T) {
 										}
 										return nil
 									}).
-										Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList[i]) {
 													t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -371,13 +371,13 @@ func Test_New_FIFO(t *testing.T) {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Terminate(term),
+										Transmit(term),
 								),
 						).
-						RouteRight(
+						SplitRight(
 							NewSplitter("route_id", SplitError).
-								TerminateLeft(term).
-								TerminateRight(term),
+								TransmitLeft(term).
+								TransmitRight(term),
 						),
 				),
 			),
@@ -438,9 +438,9 @@ func Test_New_All_Options(t *testing.T) {
 						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).Route(
+				}).Split(
 					NewSplitter("route_id", SplitError).
-						RouteLeft(
+						SplitLeft(
 							NewSplitter("route_id", SplitError).
 								ThenLeft(
 									NewVertex("node_id3", func(m typed.Typed) error {
@@ -450,7 +450,7 @@ func Test_New_All_Options(t *testing.T) {
 										}
 										return nil
 									}).
-										Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList[i]) {
 													t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -465,13 +465,13 @@ func Test_New_All_Options(t *testing.T) {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Terminate(term),
+										Transmit(term),
 								),
 						).
-						RouteRight(
+						SplitRight(
 							NewSplitter("route_id", SplitError).
-								TerminateLeft(term).
-								TerminateRight(term),
+								TransmitLeft(term).
+								TransmitRight(term),
 						),
 				),
 			),
@@ -507,9 +507,9 @@ func Test_New_Router(t *testing.T) {
 			}()
 
 			return channel
-		}).Route(
+		}).Split(
 			NewSplitter("route_id", SplitError).
-				RouteLeft(
+				SplitLeft(
 					NewSplitter("route_id", SplitError).
 						ThenLeft(
 							NewVertex("node_id3", func(m typed.Typed) error {
@@ -519,7 +519,7 @@ func Test_New_Router(t *testing.T) {
 								}
 								return nil
 							}).
-								Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+								Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 									for i, packet := range list {
 										if !reflect.DeepEqual(packet, testList[i]) {
 											t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -534,19 +534,19 @@ func Test_New_Router(t *testing.T) {
 								t.Errorf("no errors expected")
 								return nil
 							}).
-								Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+								Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 									t.Errorf("no errors expected")
 									return nil
 								})),
 						),
 				).
-				RouteRight(
+				SplitRight(
 					NewSplitter("route_id", SplitError).
-						TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+						TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 							t.Errorf("no errors expected")
 							return nil
 						})).
-						TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+						TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 							t.Errorf("no errors expected")
 							return nil
 						})),
@@ -583,7 +583,7 @@ func Test_New_Empty_Payload(t *testing.T) {
 
 			return channel
 		}).
-			Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+			Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 				t.Errorf("no errors expected")
 				return nil
 			}))
@@ -610,7 +610,7 @@ func Test_New_Termination(t *testing.T) {
 
 			return channel
 		}).
-			Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+			Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 				for i, packet := range list {
 					if !reflect.DeepEqual(packet, testList[i]) {
 						t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -641,11 +641,11 @@ func Test_New_Cancellation(t *testing.T) {
 		out := make(chan []typed.Typed)
 
 		router := NewSplitter("route_id", SplitError).
-			TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+			TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 				t.Errorf("no errors expected")
 				return nil
 			})).
-			TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+			TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 				t.Errorf("no errors expected")
 				return nil
 			}))
@@ -674,9 +674,9 @@ func Test_New_Cancellation(t *testing.T) {
 						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).Route(
+				}).Split(
 					NewSplitter("route_id", SplitError).
-						RouteLeft(
+						SplitLeft(
 							NewSplitter("route_id", SplitError).
 								ThenLeft(
 									NewVertex("node_id3", func(m typed.Typed) error {
@@ -686,7 +686,7 @@ func Test_New_Cancellation(t *testing.T) {
 										}
 										return nil
 									}).
-										Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+										Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 											for i, packet := range list {
 												if !reflect.DeepEqual(packet, testList[i]) {
 													t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -701,10 +701,10 @@ func Test_New_Cancellation(t *testing.T) {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Route(router),
+										Split(router),
 								),
 						).
-						RouteRight(router),
+						SplitRight(router),
 				),
 			),
 		)
@@ -737,7 +737,7 @@ func Test_New_Cancellation(t *testing.T) {
 func Test_New_Missing_Termination(t *testing.T) {
 	t.Run("Test_New_Missing_Termination", func(t *testing.T) {
 		router := NewSplitter("route_id", SplitError).
-			TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+			TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 				t.Errorf("no errors expected")
 				return nil
 			}))
@@ -759,9 +759,9 @@ func Test_New_Missing_Termination(t *testing.T) {
 						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 					}
 					return nil
-				}).Route(
+				}).Split(
 					NewSplitter("route_id", SplitError).
-						RouteLeft(
+						SplitLeft(
 							NewSplitter("route_id", SplitError).
 								ThenLeft(
 									NewVertex("node_id3", func(m typed.Typed) error {
@@ -777,7 +777,7 @@ func Test_New_Missing_Termination(t *testing.T) {
 										t.Errorf("no errors expected")
 										return nil
 									}).
-										Route(router),
+										Split(router),
 								),
 						),
 				),
@@ -844,9 +844,9 @@ func Test_New_Duplication(t *testing.T) {
 			}()
 
 			return channel
-		}).Route(
+		}).Split(
 			NewSplitter("route_id", SplitDuplicate).
-				TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList[i]) {
 							t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -855,7 +855,7 @@ func Test_New_Duplication(t *testing.T) {
 					out <- list
 					return nil
 				})).
-				TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList[i]) {
 							t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -896,9 +896,9 @@ func Test_New_Rule(t *testing.T) {
 			}()
 
 			return channel
-		}).Route(
+		}).Split(
 			NewSplitter("route_id", SplitRule(func(m typed.Typed) bool { return true }).Handler).
-				TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList[i]) {
 							t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -907,7 +907,7 @@ func Test_New_Rule(t *testing.T) {
 					out <- list
 					return nil
 				})).
-				TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					t.Errorf("no errors expected")
 					return nil
 				})),
@@ -940,7 +940,7 @@ func Test_New_Reuse_Node(t *testing.T) {
 			}
 			return fmt.Errorf("fail everything")
 		}).
-			Terminate(NewTransmission("terminus_id", func(list []typed.Typed) error {
+			Transmit(NewTransmission("terminus_id", func(list []typed.Typed) error {
 				for i, packet := range list {
 					if !reflect.DeepEqual(packet, testList[i]) {
 						t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -1017,13 +1017,13 @@ func Test_New_RouterError_Error(t *testing.T) {
 					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 				}
 				return fmt.Errorf("fail everything")
-			}).Route(
+			}).Split(
 				NewSplitter("route_id", SplitError).
-					TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+					TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 						t.Errorf("no errors expected")
 						return nil
 					})).
-					TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+					TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 						for i, packet := range list {
 							if !reflect.DeepEqual(packet, testList[i]) {
 								t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -1065,13 +1065,13 @@ func Test_New_Rule_False(t *testing.T) {
 			}()
 
 			return channel
-		}).Route(
+		}).Split(
 			NewSplitter("route_id", SplitRule(func(m typed.Typed) bool { return false }).Handler).
-				TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					t.Errorf("no errors expected")
 					return nil
 				})).
-				TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList[i]) {
 							t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -1112,7 +1112,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 			}()
 
 			return channel
-		}).Route(
+		}).Split(
 			NewSplitter("route_id", SplitRule(func(m typed.Typed) bool { return false }).Handler).
 				ThenLeft(
 					NewVertex("node_id1", func(m typed.Typed) error {
@@ -1123,7 +1123,7 @@ func Test_New_Rule_Left_Error(t *testing.T) {
 						return fmt.Errorf("fail everything")
 					}),
 				).
-				TerminateRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitRight(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					for i, packet := range list {
 						if !reflect.DeepEqual(packet, testList[i]) {
 							t.Errorf("incorrect data have %v want %v", packet, testList[i])
@@ -1154,9 +1154,9 @@ func Test_New_Rule_Right_Error(t *testing.T) {
 			}()
 
 			return channel
-		}).Route(
+		}).Split(
 			NewSplitter("route_id", SplitRule(func(m typed.Typed) bool { return false }).Handler).
-				TerminateLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
+				TransmitLeft(NewTransmission("terminus_id", func(list []typed.Typed) error {
 					t.Errorf("no errors expected")
 					return nil
 				})).
