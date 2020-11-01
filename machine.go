@@ -20,7 +20,6 @@ import (
 type handler func([]*Packet)
 type recorder func(string, string, string, []*Packet)
 
-// root execution graph for a system
 type root struct {
 	id        string
 	retrieve  Retriever
@@ -50,7 +49,6 @@ type metrics struct {
 	batchDuration      metric.Int64ValueRecorder
 }
 
-// run func to start the Machine
 func (m *root) run(ctx context.Context) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated machine")
@@ -109,7 +107,6 @@ func (m *root) run(ctx context.Context) error {
 	return v.connector(ctx, m)
 }
 
-// inject func to inject the logs into the machine
 func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 	if payload, ok := logs[m.id]; ok {
 		if *m.option.Span {

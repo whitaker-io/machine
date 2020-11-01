@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	// SplitDuplicate is a RouteHandler that sends data to both outputs
+	// SplitDuplicate is a SplitHandler that sends data to both outputs
 	SplitDuplicate SplitHandler = func(payload []*Packet) (a, b []*Packet) {
 		a = []*Packet{}
 		b = []*Packet{}
@@ -28,7 +28,7 @@ var (
 		return a, b
 	}
 
-	// SplitError is a RouteHandler for splitting errors from successes
+	// SplitError is a SplitHandler for splitting errors from successes
 	SplitError SplitHandler = func(payload []*Packet) (s, f []*Packet) {
 		s = []*Packet{}
 		f = []*Packet{}
@@ -73,16 +73,16 @@ type Option struct {
 // Retriever type for providing the data to flow into the system
 type Retriever func(context.Context) chan []typed.Typed
 
-// Applicative type for applying a change to a context
+// Applicative type for applying a change to a typed.Typed
 type Applicative func(typed.Typed) error
 
 // SplitHandler func for splitting a payload into 2
 type SplitHandler func(list []*Packet) (a, b []*Packet)
 
-// SplitRule type for validating a context at the beginning of a Machine
+// SplitRule provides a SplitHandler for splitting based on the return bool
 type SplitRule func(typed.Typed) bool
 
-// Sender type for ending a chain and returning an error if exists
+// Sender type for sending data out of the system
 type Sender func([]typed.Typed) error
 
 type edge struct {
@@ -159,7 +159,7 @@ func (o *Option) join(option *Option) *Option {
 	return out
 }
 
-// Handler func for providing a RouteHandler
+// Handler func for providing a SplitHandler
 func (r SplitRule) Handler(payload []*Packet) (t, f []*Packet) {
 	t = []*Packet{}
 	f = []*Packet{}

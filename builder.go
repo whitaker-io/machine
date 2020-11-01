@@ -13,19 +13,19 @@ import (
 	"github.com/mitchellh/copystructure"
 )
 
-// Builder builder type for starting a machine
+// Builder type for creating and running a system of operations
 type Builder struct {
 	r *root
 }
 
-// Vertex builder type for adding a processor to the machine
+// Vertex type for applying a mutation to the data
 type Vertex struct {
 	id   string
 	x    *vertex
 	next *vertex
 }
 
-// Splitter builder type for adding a router to the machine
+// Splitter type for controlling the flow of data through the system
 type Splitter struct {
 	id    string
 	x     *vertex
@@ -33,18 +33,18 @@ type Splitter struct {
 	right *vertex
 }
 
-// Transmission builder type for adding a termination to the machine
+// Transmission type for sending data out of the system
 type Transmission struct {
 	id string
 	x  *vertex
 }
 
-// ID func to return the ID for the machine
+// ID func to return the ID for the system
 func (m *Builder) ID() string {
 	return m.r.id
 }
 
-// Run func for starting the machine
+// Run func for starting the system
 func (m *Builder) Run(ctx context.Context, recorders ...func(string, string, string, []*Packet)) error {
 	m.r.recorder = func(id, name string, state string, payload []*Packet) {
 		if len(recorders) > 0 {
@@ -65,79 +65,79 @@ func (m *Builder) Run(ctx context.Context, recorders ...func(string, string, str
 	return m.r.run(ctx)
 }
 
-// Inject func for injecting events into the machine
+// Inject func for injecting events into the system
 func (m *Builder) Inject(ctx context.Context, events map[string][]*Packet) {
 	m.r.inject(ctx, events)
 }
 
-// Then func for sending the payload to a processor
+// Then apply a mutation
 func (m *Builder) Then(v *Vertex) *Builder {
 	m.r.next = v.x
 	return m
 }
 
-// Route func for sending the payload to a router
-func (m *Builder) Route(r *Splitter) *Builder {
+// Split the data
+func (m *Builder) Split(r *Splitter) *Builder {
 	m.r.next = r.x
 	return m
 }
 
-// Terminate func for sending the payload to a cap
-func (m *Builder) Terminate(t *Transmission) *Builder {
+// Transmit the data outside the system
+func (m *Builder) Transmit(t *Transmission) *Builder {
 	m.r.next = t.x
 	return m
 }
 
-// Then func for sending the payload to a processor
+// Then apply a mutation
 func (m *Vertex) Then(v *Vertex) *Vertex {
 	m.next = v.x
 	return m
 }
 
-// Route func for sending the payload to a router
-func (m *Vertex) Route(r *Splitter) *Vertex {
+// Split the data
+func (m *Vertex) Split(r *Splitter) *Vertex {
 	m.next = r.x
 	return m
 }
 
-// Terminate func for sending the payload to a cap
-func (m *Vertex) Terminate(t *Transmission) *Vertex {
+// Transmit the data outside the system
+func (m *Vertex) Transmit(t *Transmission) *Vertex {
 	m.next = t.x
 	return m
 }
 
-// ThenLeft func for sending the payload to a processor
+// ThenLeft apply a mutation to the left side
 func (m *Splitter) ThenLeft(left *Vertex) *Splitter {
 	m.left = left.x
 	return m
 }
 
-// RouteLeft func for sending the payload to a router
-func (m *Splitter) RouteLeft(left *Splitter) *Splitter {
+// SplitLeft split the data on the left
+func (m *Splitter) SplitLeft(left *Splitter) *Splitter {
 	m.left = left.x
 	return m
 }
 
-// TerminateLeft func for sending the payload to a cap
-func (m *Splitter) TerminateLeft(t *Transmission) *Splitter {
+// TransmitLeft the left side outside the system
+func (m *Splitter) TransmitLeft(t *Transmission) *Splitter {
 	m.left = t.x
 	return m
 }
 
-// ThenRight func for sending the payload to a processor
+// ThenRight apply a mutation to the right side
 func (m *Splitter) ThenRight(right *Vertex) *Splitter {
 	m.right = right.x
 	return m
 }
 
-// RouteRight func for sending the payload to a router
-func (m *Splitter) RouteRight(right *Splitter) *Splitter {
+// SplitRight split the data on the right
+func (m *Splitter) SplitRight(right *Splitter) *Splitter {
 	m.right = right.x
 	return m
 }
 
-// TerminateRight func for sending the payload to a cap
-func (m *Splitter) TerminateRight(t *Transmission) *Splitter {
+// TransmitRight the right side outside the system
+func (m *Splitter) TransmitRight(t *Transmission) *Splitter {
 	m.right = t.x
 	return m
 }
@@ -157,7 +157,7 @@ func New(id string, r Retriever, options ...*Option) *Builder {
 	return b
 }
 
-// NewVertex func for providing an instance of VertexBuilder
+// NewVertex func for providing an instance of Vertex
 func NewVertex(id string, a Applicative) *Vertex {
 	node := &Vertex{
 		id: id,
@@ -186,7 +186,7 @@ func NewVertex(id string, a Applicative) *Vertex {
 	return node
 }
 
-// NewSplitter func for providing an instance of RouterBuilder
+// NewSplitter func for providing an instance of Splitter
 func NewSplitter(id string, s SplitHandler) *Splitter {
 	splitter := &Splitter{
 		id: id,
@@ -220,7 +220,7 @@ func NewSplitter(id string, s SplitHandler) *Splitter {
 	return splitter
 }
 
-// NewTransmission func for providing an instance of TerminationBuilder
+// NewTransmission func for providing an instance of Transmission
 func NewTransmission(id string, s Sender) *Transmission {
 	return &Transmission{
 		id: id,
