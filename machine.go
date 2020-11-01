@@ -7,10 +7,7 @@ package machine
 
 import (
 	"context"
-	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
@@ -21,22 +18,12 @@ import (
 type handler func([]*Packet)
 type recorder func(string, string, string, []*Packet)
 
-type root struct {
-	id        string
-	retrieve  Retriever
-	next      *vertex
-	option    *Option
-	vertacies map[string]*vertex
-	recorder
-	metrics *metrics
-}
-
 type vertex struct {
 	id         string
 	vertexType string
 	input      *edge
 	handler
-	connector func(ctx context.Context, m *root) error
+	connector func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error
 	metrics   *metrics
 }
 
@@ -52,75 +39,8 @@ type metrics struct {
 	batchDuration      metric.Int64ValueRecorder
 }
 
-func (m *root) run(ctx context.Context) error {
-	if m.next == nil {
-		return fmt.Errorf("non-terminated machine")
-	}
-
-	input := m.retrieve(ctx)
-	edge := newEdge()
-
-	spanEnabled := *m.option.Span
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break Loop
-			case data := <-input:
-				if len(data) < 1 {
-					continue
-				}
-
-				if *m.option.Metrics {
-					m.metrics.inCounter.Record(ctx, int64(len(data)), m.metrics.labels...)
-					m.metrics.inTotalCounter.Add(ctx, float64(len(data)), m.metrics.labels...)
-				}
-
-				payload := make([]*Packet, len(data))
-				for i, item := range data {
-					packet := &Packet{
-						ID:   uuid.New().String(),
-						Data: item,
-					}
-					if spanEnabled {
-						packet.newSpan(ctx, m.metrics.tracer, "retriever.begin", m.id, "retriever")
-					}
-					payload[i] = packet
-				}
-
-				edge.channel <- payload
-			}
-		}
-	}()
-
-	return m.next.cascade(ctx, m, edge)
-}
-
-func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
-	if payload, ok := logs[m.id]; ok {
-		if *m.option.Span {
-			for _, packet := range payload {
-				packet.newSpan(ctx, m.next.metrics.tracer, "retriever.inject", m.id, "retriever")
-			}
-		}
-		m.next.input.channel <- payload
-	}
-
-	for node, payload := range logs {
-		if v, ok := m.vertacies[node]; ok {
-			if *m.option.Span {
-				for _, packet := range payload {
-					packet.newSpan(ctx, v.metrics.tracer, v.vertexType+".inject", v.id, v.vertexType)
-				}
-			}
-			v.input.channel <- payload
-		}
-	}
-}
-
-func (v *vertex) cascade(ctx context.Context, m *root, input *edge) error {
-	if v.input != nil {
+func (v *vertex) cascade(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option, input *edge) error {
+	if v.input != nil && v.vertexType != "retriever" {
 		input.sendTo(ctx, v.input)
 		return nil
 	}
@@ -129,23 +49,23 @@ func (v *vertex) cascade(ctx context.Context, m *root, input *edge) error {
 
 	h := v.handler
 
-	if m.recorder != nil {
-		h = m.recorder.wrap(v.id, v.vertexType, h)
+	if r != nil {
+		h = r.wrap(v.id, v.vertexType, h)
 	}
 
-	if *m.option.Metrics {
+	if *option.Metrics {
 		h = v.metrics.wrap(ctx, h)
 	}
 
-	if *m.option.Span {
+	if *option.Span {
 		h = v.wrap(ctx, h)
 	}
 
-	do(ctx, *m.option.FIFO, h, input)
+	do(ctx, *option.FIFO, h, input)
 
-	m.vertacies[v.id] = v
+	vertacies[v.id] = v
 
-	return v.connector(ctx, m)
+	return v.connector(ctx, r, vertacies, option)
 }
 
 func (v *vertex) wrap(ctx context.Context, h handler) handler {

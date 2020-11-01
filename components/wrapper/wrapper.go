@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	"github.com/karlseguin/typed"
 	"github.com/whitaker-io/machine"
 )
 
@@ -14,15 +13,15 @@ import (
 
 // Wrapper type for wrapping a machine.Machine and turning it into a machine.Processus
 type Wrapper struct {
-	input  chan []typed.Typed
-	output chan []typed.Typed
+	input  chan []machine.Data
+	output chan []machine.Data
 }
 
 // Builder func for defining the Builder for which the Wrapper wraps
 func (w *Wrapper) Builder(id string, options ...*machine.Option) *machine.Builder {
-	w.input = make(chan []typed.Typed)
-	w.output = make(chan []typed.Typed)
-	initium := func(c context.Context) chan []typed.Typed {
+	w.input = make(chan []machine.Data)
+	w.output = make(chan []machine.Data)
+	initium := func(c context.Context) chan []machine.Data {
 		return w.input
 	}
 
@@ -31,7 +30,7 @@ func (w *Wrapper) Builder(id string, options ...*machine.Option) *machine.Builde
 
 // Terminus func for providing the machine.Terminus that must be used to return values from the machine.Processus
 func (w *Wrapper) Terminus() machine.Sender {
-	return func(m []typed.Typed) error {
+	return func(m []machine.Data) error {
 		w.output <- m
 		return nil
 	}
@@ -43,8 +42,8 @@ func (w *Wrapper) Wrap() machine.Applicative {
 		log.Fatalf("cannot wrap uninitialized Wrapper")
 	}
 
-	return func(m typed.Typed) error {
-		w.input <- []typed.Typed{m}
+	return func(m machine.Data) error {
+		w.input <- []machine.Data{m}
 		<-w.output
 		return nil
 	}
