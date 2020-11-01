@@ -46,19 +46,20 @@ func (m *Builder) ID() string {
 
 // Run func for starting the system
 func (m *Builder) Run(ctx context.Context, recorders ...func(string, string, string, []*Packet)) error {
-	m.r.recorder = func(id, name string, state string, payload []*Packet) {
-		if len(recorders) > 0 {
-			out := []*Packet{}
-			for _, v := range payload {
+	if len(recorders) > 0 {
+		m.r.recorder = func(id, name string, state string, payload []*Packet) {
+			out := make([]*Packet, len(payload))
+			for i, v := range payload {
 				x, _ := copystructure.Copy(v.Data)
-				out = append(out, &Packet{
+				out[i] = &Packet{
 					ID:    v.ID,
 					Data:  x.(typed.Typed),
 					Error: v.Error,
-				})
-			}
-			for _, recorder := range recorders {
-				recorder(id, name, state, out)
+				}
+
+				for _, recorder := range recorders {
+					recorder(id, name, state, out)
+				}
 			}
 		}
 	}
@@ -229,15 +230,13 @@ func NewTransmission(id string, s Sender) *Transmission {
 			vertexType: "sender",
 			metrics:    createMetrics(id, "sender"),
 			handler: func(payload []*Packet) {
-				data := []typed.Typed{}
-				for _, packet := range payload {
-					data = append(data, packet.Data)
+				data := make([]typed.Typed, len(payload))
+				for i, packet := range payload {
+					data[i] = packet.Data
 				}
 
-				err := s(data)
-
-				for _, packet := range payload {
-					if err != nil {
+				if err := s(data); err != nil {
+					for _, packet := range payload {
 						packet.handleError(id, err)
 					}
 				}

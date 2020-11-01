@@ -57,21 +57,8 @@ func (m *root) run(ctx context.Context) error {
 	input := m.retrieve(ctx)
 	edge := newEdge()
 
-	v := &vertex{
-		id:         m.id,
-		vertexType: "retriever",
-		metrics:    createMetrics(m.id, "retriever"),
-		handler: func(payload []*Packet) {
-			edge.channel <- payload
-		},
-		connector: func(ctx context.Context, m *root) error {
-			return m.next.cascade(ctx, m, edge)
-		},
-		input: newEdge(),
-	}
-
-	tracer := global.Tracer(v.vertexType + ".begin")
-
+	tracer := global.Tracer("retriever.begin")
+	spanEnabled := *m.option.Span
 	go func() {
 	Loop:
 		for {
@@ -83,28 +70,24 @@ func (m *root) run(ctx context.Context) error {
 					continue
 				}
 
-				payload := []*Packet{}
-				for _, item := range data {
+				payload := make([]*Packet, len(data))
+				for i, item := range data {
 					packet := &Packet{
 						ID:   uuid.New().String(),
 						Data: item,
 					}
-					if *m.option.Span {
-						packet.newSpan(ctx, tracer, v.vertexType+"begin", m.id, v.vertexType)
+					if spanEnabled {
+						packet.newSpan(ctx, tracer, "retriever.begin", m.id, "retriever")
 					}
-					payload = append(payload, packet)
+					payload[i] = packet
 				}
 
-				v.input.channel <- payload
+				edge.channel <- payload
 			}
 		}
 	}()
 
-	h := m.recorder.wrap(v.id, v.vertexType, v.run(ctx, m.option))
-
-	do(ctx, *m.option.FIFO, h, v.input)
-
-	return v.connector(ctx, m)
+	return m.next.cascade(ctx, m, edge)
 }
 
 func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
@@ -115,7 +98,7 @@ func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 				packet.newSpan(ctx, tracer, "retriever.inject", m.id, "retriever")
 			}
 		}
-		m.next.inject(payload)
+		m.next.input.channel <- payload
 	}
 
 	for node, payload := range logs {
@@ -126,13 +109,9 @@ func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 					packet.newSpan(ctx, tracer, v.vertexType+".inject", v.id, v.vertexType)
 				}
 			}
-			v.inject(payload)
+			v.input.channel <- payload
 		}
 	}
-}
-
-func (v *vertex) inject(payload []*Packet) {
-	v.input.channel <- payload
 }
 
 func (v *vertex) cascade(ctx context.Context, m *root, input *edge) error {
@@ -143,7 +122,19 @@ func (v *vertex) cascade(ctx context.Context, m *root, input *edge) error {
 
 	v.input = input
 
-	h := m.recorder.wrap(v.id, v.vertexType, v.run(ctx, m.option))
+	h := v.handler
+
+	if m.recorder != nil {
+		h = m.recorder.wrap(v.id, v.vertexType, h)
+	}
+
+	if *m.option.Metrics {
+		h = v.metrics.wrap(ctx, h)
+	}
+
+	if *m.option.Span {
+		h = v.wrap(ctx, h)
+	}
 
 	do(ctx, *m.option.FIFO, h, input)
 
@@ -152,62 +143,41 @@ func (v *vertex) cascade(ctx context.Context, m *root, input *edge) error {
 	return v.connector(ctx, m)
 }
 
-func (v *vertex) run(ctx context.Context, option *Option) handler {
-	h := v.metrics.wrap(ctx, v.handler, option)
+func (v *vertex) wrap(ctx context.Context, h handler) handler {
 	return func(payload []*Packet) {
 		start := time.Now()
 
-		if *option.Span {
-			for _, packet := range payload {
-				packet.span.AddEvent(ctx, "vertex",
-					label.String("vertex_id", v.id),
-					label.String("vertex_type", v.vertexType),
-					label.String("packet_id", packet.ID),
-					label.Int64("when", start.UnixNano()),
-				)
-			}
+		for _, packet := range payload {
+			packet.span.AddEvent(ctx, "vertex",
+				label.String("vertex_id", v.id),
+				label.String("vertex_type", v.vertexType),
+				label.String("packet_id", packet.ID),
+				label.Int64("when", start.UnixNano()),
+			)
 		}
 
 		h(payload)
 
-		if *option.Span {
-			for _, packet := range payload {
-				if packet.Error != nil {
-					packet.span.AddEvent(ctx, "error",
-						label.String("vertex_id", v.id),
-						label.String("vertex_type", v.vertexType),
-						label.String("packet_id", packet.ID),
-						label.Bool("error", packet.Error != nil),
-					)
-				}
-				if v.vertexType == "sender" {
-					packet.span.End()
-				}
+		for _, packet := range payload {
+			if packet.Error != nil {
+				packet.span.AddEvent(ctx, "error",
+					label.String("vertex_id", v.id),
+					label.String("vertex_type", v.vertexType),
+					label.String("packet_id", packet.ID),
+					label.Bool("error", packet.Error != nil),
+				)
+			}
+			if v.vertexType == "sender" {
+				packet.span.End()
 			}
 		}
 	}
 }
 
-func (mtrx *metrics) begin(ctx context.Context, payload []*Packet, option *Option) {
-	if *option.Metrics {
+func (mtrx *metrics) wrap(ctx context.Context, h handler) handler {
+	return func(payload []*Packet) {
 		mtrx.inCounter.Record(ctx, int64(len(payload)), mtrx.labels...)
 		mtrx.inTotalCounter.Add(ctx, float64(len(payload)), mtrx.labels...)
-	}
-}
-
-func (mtrx *metrics) end(ctx context.Context, failures int, duration time.Duration, payload []*Packet, option *Option) {
-	if *option.Metrics {
-		mtrx.outCounter.Record(ctx, int64(len(payload)), mtrx.labels...)
-		mtrx.outTotalCounter.Add(ctx, float64(len(payload)), mtrx.labels...)
-		mtrx.errorsCounter.Record(ctx, int64(failures), mtrx.labels...)
-		mtrx.errorsTotalCounter.Add(ctx, float64(failures), mtrx.labels...)
-		mtrx.batchDuration.Record(ctx, int64(duration), mtrx.labels...)
-	}
-}
-
-func (mtrx *metrics) wrap(ctx context.Context, h handler, option *Option) handler {
-	return func(payload []*Packet) {
-		mtrx.begin(ctx, payload, option)
 		start := time.Now()
 		h(payload)
 		duration := time.Since(start)
@@ -217,7 +187,11 @@ func (mtrx *metrics) wrap(ctx context.Context, h handler, option *Option) handle
 				failures++
 			}
 		}
-		mtrx.end(ctx, failures, duration, payload, option)
+		mtrx.outCounter.Record(ctx, int64(len(payload)), mtrx.labels...)
+		mtrx.outTotalCounter.Add(ctx, float64(len(payload)), mtrx.labels...)
+		mtrx.errorsCounter.Record(ctx, int64(failures), mtrx.labels...)
+		mtrx.errorsTotalCounter.Add(ctx, float64(failures), mtrx.labels...)
+		mtrx.batchDuration.Record(ctx, int64(duration), mtrx.labels...)
 	}
 }
 
