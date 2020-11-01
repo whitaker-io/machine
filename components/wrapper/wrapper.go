@@ -30,7 +30,7 @@ func (w *Wrapper) Builder(id string, options ...*machine.Option) *machine.Builde
 }
 
 // Terminus func for providing the machine.Terminus that must be used to return values from the machine.Processus
-func (w *Wrapper) Terminus() machine.Terminus {
+func (w *Wrapper) Terminus() machine.Sender {
 	return func(m []typed.Typed) error {
 		w.output <- m
 		return nil
@@ -38,7 +38,7 @@ func (w *Wrapper) Terminus() machine.Terminus {
 }
 
 // Wrap func for committing the Wrapper and providing the machine.Processus
-func (w *Wrapper) Wrap() machine.Processus {
+func (w *Wrapper) Wrap() machine.Applicative {
 	if w.input == nil {
 		log.Fatalf("cannot wrap uninitialized Wrapper")
 	}
