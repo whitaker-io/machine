@@ -14,6 +14,7 @@ import (
 
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
+	"go.opentelemetry.io/otel/api/trace"
 	"go.opentelemetry.io/otel/label"
 )
 
@@ -27,6 +28,7 @@ type root struct {
 	option    *Option
 	vertacies map[string]*vertex
 	recorder
+	metrics *metrics
 }
 
 type vertex struct {
@@ -39,6 +41,7 @@ type vertex struct {
 }
 
 type metrics struct {
+	tracer             trace.Tracer
 	labels             []label.KeyValue
 	inCounter          metric.Int64ValueRecorder
 	outCounter         metric.Int64ValueRecorder
@@ -57,7 +60,6 @@ func (m *root) run(ctx context.Context) error {
 	input := m.retrieve(ctx)
 	edge := newEdge()
 
-	tracer := global.Tracer("retriever.begin")
 	spanEnabled := *m.option.Span
 	go func() {
 	Loop:
@@ -70,6 +72,11 @@ func (m *root) run(ctx context.Context) error {
 					continue
 				}
 
+				if *m.option.Metrics {
+					m.metrics.inCounter.Record(ctx, int64(len(data)), m.metrics.labels...)
+					m.metrics.inTotalCounter.Add(ctx, float64(len(data)), m.metrics.labels...)
+				}
+
 				payload := make([]*Packet, len(data))
 				for i, item := range data {
 					packet := &Packet{
@@ -77,7 +84,7 @@ func (m *root) run(ctx context.Context) error {
 						Data: item,
 					}
 					if spanEnabled {
-						packet.newSpan(ctx, tracer, "retriever.begin", m.id, "retriever")
+						packet.newSpan(ctx, m.metrics.tracer, "retriever.begin", m.id, "retriever")
 					}
 					payload[i] = packet
 				}
@@ -93,9 +100,8 @@ func (m *root) run(ctx context.Context) error {
 func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 	if payload, ok := logs[m.id]; ok {
 		if *m.option.Span {
-			tracer := global.Tracer("retriever.inject")
 			for _, packet := range payload {
-				packet.newSpan(ctx, tracer, "retriever.inject", m.id, "retriever")
+				packet.newSpan(ctx, m.next.metrics.tracer, "retriever.inject", m.id, "retriever")
 			}
 		}
 		m.next.input.channel <- payload
@@ -104,9 +110,8 @@ func (m *root) inject(ctx context.Context, logs map[string][]*Packet) {
 	for node, payload := range logs {
 		if v, ok := m.vertacies[node]; ok {
 			if *m.option.Span {
-				tracer := global.Tracer(v.vertexType + ".inject")
 				for _, packet := range payload {
-					packet.newSpan(ctx, tracer, v.vertexType+".inject", v.id, v.vertexType)
+					packet.newSpan(ctx, v.metrics.tracer, v.vertexType+".inject", v.id, v.vertexType)
 				}
 			}
 			v.input.channel <- payload
@@ -195,9 +200,18 @@ func (mtrx *metrics) wrap(ctx context.Context, h handler) handler {
 	}
 }
 
+func (r recorder) wrap(id, vertexType string, h handler) handler {
+	return func(payload []*Packet) {
+		r(id, vertexType, "start", payload)
+		h(payload)
+		r(id, vertexType, "done", payload)
+	}
+}
+
 func createMetrics(id, vertexType string) *metrics {
 	meter := global.Meter(id)
 	return &metrics{
+		tracer: global.Tracer(vertexType + "." + id),
 		labels: []label.KeyValue{
 			label.String("vertex_id", id),
 			label.String("vertex_type", vertexType),
@@ -209,14 +223,6 @@ func createMetrics(id, vertexType string) *metrics {
 		outCounter:         metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".outgoing"),
 		errorsCounter:      metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".errors"),
 		batchDuration:      metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".duration"),
-	}
-}
-
-func (r recorder) wrap(id, vertexType string, h handler) handler {
-	return func(payload []*Packet) {
-		r(id, vertexType, "start", payload)
-		h(payload)
-		r(id, vertexType, "done", payload)
 	}
 }
 
