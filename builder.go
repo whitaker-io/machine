@@ -150,6 +150,7 @@ func New(id string, r Retriever, options ...*Option) *Builder {
 			id:        id,
 			retrieve:  r,
 			vertacies: map[string]*vertex{},
+			metrics:   createMetrics(id, "retriever"),
 		},
 	}
 
