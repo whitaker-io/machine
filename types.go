@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	// RouterDuplicate is a RouteHandler that sends data to both outputs
-	RouterDuplicate RouteHandler = func(payload []*Packet) (a, b []*Packet) {
+	// SplitDuplicate is a RouteHandler that sends data to both outputs
+	SplitDuplicate SplitHandler = func(payload []*Packet) (a, b []*Packet) {
 		a = []*Packet{}
 		b = []*Packet{}
 
@@ -28,8 +28,8 @@ var (
 		return a, b
 	}
 
-	// RouterError is a RouteHandler for splitting errors from successes
-	RouterError RouteHandler = func(payload []*Packet) (s, f []*Packet) {
+	// SplitError is a RouteHandler for splitting errors from successes
+	SplitError SplitHandler = func(payload []*Packet) (s, f []*Packet) {
 		s = []*Packet{}
 		f = []*Packet{}
 
@@ -70,22 +70,22 @@ type Option struct {
 	Metrics    *bool
 }
 
-// Initium type for providing the data to flow into the system
-type Initium func(context.Context) chan []typed.Typed
+// Retriever type for providing the data to flow into the system
+type Retriever func(context.Context) chan []typed.Typed
 
-// Processus type for applying a change to a context
-type Processus func(typed.Typed) error
+// Applicative type for applying a change to a context
+type Applicative func(typed.Typed) error
 
-// RouteHandler func for splitting a payload into 2
-type RouteHandler func(list []*Packet) (a, b []*Packet)
+// SplitHandler func for splitting a payload into 2
+type SplitHandler func(list []*Packet) (a, b []*Packet)
 
-// RouterRule type for validating a context at the beginning of a Machine
-type RouterRule func(typed.Typed) bool
+// SplitRule type for validating a context at the beginning of a Machine
+type SplitRule func(typed.Typed) bool
 
-// Terminus type for ending a chain and returning an error if exists
-type Terminus func([]typed.Typed) error
+// Sender type for ending a chain and returning an error if exists
+type Sender func([]typed.Typed) error
 
-type channel struct {
+type edge struct {
 	channel chan []*Packet
 }
 
@@ -159,32 +159,8 @@ func (o *Option) join(option *Option) *Option {
 	return out
 }
 
-// Machine func for providing a Machine
-func (i Initium) convert(id string) *root {
-	return &root{
-		id:      id,
-		initium: i,
-		nodes:   map[string]*node{},
-	}
-}
-
-// Convert func for providing a Cap
-func (p Processus) convert(id string) *node {
-	return &node{
-		id:        id,
-		processus: p,
-	}
-}
-
-func (r RouteHandler) convert(id string) *router {
-	return &router{
-		id:      id,
-		handler: r,
-	}
-}
-
 // Handler func for providing a RouteHandler
-func (r RouterRule) Handler(payload []*Packet) (t, f []*Packet) {
+func (r SplitRule) Handler(payload []*Packet) (t, f []*Packet) {
 	t = []*Packet{}
 	f = []*Packet{}
 
@@ -199,21 +175,13 @@ func (r RouterRule) Handler(payload []*Packet) (t, f []*Packet) {
 	return t, f
 }
 
-// Convert func for providing a Cap
-func (t Terminus) convert(id string) vertex {
-	return &termination{
-		id:       id,
-		terminus: t,
+func newEdge() *edge {
+	return &edge{
+		make(chan []*Packet),
 	}
 }
 
-func newChannel(bufferSize int) *channel {
-	return &channel{
-		make(chan []*Packet, bufferSize),
-	}
-}
-
-func (out *channel) sendTo(ctx context.Context, in *channel) {
+func (out *edge) sendTo(ctx context.Context, in *edge) {
 	go func() {
 	Loop:
 		for {
