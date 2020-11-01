@@ -53,10 +53,13 @@ var (
 	}
 )
 
+// Data wrapper on typed.Typed
+type Data typed.Typed
+
 // Packet type that holds information traveling through the machine
 type Packet struct {
 	ID    string
-	Data  typed.Typed
+	Data  Data
 	Error error
 	span  trace.Span
 }
@@ -71,49 +74,49 @@ type Option struct {
 }
 
 // Retriever type for providing the data to flow into the system
-type Retriever func(context.Context) chan []typed.Typed
+type Retriever func(context.Context) chan []Data
 
 // Applicative type for applying a change to a typed.Typed
-type Applicative func(typed.Typed) error
+type Applicative func(Data) error
 
 // SplitHandler func for splitting a payload into 2
 type SplitHandler func(list []*Packet) (a, b []*Packet)
 
 // SplitRule provides a SplitHandler for splitting based on the return bool
-type SplitRule func(typed.Typed) bool
+type SplitRule func(Data) bool
 
 // Sender type for sending data out of the system
-type Sender func([]typed.Typed) error
+type Sender func([]Data) error
 
 type edge struct {
 	channel chan []*Packet
 }
 
-func (c *Packet) apply(id string, p func(typed.Typed) error) {
-	c.handleError(id, p(c.Data))
+func (p *Packet) apply(id string, a Applicative) {
+	p.handleError(id, a(p.Data))
 }
 
-func (c *Packet) handleError(id string, err error) {
+func (p *Packet) handleError(id string, err error) {
 	if err != nil {
-		c.Error = fmt.Errorf("%s %s %w", id, err.Error(), c.Error)
+		p.Error = fmt.Errorf("%s %s %w", id, err.Error(), p.Error)
 	}
 }
 
-func (c *Packet) newSpan(ctx context.Context, tracer trace.Tracer, name, vertexID, vertexType string) {
+func (p *Packet) newSpan(ctx context.Context, tracer trace.Tracer, name, vertexID, vertexType string) {
 	_, span := tracer.Start(
 		ctx,
-		c.ID,
+		p.ID,
 		trace.WithAttributes(
 			label.String("vertex_id", vertexID),
 			label.String("vertex_type", vertexType),
-			label.String("packet_id", c.ID),
+			label.String("packet_id", p.ID),
 		),
 	)
-	c.span = span
-	c.span.AddEvent(ctx, name,
+	p.span = span
+	p.span.AddEvent(ctx, name,
 		label.String("vertex_id", vertexID),
 		label.String("vertex_type", vertexType),
-		label.String("packet_id", c.ID),
+		label.String("packet_id", p.ID),
 	)
 }
 
