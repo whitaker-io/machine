@@ -6,11 +6,12 @@
 package machine
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/mitchellh/copystructure"
 )
 
 // Builder type for creating and running a system of operations
@@ -46,27 +47,13 @@ func (m *Builder) ID() string {
 }
 
 // Run func for starting the system
-func (m *Builder) Run(ctx context.Context, recorders ...func(string, string, string, []*Packet)) error {
+func (m *Builder) Run(ctx context.Context, recorders ...recorder) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated builder")
 	}
 
 	if len(recorders) > 0 {
-		m.recorder = func(id, name string, state string, payload []*Packet) {
-			out := make([]*Packet, len(payload))
-			for i, v := range payload {
-				x, _ := copystructure.Copy(v.Data)
-				out[i] = &Packet{
-					ID:    v.ID,
-					Data:  x.(Data),
-					Error: v.Error,
-				}
-
-				for _, recorder := range recorders {
-					recorder(id, name, state, out)
-				}
-			}
-		}
+		m.recorder = mergeRecorders(recorders...)
 	}
 	return m.cascade(ctx, m.recorder, m.vertacies, m.option, m.input)
 }
@@ -303,4 +290,23 @@ func NewTransmission(id string, s Sender) *Transmission {
 			connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error { return nil },
 		},
 	}
+}
+
+func mergeRecorders(recorders ...recorder) recorder {
+	return func(id, name string, state string, payload []*Packet) {
+		out := []*Packet{}
+		buf := &bytes.Buffer{}
+		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+		_ = enc.Encode(payload)
+		_ = dec.Decode(&out)
+
+		for _, r := range recorders {
+			r(id, name, state, out)
+		}
+	}
+}
+
+func init() {
+	gob.Register([]*Packet{})
 }
