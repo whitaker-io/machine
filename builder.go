@@ -29,6 +29,12 @@ type Vertex struct {
 	next *vertex
 }
 
+// Folder type for applying a Fold to the data
+type Folder struct {
+	vertex
+	next *vertex
+}
+
 // Splitter type for controlling the flow of data through the system
 type Splitter struct {
 	vertex
@@ -87,6 +93,12 @@ func (m *Builder) Then(v *Vertex) *Builder {
 	return m
 }
 
+// Fold the data
+func (m *Builder) Fold(f *Folder) *Builder {
+	m.next = &f.vertex
+	return m
+}
+
 // Split the data
 func (m *Builder) Split(r *Splitter) *Builder {
 	m.next = &r.vertex
@@ -105,6 +117,12 @@ func (m *Vertex) Then(v *Vertex) *Vertex {
 	return m
 }
 
+// Fold the data
+func (m *Vertex) Fold(f *Folder) *Vertex {
+	m.next = &f.vertex
+	return m
+}
+
 // Split the data
 func (m *Vertex) Split(r *Splitter) *Vertex {
 	m.next = &r.vertex
@@ -117,38 +135,74 @@ func (m *Vertex) Transmit(t *Transmission) *Vertex {
 	return m
 }
 
-// ThenLeft apply a mutation to the left side
-func (m *Splitter) ThenLeft(left *Vertex) *Splitter {
+// Then apply a mutation
+func (m *Folder) Then(v *Vertex) *Folder {
+	m.next = &v.vertex
+	return m
+}
+
+// Fold the data
+func (m *Folder) Fold(f *Folder) *Folder {
+	m.next = &f.vertex
+	return m
+}
+
+// Split the data
+func (m *Folder) Split(r *Splitter) *Folder {
+	m.next = &r.vertex
+	return m
+}
+
+// Transmit the data outside the system
+func (m *Folder) Transmit(t *Transmission) *Folder {
+	m.next = &t.vertex
+	return m
+}
+
+// LeftThen apply a mutation to the left side
+func (m *Splitter) LeftThen(left *Vertex) *Splitter {
 	m.left = &left.vertex
 	return m
 }
 
-// SplitLeft split the data on the left
-func (m *Splitter) SplitLeft(left *Splitter) *Splitter {
+// LeftFold the data
+func (m *Splitter) LeftFold(f *Folder) *Splitter {
+	m.left = &f.vertex
+	return m
+}
+
+// LeftSplit the data on the left
+func (m *Splitter) LeftSplit(left *Splitter) *Splitter {
 	m.left = &left.vertex
 	return m
 }
 
-// TransmitLeft the left side outside the system
-func (m *Splitter) TransmitLeft(t *Transmission) *Splitter {
+// LeftTransmit the left side outside the system
+func (m *Splitter) LeftTransmit(t *Transmission) *Splitter {
 	m.left = &t.vertex
 	return m
 }
 
-// ThenRight apply a mutation to the right side
-func (m *Splitter) ThenRight(right *Vertex) *Splitter {
+// RightThen apply a mutation to the right side
+func (m *Splitter) RightThen(right *Vertex) *Splitter {
 	m.right = &right.vertex
 	return m
 }
 
-// SplitRight split the data on the right
-func (m *Splitter) SplitRight(right *Splitter) *Splitter {
+// RightFold the data
+func (m *Splitter) RightFold(f *Folder) *Splitter {
+	m.right = &f.vertex
+	return m
+}
+
+// RightSplit the data on the right
+func (m *Splitter) RightSplit(right *Splitter) *Splitter {
 	m.right = &right.vertex
 	return m
 }
 
-// TransmitRight the right side outside the system
-func (m *Splitter) TransmitRight(t *Transmission) *Splitter {
+// RightTransmit the right side outside the system
+func (m *Splitter) RightTransmit(t *Transmission) *Splitter {
 	m.right = &t.vertex
 	return m
 }
@@ -234,6 +288,77 @@ func NewVertex(id string, a Applicative) *Vertex {
 	}
 
 	return node
+}
+
+// FoldLeft func for providing an instance of Folder
+func FoldLeft(id string, f Fold) *Folder {
+	folder := &Folder{}
+	edge := newEdge()
+
+	fr := func(payload ...*Packet) *Packet {
+		if len(payload) == 1 {
+			return payload[0]
+		}
+
+		d := payload[0]
+
+		for i := 1; i < len(payload); i++ {
+			d.Data = f(d.Data, payload[i].Data)
+		}
+
+		return d
+	}
+
+	folder.vertex = vertex{
+		id:         id,
+		vertexType: "fold",
+		metrics:    createMetrics(id, "fold"),
+		handler: func(payload []*Packet) {
+			edge.channel <- []*Packet{fr(payload...)}
+		},
+		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+			if folder.next == nil {
+				return fmt.Errorf("non-terminated node")
+			}
+			return folder.next.cascade(ctx, r, vertacies, option, edge)
+		},
+	}
+
+	return folder
+}
+
+// FoldRight func for providing an instance of Folder
+func FoldRight(id string, f Fold) *Folder {
+	folder := &Folder{}
+	edge := newEdge()
+
+	var fr func(...*Packet) *Packet
+	fr = func(payload ...*Packet) *Packet {
+		if len(payload) == 1 {
+			return payload[0]
+		}
+
+		payload[len(payload)-1].Data = f(payload[0].Data, fr(payload[1:]...).Data)
+
+		return payload[len(payload)-1]
+	}
+
+	folder.vertex = vertex{
+		id:         id,
+		vertexType: "fold",
+		metrics:    createMetrics(id, "fold"),
+		handler: func(payload []*Packet) {
+			edge.channel <- []*Packet{fr(payload...)}
+		},
+		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+			if folder.next == nil {
+				return fmt.Errorf("non-terminated node")
+			}
+			return folder.next.cascade(ctx, r, vertacies, option, edge)
+		},
+	}
+
+	return folder
 }
 
 // NewSplitter func for providing an instance of Splitter

@@ -79,6 +79,9 @@ type Retriever func(context.Context) chan []Data
 // Applicative type for applying a change to a typed.Typed
 type Applicative func(Data) error
 
+// Fold type for folding a 2 Data into a single element
+type Fold func(Data, Data) Data
+
 // SplitHandler func for splitting a payload into 2
 type SplitHandler func(list []*Packet) (a, b []*Packet)
 
