@@ -94,8 +94,8 @@ func (n nexter) Map(id string, x Applicative) Builder {
 
 	next.vertex = vertex{
 		id:         id,
-		vertexType: "applicative",
-		metrics:    createMetrics(id, "applicative"),
+		vertexType: "map",
+		metrics:    createMetrics(id, "map"),
 		handler: func(payload []*Packet) {
 			for _, packet := range payload {
 				packet.apply(id, x)
@@ -105,7 +105,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 		},
 		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
 			if next.next == nil {
-				return fmt.Errorf("non-terminated node")
+				return fmt.Errorf("non-terminated map")
 			}
 			return next.next.cascade(ctx, r, vertacies, option, edge)
 		},
@@ -147,7 +147,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 		},
 		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
 			if next.next == nil {
-				return fmt.Errorf("non-terminated node")
+				return fmt.Errorf("non-terminated fold")
 			}
 			return next.next.cascade(ctx, r, vertacies, option, edge)
 		},
@@ -208,8 +208,8 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 
 	next.vertex = vertex{
 		id:         id,
-		vertexType: "splitter",
-		metrics:    createMetrics(id, "splitter"),
+		vertexType: "fork",
+		metrics:    createMetrics(id, "fork"),
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
 			leftEdge.channel <- lpayload
@@ -217,7 +217,7 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 		},
 		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
 			if next.left == nil || next.right == nil {
-				return fmt.Errorf("non-terminated router")
+				return fmt.Errorf("non-terminated fork")
 			} else if err := next.left.cascade(ctx, r, vertacies, option, leftEdge); err != nil {
 				return err
 			} else if err := next.right.cascade(ctx, r, vertacies, option, rightEdge); err != nil {
@@ -244,8 +244,8 @@ func (n nexter) Transmit(id string, x Sender) {
 	n(&node{
 		vertex: vertex{
 			id:         id,
-			vertexType: "sender",
-			metrics:    createMetrics(id, "sender"),
+			vertexType: "transmit",
+			metrics:    createMetrics(id, "transmit"),
 			handler: func(payload []*Packet) {
 				data := make([]Data, len(payload))
 				for i, packet := range payload {
@@ -265,14 +265,14 @@ func (n nexter) Transmit(id string, x Sender) {
 
 // NewStream func for providing a Stream
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
-	mtrx := createMetrics(id, "retriever")
+	mtrx := createMetrics(id, "stream")
 	edge := newEdge()
 	input := newEdge()
 
 	builder := &builder{
 		vertex: vertex{
 			id:         id,
-			vertexType: "retriever",
+			vertexType: "stream",
 			metrics:    mtrx,
 			handler: func(p []*Packet) {
 				edge.channel <- p
@@ -304,7 +304,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 							Data: item,
 						}
 						if *option.Span {
-							packet.newSpan(ctx, mtrx.tracer, "retriever.begin", id, "retriever")
+							packet.newSpan(ctx, mtrx.tracer, "stream.begin", id, "stream")
 						}
 						payload[i] = packet
 					}
