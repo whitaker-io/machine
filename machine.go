@@ -40,11 +40,6 @@ type metrics struct {
 }
 
 func (v *vertex) cascade(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option, input *edge) error {
-	if v.input != nil && v.vertexType != "retriever" {
-		input.sendTo(ctx, v.input)
-		return nil
-	}
-
 	v.input = input
 
 	h := v.handler

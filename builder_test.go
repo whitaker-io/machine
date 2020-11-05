@@ -8,7 +8,6 @@ package machine
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 )
@@ -134,7 +133,7 @@ var bufferSize = 0
 func Benchmark_Test_New(b *testing.B) {
 	out := make(chan []Data)
 	channel := make(chan []Data)
-	m := New("machine_id", func(c context.Context) chan []Data {
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
@@ -142,62 +141,20 @@ func Benchmark_Test_New(b *testing.B) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Then(
-		NewVertex("node_id1", func(m Data) error {
+	)
+
+	m.Builder().
+		Map("map_id", func(m Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
-		}).Then(
-			NewVertex("node_id2", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}).Split(
-				NewSplitter("route_id", SplitError).
-					LeftSplit(
-						NewSplitter("route_id", SplitError).
-							LeftThen(
-								NewVertex("node_id3", func(m Data) error {
-									if _, ok := m["name"]; !ok {
-										b.Errorf("packet missing name %v", m)
-										return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-									}
-									return nil
-								}).
-									Transmit(NewTransmission("terminus_id", func(list []Data) error {
-										out <- list
-										return nil
-									})),
-							).
-							RightThen(
-								NewVertex("node_id", func(m Data) error {
-									b.Errorf("no errors expected")
-									return nil
-								}).
-									Transmit(NewTransmission("terminus_id", func(list []Data) error {
-										b.Errorf("no errors expected")
-										return nil
-									})),
-							),
-					).
-					RightSplit(
-						NewSplitter("route_id", SplitError).
-							LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-								b.Errorf("no errors expected")
-								return nil
-							})).
-							RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-								b.Errorf("no errors expected")
-								return nil
-							})),
-					),
-			),
-		),
-	)
+		}).
+		Transmit("sender_id", func(d []Data) error {
+			out <- d
+			return nil
+		})
 
 	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
@@ -216,1159 +173,435 @@ func Benchmark_Test_New(b *testing.B) {
 	}
 }
 
-func Test_New(t *testing.T) {
-	count := 50000
+func Test_New(b *testing.T) {
+	count := 100000
 	out := make(chan []Data)
-	t.Run("Test_New", func(t *testing.T) {
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}).Then(
-				NewVertex("node_id2", func(m Data) error {
-					if _, ok := m["name"]; !ok {
-						t.Errorf("packet missing name %v", m)
-						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-					}
-					return nil
-				}).Split(
-					NewSplitter("route_id", SplitError).
-						LeftSplit(
-							NewSplitter("route_id", SplitError).
-								LeftThen(
-									NewVertex("node_id3", func(m Data) error {
-										if _, ok := m["name"]; !ok {
-											t.Errorf("packet missing name %v", m)
-											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-										}
-										return nil
-									}).
-										Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList[i])
-												}
-											}
-											out <- list
-											return fmt.Errorf("error everything")
-										})),
-								).
-								RightThen(
-									NewVertex("node_id", func(m Data) error {
-										t.Errorf("no errors expected")
-										return nil
-									}).
-										Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											t.Errorf("no errors expected")
-											return nil
-										})),
-								),
-						).
-						RightSplit(
-							NewSplitter("route_id", SplitError).
-								LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-									t.Errorf("no errors expected")
-									return nil
-								})).
-								RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-									t.Errorf("no errors expected")
-									return nil
-								})),
-						),
-				),
-			),
-		)
-
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
-			t.Error(err)
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_FIFO(t *testing.T) {
-	t.Run("Test_New_FIFO", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		term := NewTransmission("terminus_id", func(list []Data) error {
-			t.Errorf("no errors expected")
-			return nil
-		})
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}, &Option{FIFO: boolP(true)}).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}).Then(
-				NewVertex("node_id2", func(m Data) error {
-					if _, ok := m["name"]; !ok {
-						t.Errorf("packet missing name %v", m)
-						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-					}
-					return nil
-				}).Split(
-					NewSplitter("route_id", SplitError).
-						LeftSplit(
-							NewSplitter("route_id", SplitError).
-								LeftThen(
-									NewVertex("node_id3", func(m Data) error {
-										if _, ok := m["name"]; !ok {
-											t.Errorf("packet missing name %v", m)
-											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-										}
-										return nil
-									}).
-										Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList[i])
-												}
-											}
-											out <- list
-											return fmt.Errorf("error everything")
-										})),
-								).
-								RightThen(
-									NewVertex("node_id", func(m Data) error {
-										t.Errorf("no errors expected")
-										return nil
-									}).
-										Transmit(term),
-								),
-						).
-						RightSplit(
-							NewSplitter("route_id", SplitError).
-								LeftTransmit(term).
-								RightTransmit(term),
-						),
-				),
-			),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Error(err)
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_All_Options(t *testing.T) {
-	t.Run("Test_New_FIFO", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		term := NewTransmission("terminus_id", func(list []Data) error {
-			t.Errorf("no errors expected")
-			return nil
-		})
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		},
-			&Option{FIFO: boolP(true)},
-			&Option{Idempotent: boolP(true)},
-			&Option{Metrics: boolP(false)},
-			&Option{Span: boolP(false)},
-			&Option{BufferSize: intP(10)},
-		).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}).Then(
-				NewVertex("node_id2", func(m Data) error {
-					if _, ok := m["name"]; !ok {
-						t.Errorf("packet missing name %v", m)
-						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-					}
-					return nil
-				}).Split(
-					NewSplitter("route_id", SplitError).
-						LeftSplit(
-							NewSplitter("route_id", SplitError).
-								LeftThen(
-									NewVertex("node_id3", func(m Data) error {
-										if _, ok := m["name"]; !ok {
-											t.Errorf("packet missing name %v", m)
-											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-										}
-										return nil
-									}).
-										Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList[i])
-												}
-											}
-											out <- list
-											return fmt.Errorf("error everything")
-										})),
-								).
-								RightThen(
-									NewVertex("node_id", func(m Data) error {
-										t.Errorf("no errors expected")
-										return nil
-									}).
-										Transmit(term),
-								),
-						).
-						RightSplit(
-							NewSplitter("route_id", SplitError).
-								LeftTransmit(term).
-								RightTransmit(term),
-						),
-				),
-			),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Error(err)
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_Router(t *testing.T) {
-	t.Run("Test_New_Router", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Split(
-			NewSplitter("route_id", SplitError).
-				LeftSplit(
-					NewSplitter("route_id", SplitError).
-						LeftThen(
-							NewVertex("node_id3", func(m Data) error {
-								if _, ok := m["name"]; !ok {
-									t.Errorf("packet missing name %v", m)
-									return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-								}
-								return nil
-							}).
-								Transmit(NewTransmission("terminus_id", func(list []Data) error {
-									for i, packet := range list {
-										if !reflect.DeepEqual(packet, testList[i]) {
-											t.Errorf("incorrect data have %v want %v", packet, testList[i])
-										}
-									}
-									out <- list
-									return fmt.Errorf("error everything")
-								})),
-						).
-						RightThen(
-							NewVertex("node_id", func(m Data) error {
-								t.Errorf("no errors expected")
-								return nil
-							}).
-								Transmit(NewTransmission("terminus_id", func(list []Data) error {
-									t.Errorf("no errors expected")
-									return nil
-								})),
-						),
-				).
-				RightSplit(
-					NewSplitter("route_id", SplitError).
-						LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-							t.Errorf("no errors expected")
-							return nil
-						})).
-						RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-							t.Errorf("no errors expected")
-							return nil
-						})),
-				),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Error(err)
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_Empty_Payload(t *testing.T) {
-	t.Run("Test_New_Empty_Payload", func(t *testing.T) {
-		count := 10000
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- []Data{}
-				}
-			}()
-
-			return channel
-		}).
-			Transmit(NewTransmission("terminus_id", func(list []Data) error {
-				t.Errorf("no errors expected")
-				return nil
-			}))
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Error(err)
-		}
-	})
-}
-
-func Test_New_Termination(t *testing.T) {
-	t.Run("Test_New_Termination", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).
-			Transmit(NewTransmission("terminus_id", func(list []Data) error {
-				for i, packet := range list {
-					if !reflect.DeepEqual(packet, testList[i]) {
-						t.Errorf("incorrect data have %v want %v", packet, testList[i])
-					}
-				}
-				out <- list
-				return fmt.Errorf("error everything")
-			}))
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Error(err)
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_Cancellation(t *testing.T) {
-	t.Run("Test_New_Cancellation", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		router := NewSplitter("route_id", SplitError).
-			LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-				t.Errorf("no errors expected")
-				return nil
-			})).
-			RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-				t.Errorf("no errors expected")
-				return nil
-			}))
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}).Then(
-				NewVertex("node_id2", func(m Data) error {
-					if _, ok := m["name"]; !ok {
-						t.Errorf("packet missing name %v", m)
-						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-					}
-					return nil
-				}).Split(
-					NewSplitter("route_id", SplitError).
-						LeftSplit(
-							NewSplitter("route_id", SplitError).
-								LeftThen(
-									NewVertex("node_id3", func(m Data) error {
-										if _, ok := m["name"]; !ok {
-											t.Errorf("packet missing name %v", m)
-											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-										}
-										return nil
-									}).
-										Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											for i, packet := range list {
-												if !reflect.DeepEqual(packet, testList[i]) {
-													t.Errorf("incorrect data have %v want %v", packet, testList[i])
-												}
-											}
-											out <- list
-											return fmt.Errorf("error everything")
-										})),
-								).
-								RightThen(
-									NewVertex("node_id", func(m Data) error {
-										t.Errorf("no errors expected")
-										return nil
-									}).
-										Split(router),
-								),
-						).
-						RightSplit(router),
-				),
-			),
-		)
-
-		ctx, cancel := context.WithCancel(context.Background())
-
-		if err := m.Run(ctx); err != nil {
-			t.Error(err)
-		}
-
-		x := map[string][]*Packet{
-			"node_id1":   testPayload,
-			"machine_id": testPayload,
-		}
-
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
 		go func() {
-			for i := 0; i < count; i++ {
-				m.Inject(ctx, x)
+			for n := 0; n < count; n++ {
+				channel <- testList
 			}
 		}()
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
 
-		<-time.After(time.Second)
-
-		cancel()
-
-		<-time.After(time.Second * 2)
-	})
-}
-
-func Test_New_Missing_Termination(t *testing.T) {
-	t.Run("Test_New_Missing_Termination", func(t *testing.T) {
-		router := NewSplitter("route_id", SplitError).
-			RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-				t.Errorf("no errors expected")
-				return nil
-			}))
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-			return channel
-		}).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}).Then(
-				NewVertex("node_id2", func(m Data) error {
-					if _, ok := m["name"]; !ok {
-						t.Errorf("packet missing name %v", m)
-						return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-					}
-					return nil
-				}).Split(
-					NewSplitter("route_id", SplitError).
-						LeftSplit(
-							NewSplitter("route_id", SplitError).
-								LeftThen(
-									NewVertex("node_id3", func(m Data) error {
-										if _, ok := m["name"]; !ok {
-											t.Errorf("packet missing name %v", m)
-											return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-										}
-										return nil
-									}),
-								).
-								RightThen(
-									NewVertex("node_id", func(m Data) error {
-										t.Errorf("no errors expected")
-										return nil
-									}).
-										Split(router),
-								),
-						),
-				),
-			),
-		)
-
-		if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err == nil {
-			t.Errorf("did not find errors")
-		}
-
-		m2 := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-			return channel
-		})
-
-		if m2.ID() != "machine_id" {
-			t.Errorf("incorrect id have %s want %s", m2.ID(), "machine_id")
-		}
-
-		if err := m2.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err == nil {
-			t.Errorf("did not find errors")
-		}
-
-		m3 := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-			return channel
-		}).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return nil
-			}),
-		)
-
-		if err := m3.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err == nil {
-			t.Errorf("did not find errors")
-		}
-
-		m4 := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-			return channel
-		})
-
-		if err := m4.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err == nil {
-			t.Errorf("did not find errors")
-		}
-	})
-}
-
-func Test_New_Duplication(t *testing.T) {
-	t.Run("Test_New_Duplication", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Split(
-			NewSplitter("route_id", SplitDuplicate).
-				LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList[i])
-						}
-					}
-					out <- list
-					return nil
-				})).
-				RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList[i])
-						}
-					}
-					out <- list
-					return nil
-				})),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < count*2; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_Rule(t *testing.T) {
-	t.Run("Test_New_Rule", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Split(
-			NewSplitter("route_id", SplitRule(func(m Data) bool { return true }).Handler).
-				LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList[i])
-						}
-					}
-					out <- list
-					return nil
-				})).
-				RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					t.Errorf("no errors expected")
-					return nil
-				})),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_Reuse_Node(t *testing.T) {
-	t.Run("Test_New_Reuse_Node", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		node := NewVertex("node_id1", func(m Data) error {
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
 			if _, ok := m["name"]; !ok {
-				t.Errorf("packet missing name %v", m)
+				b.Errorf("packet missing name %v", m)
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return fmt.Errorf("fail everything")
+			return nil
 		}).
-			Transmit(NewTransmission("terminus_id", func(list []Data) error {
-				for i, packet := range list {
-					if !reflect.DeepEqual(packet, testList[i]) {
-						t.Errorf("incorrect data have %v want %v", packet, testList[i])
-					}
-				}
-				out <- list
-				return nil
-			}))
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
+		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+			return d1
 		}).
-			Then(node)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		m2 := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
+		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+			return d1
 		}).
-			Then(node)
+		FoldRight("fold_id2", func(d1, d2 Data) Data {
+			return d1
+		}).
+		Fork("fork_id", ForkError)
 
-		if err := m2.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < count*2; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
+	left.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
 	})
-}
 
-func Test_New_RouterError_Error(t *testing.T) {
-	t.Run("Test_New_RouterError_Error", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Then(
-			NewVertex("node_id1", func(m Data) error {
-				if _, ok := m["name"]; !ok {
-					t.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
-				return fmt.Errorf("fail everything")
-			}).Split(
-				NewSplitter("route_id", SplitError).
-					LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-						t.Errorf("no errors expected")
-						return nil
-					})).
-					RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-						for i, packet := range list {
-							if !reflect.DeepEqual(packet, testList[i]) {
-								t.Errorf("incorrect data have %v want %v", packet, testList[i])
-							}
-						}
-						out <- list
-						return nil
-					})),
-			),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
+	right.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
 	})
-}
 
-func Test_New_Rule_False(t *testing.T) {
-	t.Run("Test_New_Rule_False", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Split(
-			NewSplitter("route_id", SplitRule(func(m Data) bool { return false }).Handler).
-				LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					t.Errorf("no errors expected")
-					return nil
-				})).
-				RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList[i])
-						}
-					}
-					out <- list
-					return nil
-				})),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < count; i++ {
-			list1 := <-out
-			for i, packet := range list1 {
-				if !reflect.DeepEqual(packet, testList[i]) {
-					t.Errorf("incorrect data have %v want %v", packet, testList[i])
-				}
-			}
-		}
-	})
-}
-
-func Test_New_Rule_Left_Error(t *testing.T) {
-	t.Run("Test_New_Rule_Left_Error", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Split(
-			NewSplitter("route_id", SplitRule(func(m Data) bool { return false }).Handler).
-				LeftThen(
-					NewVertex("node_id1", func(m Data) error {
-						if _, ok := m["name"]; !ok {
-							t.Errorf("packet missing name %v", m)
-							return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-						}
-						return fmt.Errorf("fail everything")
-					}),
-				).
-				RightTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					for i, packet := range list {
-						if !reflect.DeepEqual(packet, testList[i]) {
-							t.Errorf("incorrect data have %v want %v", packet, testList[i])
-						}
-					}
-					out <- list
-					return nil
-				})),
-		)
-
-		if err := m.Run(context.Background()); err == nil {
-			t.Errorf("did not find errors")
-		}
-	})
-}
-
-func Test_New_Rule_Right_Error(t *testing.T) {
-	t.Run("Test_New_Rule_Right_Error", func(t *testing.T) {
-		count := 10000
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-				}
-			}()
-
-			return channel
-		}).Split(
-			NewSplitter("route_id", SplitRule(func(m Data) bool { return false }).Handler).
-				LeftTransmit(NewTransmission("terminus_id", func(list []Data) error {
-					t.Errorf("no errors expected")
-					return nil
-				})).
-				RightThen(
-					NewVertex("node_id1", func(m Data) error {
-						if _, ok := m["name"]; !ok {
-							t.Errorf("packet missing name %v", m)
-							return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-						}
-						return fmt.Errorf("fail everything")
-					}),
-				),
-		)
-
-		if err := m.Run(context.Background()); err == nil {
-			t.Errorf("did not find errors")
-		}
-	})
-}
-
-func Test_mergeRecorders(t *testing.T) {
-	count := 10000
-	out1 := make(chan []*Packet)
-	out2 := make(chan []*Packet)
-
-	r1 := func(s1, s2, s3 string, p []*Packet) {
-		go func() { out1 <- p }()
-	}
-	r2 := func(s1, s2, s3 string, p []*Packet) {
-		go func() { out2 <- p }()
+	if err := m.Run(context.Background()); err != nil {
+		b.Error(err)
 	}
 
-	r := mergeRecorders(r1, r2)
+	for n := 0; n < count; n++ {
+		list := <-out
 
-	for i := 0; i < count; i++ {
-		r("test", "test", "test", testPayload)
-		<-out1
-		<-out2
+		if len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testList[0])
+		}
 	}
 }
 
-func TestFoldLeft(t *testing.T) {
-	t.Run("TestFoldLeft", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-					channel <- []Data{testList[0]}
-				}
-			}()
-
-			return channel
-		},
-		).Fold(
-			FoldLeft("fold_id1", func(d1, d2 Data) Data {
-				return d1
-			}).
-				Transmit(
-					NewTransmission("terminus_id", func(list []Data) error {
-						out <- list
-						return nil
-					}),
-				),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < 2*count; i++ {
-			packet := <-out
-			if len(packet) != 1 && packet[0]["name"] != "data0" {
-				t.Errorf("incorrect data have %v want %v", packet, testList[0])
+func Test_New2(b *testing.T) {
+	count := 1000
+	out := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		go func() {
+			for n := 0; n < count; n++ {
+				channel <- testList
 			}
-		}
+		}()
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return nil
+		}).
+		FoldRight("fold_id2", func(d1, d2 Data) Data {
+			return d1
+		}).
+		Fork("fork_id", ForkDuplicate)
+
+	left.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
 	})
+
+	l2, r2 := right.Fork("fork_id2", ForkRule(func(d Data) bool {
+		return true
+	}).Handler)
+
+	l3, r3 := l2.Fork("fork_id3", ForkRule(func(d Data) bool {
+		return false
+	}).Handler)
+
+	r2.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	l3.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	r3.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return fmt.Errorf("error")
+	})
+
+	if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		b.Error(err)
+	}
+
+	if m.ID() != "machine_id" {
+		b.Errorf("incorrect id have %v want %v", m.ID(), "machine_id")
+	}
+
+	for n := 0; n < 2*count; n++ {
+		list := <-out
+
+		if len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testList[9])
+		}
+	}
 }
 
-func TestFoldRight(t *testing.T) {
-	t.Run("TestFoldRight", func(t *testing.T) {
-		count := 10000
-		out := make(chan []Data)
-
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-					channel <- []Data{testList[9]}
-				}
-			}()
-
-			return channel
-		},
-		).Fold(
-			FoldRight("fold_id1", func(d1, d2 Data) Data {
-				return d1
-			}).
-				Then(
-					NewVertex("node_id1", func(m Data) error {
-						if _, ok := m["name"]; !ok {
-							t.Errorf("packet missing name %v", m)
-							return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-						}
-						return fmt.Errorf("fail everything")
-					}).Fold(
-						FoldRight("fold_id1", func(d1, d2 Data) Data {
-							return d1
-						}).Fold(
-							FoldRight("fold_id1", func(d1, d2 Data) Data {
-								return d1
-							}).Split(
-								NewSplitter("route_id", SplitRule(func(m Data) bool { return true }).Handler).
-									LeftFold(
-										FoldRight("fold_id1", func(d1, d2 Data) Data {
-											return d1
-										}).Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											out <- list
-											return nil
-										}))).
-									RightFold(
-										FoldRight("fold_id1", func(d1, d2 Data) Data {
-											return d1
-										}).Transmit(NewTransmission("terminus_id", func(list []Data) error {
-											t.Errorf("no errors expected")
-											return nil
-										}))),
-							),
-						),
-					),
-				),
-		)
-
-		if err := m.Run(context.Background()); err != nil {
-			t.Errorf("did not find errors")
-		}
-
-		for i := 0; i < count; i++ {
-			packet := <-out
-			if len(packet) != 1 && packet[0]["name"] != "data9" {
-				t.Errorf("incorrect data have %v want %v", packet, testList[9])
-			}
-		}
+func Test_Missing_Leaves(b *testing.T) {
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
 	})
+
+	left, _ := m.Builder().Fork("fork_id", ForkDuplicate)
+
+	left.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	m2 := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m2.Builder().Fork("fork_id", ForkDuplicate)
+
+	m3 := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m4 := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m4.Builder().Map("map_id", func(m Data) error {
+		if _, ok := m["name"]; !ok {
+			b.Errorf("packet missing name %v", m)
+			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+		}
+		return nil
+	})
+
+	m5 := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m5.Builder().FoldRight("fold_id2", func(d1, d2 Data) Data {
+		return d1
+	})
+
+	m6 := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	l6, r6 := m6.Builder().Fork("fork_id", ForkDuplicate)
+
+	l6.Map("map_id", func(m Data) error {
+		if _, ok := m["name"]; !ok {
+			b.Errorf("packet missing name %v", m)
+			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+		}
+		return nil
+	})
+
+	r6.Map("map_id", func(m Data) error {
+		if _, ok := m["name"]; !ok {
+			b.Errorf("packet missing name %v", m)
+			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+		}
+		return nil
+	})
+
+	m7 := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	l7, r7 := m7.Builder().Fork("fork_id", ForkDuplicate)
+
+	l7.Map("map_id", func(m Data) error {
+		if _, ok := m["name"]; !ok {
+			b.Errorf("packet missing name %v", m)
+			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+		}
+		return nil
+	}).Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	r7.FoldLeft("fold_id2", func(d1, d2 Data) Data {
+		return d1
+	})
+
+	if err := m.Run(context.Background()); err == nil {
+		b.Error("expected error m")
+	}
+
+	if err := m2.Run(context.Background()); err == nil {
+		b.Error("expected error m2")
+	}
+
+	if err := m3.Run(context.Background()); err == nil {
+		b.Error("expected error m3")
+	}
+
+	if err := m4.Run(context.Background()); err == nil {
+		b.Error("expected error m4")
+	}
+
+	if err := m5.Run(context.Background()); err == nil {
+		b.Error("expected error m5")
+	}
+
+	if err := m6.Run(context.Background()); err == nil {
+		b.Error("expected error m6")
+	}
+
+	if err := m7.Run(context.Background()); err == nil {
+		b.Error("expected error m7")
+	}
 }
 
-func TestFoldLeftNoTrasmition(t *testing.T) {
-	t.Run("TestFoldLeft", func(t *testing.T) {
-		count := 10000
+func Test_Inject(b *testing.T) {
+	count := 1000
+	channel := make(chan []Data)
+	out := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		go func() {
+			for n := 0; n < count; n++ {
+				channel <- testList
+				channel <- nil
+			}
+		}()
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(0)},
+	)
 
-		m := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return fmt.Errorf("error")
+		}).
+		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+			return d1
+		}).
+		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+			return d1
+		}).
+		FoldRight("fold_id2", func(d1, d2 Data) Data {
+			return d1
+		}).
+		Fork("fork_id", ForkError)
 
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-					channel <- []Data{testList[0]}
-				}
-			}()
-
-			return channel
-		},
-		).Split(
-			NewSplitter("route_id", SplitRule(func(m Data) bool { return true }).Handler).
-				LeftFold(
-					FoldLeft("fold_id1", func(d1, d2 Data) Data {
-						return d1
-					})).
-				RightFold(
-					FoldRight("fold_id1", func(d1, d2 Data) Data {
-						return d1
-					}),
-				),
-		)
-
-		m2 := New("machine_id", func(c context.Context) chan []Data {
-			channel := make(chan []Data)
-
-			go func() {
-				for i := 0; i < count; i++ {
-					channel <- testList
-					channel <- []Data{testList[0]}
-				}
-			}()
-
-			return channel
-		},
-		).Split(
-			NewSplitter("route_id", SplitRule(func(m Data) bool { return true }).Handler).
-				LeftFold(
-					FoldLeft("fold_id1", func(d1, d2 Data) Data {
-						return d1
-					}).Transmit(NewTransmission("terminus_id", func(list []Data) error {
-						return nil
-					}))).
-				RightFold(
-					FoldRight("fold_id1", func(d1, d2 Data) Data {
-						return d1
-					}),
-				),
-		)
-
-		if err := m.Run(context.Background()); err == nil {
-			t.Errorf("did not find errors")
-		}
-
-		if err := m2.Run(context.Background()); err == nil {
-			t.Errorf("did not find errors")
-		}
+	left.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
 	})
+
+	right.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
+	})
+
+	if err := m.Run(context.Background()); err != nil {
+		b.Error(err)
+	}
+
+	go func() {
+		for n := 0; n < count; n++ {
+			m.Inject(context.Background(), map[string][]*Packet{
+				"map_id": testPayload,
+			})
+		}
+	}()
+
+	for n := 0; n < 2*count; n++ {
+		list := <-out
+
+		if len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testList[0])
+		}
+	}
+}
+
+func Test_Inject_Cancel(b *testing.T) {
+	count := 1000
+	channel := make(chan []Data)
+	out := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		go func() {
+			for n := 0; n < count; n++ {
+				channel <- testList
+				channel <- nil
+			}
+		}()
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(0)},
+	)
+
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return fmt.Errorf("error")
+		}).
+		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+			return d1
+		}).
+		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+			return d1
+		}).
+		FoldRight("fold_id2", func(d1, d2 Data) Data {
+			return d1
+		}).
+		Fork("fork_id", ForkError)
+
+	left.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	right.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := m.Run(ctx); err != nil {
+		b.Error(err)
+	}
+
+	go func() {
+		for n := 0; n < count; n++ {
+			m.Inject(context.Background(), map[string][]*Packet{
+				"map_id": testPayload,
+			})
+		}
+	}()
+
+	<-time.After(time.Second)
+	cancel()
+	<-time.After(3 * time.Second)
 }
