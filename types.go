@@ -15,8 +15,8 @@ import (
 )
 
 var (
-	// SplitDuplicate is a SplitHandler that sends data to both outputs
-	SplitDuplicate SplitHandler = func(payload []*Packet) (a, b []*Packet) {
+	// ForkDuplicate is a SplitHandler that sends data to both outputs
+	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
 		a = []*Packet{}
 		b = []*Packet{}
 
@@ -28,8 +28,8 @@ var (
 		return a, b
 	}
 
-	// SplitError is a SplitHandler for splitting errors from successes
-	SplitError SplitHandler = func(payload []*Packet) (s, f []*Packet) {
+	// ForkError is a SplitHandler for splitting errors from successes
+	ForkError Fork = func(payload []*Packet) (s, f []*Packet) {
 		s = []*Packet{}
 		f = []*Packet{}
 
@@ -79,11 +79,14 @@ type Retriever func(context.Context) chan []Data
 // Applicative type for applying a change to a typed.Typed
 type Applicative func(Data) error
 
-// SplitHandler func for splitting a payload into 2
-type SplitHandler func(list []*Packet) (a, b []*Packet)
+// Fold type for folding a 2 Data into a single element
+type Fold func(Data, Data) Data
 
-// SplitRule provides a SplitHandler for splitting based on the return bool
-type SplitRule func(Data) bool
+// Fork func for splitting a payload into 2
+type Fork func(list []*Packet) (a, b []*Packet)
+
+// ForkRule provides a SplitHandler for splitting based on the return bool
+type ForkRule func(Data) bool
 
 // Sender type for sending data out of the system
 type Sender func([]Data) error
@@ -163,7 +166,7 @@ func (o *Option) join(option *Option) *Option {
 }
 
 // Handler func for providing a SplitHandler
-func (r SplitRule) Handler(payload []*Packet) (t, f []*Packet) {
+func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
 	t = []*Packet{}
 	f = []*Packet{}
 
@@ -182,22 +185,6 @@ func newEdge() *edge {
 	return &edge{
 		make(chan []*Packet),
 	}
-}
-
-func (out *edge) sendTo(ctx context.Context, in *edge) {
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break Loop
-			case list := <-out.channel:
-				if len(list) > 0 {
-					in.channel <- list
-				}
-			}
-		}
-	}()
 }
 
 func boolP(v bool) *bool {
