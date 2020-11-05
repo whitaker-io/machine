@@ -87,7 +87,7 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 					label.Bool("error", packet.Error != nil),
 				)
 			}
-			if v.vertexType == "sender" {
+			if v.vertexType == "transmit" {
 				packet.span.End()
 			}
 		}
