@@ -21,35 +21,33 @@
 Basic `receive` -> `process` -> `send` Flow
 
 ```golang
-  // fifo controls whether or not the data is processed in order of receipt
-  fifo := false
-  // bufferSize controls the go channel buffer size, set to 0 for unbuffered channels
-  bufferSize := 0
+	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+    channel := make(chan []Data)
+  
+    //setup channel to collect data as long as the context has not completed
 
-  machineInstance := New(uuid.New().String(), "machine_name", fifo, func(c context.Context) chan []map[string]interface{} {
-    return channel
-  }).Then(
-    NewVertex(uuid.New().String(), "unique_vertex_name", fifo, func(m map[string]interface{}) error {
-      
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+	)
+
+	m.Builder().
+		Map("unique_id2", func(m Data) error {
+      var err error
+
       // ...do some processing
-      
+
+      return err
+		}).
+		Transmit("unique_id3", func(d []Data) error {
+      // send a copy of the data somewhere
+
       return nil
-    }).
-    Terminate(
-      NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
+		})
 
-        // send the data somewhere
-        
-        return nil
-      }),
-    ),
-
-  // Build take an int buffer size and some Recorder functions to allow for state management or logging.
-  // Having a Recorder requires the use of a Deep Copy operation which can be expensive depending on
-  // the data being processed
-  ).Build(bufferSize, func(vertexID, operation string, payload []*Packet) {})
-
-  if err := machineInstance.Run(context.Background()); err != nil {
+  if err := m.Run(context.Background()); err != nil {
     // Run will return an error in the case that one of the paths is not terminated
     panic(err)
   }
@@ -58,38 +56,33 @@ Basic `receive` -> `process` -> `send` Flow
 `Machine` can also duplicate the data and send it down multiple paths
 
 ```golang
-  // fifo controls whether or not the data is processed in order of reciept
-  fifo := false
-  // bufferSize controls the go channel buffer size, set to 0 for unbuffered channels
-  bufferSize := 0
+	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+    channel := make(chan []Data)
+  
+    //setup channel to collect data as long as the context has not completed
 
-  machineInstance := New(uuid.New().String(), "machine_name", fifo, func(c context.Context) chan []map[string]interface{} {
-    return channel
-  }).Route(
-    NewRouter(uuid.New().String(), "unique_router_name", fifo, RouterDuplicate).
-      TerminateLeft(
-        NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+	)
 
-          // send a copy of the data somewhere
+  left, right := m.Builder().Fork("unique_id2", ForkDuplicate)
+  
+  left.Transmit("unique_id3", func(d []Data) error {
+    // send a copy of the data somewhere
 
-          return nil
-        }),
-      ).
-      TerminateRight(
-        NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
+    return nil
+  })
 
-          // send a copy of the data somewhere else
+  right.Transmit("unique_id4", func(d []Data) error {
+    // send a copy of the data somewhere else
 
-          return nil
-        }),
-      ),
+    return nil
+  })
 
-  // Build take an int buffer size and some Recorder functions to allow for state management or logging.
-  // Having a Recorder requires the use of a Deep Copy operation which can be expensive depending on
-  // the data being processed
-  ).Build(bufferSize, func(vertexID, operation string, payload []*Packet) {})
-
-  if err := machineInstance.Run(context.Background()); err != nil {
+  if err := m.Run(context.Background()); err != nil {
     // Run will return an error in the case that one of the paths is not terminated
     panic(err)
   }
@@ -98,44 +91,73 @@ Basic `receive` -> `process` -> `send` Flow
 Incase of errors you can also route the errors down their own path with more complex flows having retry loops
 
 ```golang
-  // fifo controls whether or not the data is processed in order of reciept
-  fifo := false
-  // bufferSize controls the go channel buffer size, set to 0 for unbuffered channels
-  bufferSize := 0
+	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+    channel := make(chan []Data)
+  
+    //setup channel to collect data as long as the context has not completed
 
-  machineInstance := New(uuid.New().String(), "machine_name", fifo, func(c context.Context) chan []map[string]interface{} {
-    return channel
-  }).Then(
-    NewVertex(uuid.New().String(), "unique_vertex_name", fifo, func(m map[string]interface{}) error {
-      var err error
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+	)
 
-      // ...do some processing
+  left, right := m.Builder().Fork("unique_id2", ForkError)
+  
+  left.Transmit("unique_id3", func(d []Data) error {
+    // send a copy of the data somewhere
 
-      return err
-    }).Route(
-      NewRouter(uuid.New().String(), "unique_router_name", fifo, RouterError).
-        TerminateLeft(
-          NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
+    return nil
+  })
 
-            // send successful data somewhere
+  right.Transmit("unique_id4", func(d []Data) error {
+    // send the error somewhere else
 
-            return nil
-          }),
-        ).
-        TerminateRight(
-          NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
+    return nil
+  })
 
-            // send erroneous data somewhere else
+  if err := m.Run(context.Background()); err != nil {
+    // Run will return an error in the case that one of the paths is not terminated
+    panic(err)
+  }
+```
 
-            return nil
-          }),
-        ),
-    ),
+Routing based on filtering the data is also possible with ForkRule
 
-  // Build take an int buffer size and some Recorder functions to allow for state management or logging.
-  // Having a Recorder requires the use of a Deep Copy operation which can be expensive depending on
-  // the data being processed
-  ).Build(bufferSize, func(vertexID, operation string, payload []*Packet) {})
+```golang  
+	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+    channel := make(chan []Data)
+  
+    //setup channel to collect data as long as the context has not completed
+
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+	)
+
+  left, right := right.Fork("unique_id2", ForkRule(func(d Data) bool {
+    //Data is a wrapper on typed.Typed see https://github.com/karlseguin/typed
+    if val, ok := d["some_value"]; !ok {
+      return false
+    }
+
+		return true
+	}).Handler)
+  
+  left.Transmit("unique_id3", func(d []Data) error {
+    // send a copy of the data somewhere
+
+    return nil
+  })
+
+  right.Transmit("unique_id4", func(d []Data) error {
+    // send the error somewhere else
+
+    return nil
+  })
 
   if err := machineInstance.Run(context.Background()); err != nil {
     // Run will return an error in the case that one of the paths is not terminated
@@ -143,49 +165,32 @@ Incase of errors you can also route the errors down their own path with more com
   }
 ```
 
-Routing based on filtering the data is also possible with RouterRule
+`machine` also supports FoldLeft and FoldRight operations 
 
 ```golang  
-  // fifo controls whether or not the data is processed in order of reciept
-  fifo := false
-  // bufferSize controls the go channel buffer size, set to 0 for unbuffered channels
-  bufferSize := 0
+	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+    channel := make(chan []Data)
+  
+    //setup channel to collect data as long as the context has not completed
 
-  machineInstance := New(uuid.New().String(), "machine_name", fifo, func(c context.Context) chan []map[string]interface{} {
-    return channel
-  }).Then(
-    NewVertex(uuid.New().String(), "unique_vertex_name", fifo, func(m map[string]interface{}) error {
-      var err error
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+	).FoldLeft("unique_id2", func(aggragate, value Data) Data {
+    // do something to fold in the value or combine in some way
 
-      // ...do some processing
+    // FoldLeft acts on the data from left to right
 
-      return err
-    }).Route(
-      NewRouter(uuid.New().String(), "unique_router_name", fifo, RouterRule(func(m map[string]interface{}) bool {
-        return len(m) > 0
-      }).Handler).
-        TerminateLeft(
-          NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
+    // FoldRight acts on the data from right to left
 
-            // send correct data somewhere
+    return aggragate
+  }).Transmit("unique_id3", func(d []Data) error {
+    // send a copy of the data somewhere
 
-            return nil
-          }),
-        ).
-        TerminateRight(
-          NewTermination(uuid.New().String(), "unique_termination_name", !fifo, func(list []map[string]interface{}) error {
-
-            // send bad data somewhere else
-
-            return nil
-          }),
-        ),
-    ),
-
-  // Build take an int buffer size and some Recorder functions to allow for state management or logging.
-  // Having a Recorder requires the use of a Deep Copy operation which can be expensive depending on
-  // the data being processed
-  ).Build(bufferSize, func(vertexID, operation string, payload []*Packet) {})
+    return nil
+  })
 
   if err := machineInstance.Run(context.Background()); err != nil {
     // Run will return an error in the case that one of the paths is not terminated
