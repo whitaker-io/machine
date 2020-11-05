@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Stream interface for Running and injecting data
 type Stream interface {
 	ID() string
 	Run(ctx context.Context, recorders ...recorder) error
@@ -21,6 +22,7 @@ type Stream interface {
 	Builder() Builder
 }
 
+// Builder interface for plotting out the data flow of the system
 type Builder interface {
 	Map(id string, a Applicative) Builder
 	FoldLeft(id string, f Fold) Builder
@@ -198,7 +200,7 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 }
 
 // Fork the data
-func (n nexter) Fork(id string, x Fork) (Builder, Builder) {
+func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 	next := &node{}
 
 	leftEdge := newEdge()
