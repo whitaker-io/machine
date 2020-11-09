@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/karlseguin/typed"
 )
 
 var testList = []Data{
@@ -604,4 +606,122 @@ func Test_Inject_Cancel(b *testing.T) {
 	<-time.After(time.Second)
 	cancel()
 	<-time.After(3 * time.Second)
+}
+
+func Test_Link(t *testing.T) {
+	count := 100000
+	out := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		go func() {
+			for n := 0; n < count; n++ {
+				channel <- testList
+			}
+		}()
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
+
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
+			if _, ok := m["name"]; !ok {
+				t.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return nil
+		}).Fork("fork_id", ForkRule(func(d Data) bool {
+		if val := typed.Typed(d).IntOr("loops", 0); val > 5 {
+			return true
+		} else {
+			d["loops"] = val + 1
+		}
+
+		return false
+	}).Handler)
+
+	left.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
+	})
+
+	right.Link("link_id", "map_id")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := m.Run(ctx); err != nil {
+		t.Error(err)
+	}
+
+	for n := 0; n < count; n++ {
+		list := <-out
+
+		if len(list) != 10 {
+			t.Errorf("incorrect data have %v want %v", list, testList[0])
+		}
+	}
+
+	go func() {
+		for n := 0; n < count; n++ {
+			m.Inject(context.Background(), map[string][]*Packet{
+				"map_id": testPayload,
+			})
+		}
+	}()
+
+	<-time.After(time.Second)
+	cancel()
+	<-time.After(3 * time.Second)
+}
+
+func Test_Link_not_ancestor(t *testing.T) {
+	count := 100000
+	out := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		go func() {
+			for n := 0; n < count; n++ {
+				channel <- testList
+			}
+		}()
+		return channel
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
+
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
+			if _, ok := m["name"]; !ok {
+				t.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return nil
+		}).Fork("fork_id", ForkRule(func(d Data) bool {
+		if val := typed.Typed(d).IntOr("loops", 0); val > 5 {
+			return false
+		} else {
+			d["loops"] = val + 1
+		}
+
+		return true
+	}).Handler)
+
+	left.Link("link_id", "sender_id")
+
+	right.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
+	})
+
+	if err := m.Run(context.Background()); err == nil {
+		t.Error("expecting error")
+	}
 }
