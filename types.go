@@ -166,9 +166,9 @@ func (o *Option) join(option *Option) *Option {
 }
 
 // Handler func for providing a SplitHandler
-func (r ForkRule) Handler(payload []*Packet) (a, b []*Packet) {
-	t := []*Packet{}
-	f := []*Packet{}
+func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
+	t = []*Packet{}
+	f = []*Packet{}
 
 	for _, packet := range payload {
 		if r(packet.Data) {

@@ -142,7 +142,7 @@ func Benchmark_Test_New(b *testing.B) {
 	},
 		&Option{FIFO: boolP(false)},
 		&Option{Idempotent: boolP(true)},
-		&Option{Metrics: boolP(false)},
+		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
 	)
