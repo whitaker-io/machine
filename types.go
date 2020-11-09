@@ -181,6 +181,22 @@ func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
 	return t, f
 }
 
+func (out *edge) sendTo(ctx context.Context, in *edge) {
+	go func() {
+	Loop:
+		for {
+			select {
+			case <-ctx.Done():
+				break Loop
+			case list := <-out.channel:
+				if len(list) > 0 {
+					in.channel <- list
+				}
+			}
+		}
+	}()
+}
+
 func newEdge() *edge {
 	return &edge{
 		make(chan []*Packet),

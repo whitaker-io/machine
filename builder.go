@@ -28,6 +28,7 @@ type Builder interface {
 	FoldLeft(id string, f Fold) Builder
 	FoldRight(id string, f Fold) Builder
 	Fork(id string, f Fork) (Builder, Builder)
+	Link(id, target string)
 	Transmit(id string, s Sender)
 }
 
@@ -237,6 +238,28 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 			next.right = n
 			return n
 		})
+}
+
+// Link the data to an existing operation creating a loop, target must be an ancestor
+func (n nexter) Link(id, target string) {
+	edge := newEdge()
+	n(&node{
+		vertex: vertex{
+			id:         id,
+			vertexType: "link",
+			metrics:    createMetrics(id, "link"),
+			handler:    func(payload []*Packet) { edge.channel <- payload },
+			connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+				v, ok := vertacies[target]
+
+				if !ok {
+					return fmt.Errorf("invalid target - not in list of ancestors")
+				}
+
+				return v.cascade(ctx, r, vertacies, option, edge)
+			},
+		},
+	})
 }
 
 // Transmit the data outside the system

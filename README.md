@@ -21,31 +21,31 @@
 Basic `receive` -> `process` -> `send` Flow
 
 ```golang
-	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+  m := NewStream("unique_id1", func(c context.Context) chan []Data {
     channel := make(chan []Data)
   
     //setup channel to collect data as long as the context has not completed
 
-		return channel
-	},
-		&Option{FIFO: boolP(false)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-	)
+    return channel
+  },
+    &Option{FIFO: boolP(false)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+  )
 
-	m.Builder().
-		Map("unique_id2", func(m Data) error {
+  m.Builder().
+    Map("unique_id2", func(m Data) error {
       var err error
 
       // ...do some processing
 
       return err
-		}).
-		Transmit("unique_id3", func(d []Data) error {
+    }).
+    Transmit("unique_id3", func(d []Data) error {
       // send a copy of the data somewhere
 
       return nil
-		})
+    })
 
   if err := m.Run(context.Background()); err != nil {
     // Run will return an error in the case that one of the paths is not terminated
@@ -56,17 +56,17 @@ Basic `receive` -> `process` -> `send` Flow
 `Machine` can also duplicate the data and send it down multiple paths
 
 ```golang
-	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+  m := NewStream("unique_id1", func(c context.Context) chan []Data {
     channel := make(chan []Data)
   
     //setup channel to collect data as long as the context has not completed
 
-		return channel
-	},
-		&Option{FIFO: boolP(false)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-	)
+    return channel
+  },
+    &Option{FIFO: boolP(false)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+  )
 
   left, right := m.Builder().Fork("unique_id2", ForkDuplicate)
   
@@ -91,17 +91,17 @@ Basic `receive` -> `process` -> `send` Flow
 Incase of errors you can also route the errors down their own path with more complex flows having retry loops
 
 ```golang
-	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+  m := NewStream("unique_id1", func(c context.Context) chan []Data {
     channel := make(chan []Data)
   
     //setup channel to collect data as long as the context has not completed
 
-		return channel
-	},
-		&Option{FIFO: boolP(false)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-	)
+    return channel
+  },
+    &Option{FIFO: boolP(false)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+  )
 
   left, right := m.Builder().Fork("unique_id2", ForkError)
   
@@ -126,17 +126,17 @@ Incase of errors you can also route the errors down their own path with more com
 Routing based on filtering the data is also possible with ForkRule
 
 ```golang  
-	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+  m := NewStream("unique_id1", func(c context.Context) chan []Data {
     channel := make(chan []Data)
   
     //setup channel to collect data as long as the context has not completed
 
-		return channel
-	},
-		&Option{FIFO: boolP(false)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-	)
+    return channel
+  },
+    &Option{FIFO: boolP(false)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+  )
 
   left, right := right.Fork("unique_id2", ForkRule(func(d Data) bool {
     //Data is a wrapper on typed.Typed see https://github.com/karlseguin/typed
@@ -144,8 +144,8 @@ Routing based on filtering the data is also possible with ForkRule
       return false
     }
 
-		return true
-	}).Handler)
+    return true
+  }).Handler)
   
   left.Transmit("unique_id3", func(d []Data) error {
     // send a copy of the data somewhere
@@ -168,17 +168,17 @@ Routing based on filtering the data is also possible with ForkRule
 `machine` also supports FoldLeft and FoldRight operations 
 
 ```golang  
-	m := NewStream("unique_id1", func(c context.Context) chan []Data {
+  m := NewStream("unique_id1", func(c context.Context) chan []Data {
     channel := make(chan []Data)
   
     //setup channel to collect data as long as the context has not completed
 
-		return channel
-	},
-		&Option{FIFO: boolP(false)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-	).FoldLeft("unique_id2", func(aggragate, value Data) Data {
+    return channel
+  },
+    &Option{FIFO: boolP(false)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+  ).FoldLeft("unique_id2", func(aggragate, value Data) Data {
     // do something to fold in the value or combine in some way
 
     // FoldLeft acts on the data from left to right
@@ -191,6 +191,57 @@ Routing based on filtering the data is also possible with ForkRule
 
     return nil
   })
+
+  if err := machineInstance.Run(context.Background()); err != nil {
+    // Run will return an error in the case that one of the paths is not terminated
+    panic(err)
+  }
+```
+
+using `Link` you can create loops to previous vertacies (use with care)
+
+```golang  
+  m := NewStream("machine_id", func(c context.Context) chan []Data {
+    channel := make(chan []Data)
+    go func() {
+      for n := 0; n < count; n++ {
+        channel <- testList
+      }
+    }()
+    return channel
+  },
+    &Option{FIFO: boolP(false)},
+    &Option{Idempotent: boolP(true)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+    &Option{BufferSize: intP(0)},
+  )
+
+  left, right := m.Builder().
+    Map("unique_id2", func(m Data) error {
+      var err error
+
+      // ...do some processing
+
+      return err
+    }).
+    Fork("fork_id", ForkRule(func(d Data) bool {
+      // example counting logic for looping
+      if val := typed.Typed(d).IntOr("__loops", 0); val > 4 {
+        return true
+      } else {
+        d["__loops"] = val + 1
+      }
+
+      return false
+    }).Handler)
+
+  left.Transmit("sender_id", func(d []Data) error {
+    out <- d
+    return nil
+  })
+
+  right.Link("link_id", "map_id")
 
   if err := machineInstance.Run(context.Background()); err != nil {
     // Run will return an error in the case that one of the paths is not terminated
