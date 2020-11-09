@@ -6,7 +6,9 @@
 package machine
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"testing"
 	"time"
@@ -609,13 +611,19 @@ func Test_Inject_Cancel(b *testing.T) {
 }
 
 func Test_Link(t *testing.T) {
-	count := 100000
+	count := 10000
 	out := make(chan []Data)
 	m := NewStream("machine_id", func(c context.Context) chan []Data {
 		channel := make(chan []Data)
 		go func() {
 			for n := 0; n < count; n++ {
-				channel <- testList
+				out := []Data{}
+				buf := &bytes.Buffer{}
+				enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+				_ = enc.Encode(testList)
+				_ = dec.Decode(&out)
+				channel <- out
 			}
 		}()
 		return channel
@@ -634,15 +642,16 @@ func Test_Link(t *testing.T) {
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
-		}).Fork("fork_id", ForkRule(func(d Data) bool {
-		if val := typed.Typed(d).IntOr("loops", 0); val > 5 {
-			return true
-		} else {
-			d["loops"] = val + 1
-		}
+		}).
+		Fork("fork_id", ForkRule(func(d Data) bool {
+			if val := typed.Typed(d).IntOr("loops", 0); val > 5 {
+				return true
+			} else {
+				d["loops"] = val + 1
+			}
 
-		return false
-	}).Handler)
+			return false
+		}).Handler)
 
 	left.Transmit("sender_id", func(d []Data) error {
 		out <- d
@@ -660,8 +669,8 @@ func Test_Link(t *testing.T) {
 	for n := 0; n < count; n++ {
 		list := <-out
 
-		if len(list) != 10 {
-			t.Errorf("incorrect data have %v want %v", list, testList[0])
+		if len(list) != 10 || list[0]["loops"] != 6 {
+			t.Errorf("incorrect data have %v want %v", list, testList)
 		}
 	}
 
