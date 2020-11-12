@@ -6,7 +6,9 @@
 package machine
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 
 	"github.com/karlseguin/typed"
@@ -17,15 +19,18 @@ import (
 var (
 	// ForkDuplicate is a SplitHandler that sends data to both outputs
 	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
-		a = []*Packet{}
-		b = []*Packet{}
+		payload2 := []*Packet{}
+		buf := &bytes.Buffer{}
+		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-		for _, packet := range payload {
-			a = append(a, packet)
-			b = append(b, packet)
+		_ = enc.Encode(payload)
+		_ = dec.Decode(&payload2)
+
+		for i, packet := range payload {
+			payload2[i].span = packet.span
 		}
 
-		return a, b
+		return payload, payload2
 	}
 
 	// ForkError is a SplitHandler for splitting errors from successes
