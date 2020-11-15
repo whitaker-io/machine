@@ -89,13 +89,16 @@ func (m *builder) Builder() Builder {
 
 // Map apply a mutation, options default to the set used when creating the Stream
 func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
-	var opt *Option
+	opt := &Option{
+		BufferSize: intP(0),
+	}
+
 	if len(options) > 0 {
-		opt = options[0].merge(options...)
+		opt = opt.merge(options...)
 	}
 
 	next := &node{}
-	edge := newEdge()
+	edge := newEdge(opt.BufferSize)
 
 	next.vertex = vertex{
 		id:         id,
@@ -127,13 +130,16 @@ func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
 
 // FoldLeft the data, options default to the set used when creating the Stream
 func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
-	var opt *Option
+	opt := &Option{
+		BufferSize: intP(0),
+	}
+
 	if len(options) > 0 {
-		opt = options[0].merge(options...)
+		opt = opt.merge(options...)
 	}
 
 	next := &node{}
-	edge := newEdge()
+	edge := newEdge(opt.BufferSize)
 
 	fr := func(payload ...*Packet) *Packet {
 		if len(payload) == 1 {
@@ -174,13 +180,16 @@ func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
 
 // FoldRight the data, options default to the set used when creating the Stream
 func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
-	var opt *Option
+	opt := &Option{
+		BufferSize: intP(0),
+	}
+
 	if len(options) > 0 {
-		opt = options[0].merge(options...)
+		opt = opt.merge(options...)
 	}
 
 	next := &node{}
-	edge := newEdge()
+	edge := newEdge(opt.BufferSize)
 
 	var fr func(...*Packet) *Packet
 	fr = func(payload ...*Packet) *Packet {
@@ -219,15 +228,18 @@ func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
 
 // Fork the data, options default to the set used when creating the Stream
 func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder) {
-	var opt *Option
+	opt := &Option{
+		BufferSize: intP(0),
+	}
+
 	if len(options) > 0 {
-		opt = options[0].merge(options...)
+		opt = opt.merge(options...)
 	}
 
 	next := &node{}
 
-	leftEdge := newEdge()
-	rightEdge := newEdge()
+	leftEdge := newEdge(opt.BufferSize)
+	rightEdge := newEdge(opt.BufferSize)
 
 	next.vertex = vertex{
 		id:         id,
@@ -267,12 +279,15 @@ func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder
 // target must be an ancestor, options default to the set
 // used when creating the Stream
 func (n nexter) Link(id, target string, options ...*Option) {
-	var opt *Option
-	if len(options) > 0 {
-		opt = options[0].merge(options...)
+	opt := &Option{
+		BufferSize: intP(0),
 	}
 
-	edge := newEdge()
+	if len(options) > 0 {
+		opt = opt.merge(options...)
+	}
+
+	edge := newEdge(opt.BufferSize)
 	n(&node{
 		vertex: vertex{
 			id:         id,
@@ -295,9 +310,12 @@ func (n nexter) Link(id, target string, options ...*Option) {
 
 // Transmit the data outside the system, options default to the set used when creating the Stream
 func (n nexter) Transmit(id string, x Sender, options ...*Option) {
-	var opt *Option
+	opt := &Option{
+		BufferSize: intP(0),
+	}
+
 	if len(options) > 0 {
-		opt = options[0].merge(options...)
+		opt = opt.merge(options...)
 	}
 
 	n(&node{
@@ -326,8 +344,10 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 // NewStream func for providing a Stream
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	mtrx := createMetrics(id, "stream")
-	edge := newEdge()
-	input := newEdge()
+	opt := defaultOptions.merge(options...)
+
+	edge := newEdge(opt.BufferSize)
+	input := newEdge(opt.BufferSize)
 
 	x := &builder{
 		vertex: vertex{
@@ -335,7 +355,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 			vertexType: "stream",
 			metrics:    mtrx,
 			input:      input,
-			option:     defaultOptions.merge(options...),
+			option:     opt,
 			handler: func(p []*Packet) {
 				edge.channel <- p
 			},
