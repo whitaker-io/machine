@@ -139,6 +139,10 @@ func (o *Option) merge(options ...*Option) *Option {
 }
 
 func (o *Option) join(option *Option) *Option {
+	if option == nil {
+		return o
+	}
+
 	out := &Option{
 		FIFO:       o.FIFO,
 		BufferSize: o.BufferSize,

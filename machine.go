@@ -23,8 +23,9 @@ type vertex struct {
 	vertexType string
 	input      *edge
 	handler
-	connector func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error
+	connector func(ctx context.Context, b *builder) error
 	metrics   *metrics
+	option    *Option
 }
 
 type metrics struct {
@@ -39,61 +40,77 @@ type metrics struct {
 	batchDuration      metric.Int64ValueRecorder
 }
 
-func (v *vertex) cascade(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option, input *edge) error {
+func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	if v.input != nil && v.vertexType != "stream" {
 		input.sendTo(ctx, v.input)
 		return nil
 	}
 
+	v.option = b.option.merge(v.option)
+
 	v.input = input
 
 	h := v.handler
 
-	if r != nil {
-		h = r.wrap(v.id, v.vertexType, h)
+	if b.recorder != nil {
+		h = b.recorder.wrap(v.id, v.vertexType, h)
 	}
 
-	if *option.Metrics {
+	if *v.option.Metrics {
 		h = v.metrics.wrap(ctx, h)
 	}
 
-	if *option.Span {
-		h = v.wrap(ctx, h)
-	}
+	h = v.wrap(ctx, h)
 
-	do(ctx, *option.FIFO, h, input)
+	do(ctx, *v.option.FIFO, h, input)
 
-	vertacies[v.id] = v
+	b.vertacies[v.id] = v
 
-	return v.connector(ctx, r, vertacies, option)
+	return v.connector(ctx, b)
 }
 
 func (v *vertex) wrap(ctx context.Context, h handler) handler {
 	return func(payload []*Packet) {
-		start := time.Now()
+		if *v.option.Span {
+			start := time.Now()
 
-		for _, packet := range payload {
-			packet.span.AddEvent(ctx, "vertex",
-				label.String("vertex_id", v.id),
-				label.String("vertex_type", v.vertexType),
-				label.String("packet_id", packet.ID),
-				label.Int64("when", start.UnixNano()),
-			)
+			for _, packet := range payload {
+				if packet.span == nil {
+					packet.newSpan(ctx, v.metrics.tracer, "stream.begin.late", v.id, v.vertexType)
+				}
+
+				packet.span.AddEvent(ctx, "vertex",
+					label.String("vertex_id", v.id),
+					label.String("vertex_type", v.vertexType),
+					label.String("packet_id", packet.ID),
+					label.Int64("when", start.UnixNano()),
+				)
+			}
 		}
 
 		h(payload)
 
-		for _, packet := range payload {
-			if packet.Error != nil {
-				packet.span.AddEvent(ctx, "error",
-					label.String("vertex_id", v.id),
-					label.String("vertex_type", v.vertexType),
-					label.String("packet_id", packet.ID),
-					label.Bool("error", packet.Error != nil),
-				)
+		if *v.option.Span {
+			start := time.Now()
+
+			for _, packet := range payload {
+				if packet.Error != nil {
+					packet.span.AddEvent(ctx, "error",
+						label.String("vertex_id", v.id),
+						label.String("vertex_type", v.vertexType),
+						label.String("packet_id", packet.ID),
+						label.Int64("when", start.UnixNano()),
+						label.Bool("error", packet.Error != nil),
+					)
+				}
 			}
-			if v.vertexType == "transmit" {
-				packet.span.End()
+		}
+
+		if v.vertexType == "transmit" {
+			for _, packet := range payload {
+				if packet.span != nil {
+					packet.span.End()
+				}
 			}
 		}
 	}
