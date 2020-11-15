@@ -139,10 +139,6 @@ func (o *Option) merge(options ...*Option) *Option {
 }
 
 func (o *Option) join(option *Option) *Option {
-	if option == nil {
-		return o
-	}
-
 	out := &Option{
 		FIFO:       o.FIFO,
 		BufferSize: o.BufferSize,
@@ -206,9 +202,15 @@ func (out *edge) sendTo(ctx context.Context, in *edge) {
 	}()
 }
 
-func newEdge() *edge {
+func newEdge(bufferSize *int) *edge {
+	b := 0
+
+	if bufferSize != nil {
+		b = *bufferSize
+	}
+
 	return &edge{
-		make(chan []*Packet),
+		make(chan []*Packet, b),
 	}
 }
 
