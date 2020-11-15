@@ -141,7 +141,6 @@ func (r recorder) wrap(id, vertexType string, h handler) handler {
 	return func(payload []*Packet) {
 		r(id, vertexType, "start", payload)
 		h(payload)
-		r(id, vertexType, "done", payload)
 	}
 }
 
