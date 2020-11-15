@@ -75,6 +75,12 @@ func (m *builder) Inject(ctx context.Context, events map[string][]*Packet) {
 					packet.newSpan(ctx, v.metrics.tracer, v.vertexType+".inject", v.id, v.vertexType)
 				}
 			}
+
+			if !*v.option.Injectable {
+				m.recorder(v.id, v.vertexType, "injection-denied", payload)
+				continue
+			}
+
 			v.input.channel <- payload
 		}
 	}
@@ -361,6 +367,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 			},
 		},
 		vertacies: map[string]*vertex{},
+		recorder:  func(s1, s2, s3 string, p []*Packet) {},
 	}
 
 	x.connector = func(ctx context.Context, b *builder) error {

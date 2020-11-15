@@ -51,7 +51,7 @@ var (
 
 	defaultOptions = &Option{
 		FIFO:       boolP(false),
-		Idempotent: boolP(false),
+		Injectable: boolP(true),
 		Metrics:    boolP(true),
 		Span:       boolP(true),
 		BufferSize: intP(0),
@@ -72,7 +72,7 @@ type Packet struct {
 // Option type for holding machine settings
 type Option struct {
 	FIFO       *bool
-	Idempotent *bool
+	Injectable *bool
 	BufferSize *int
 	Span       *bool
 	Metrics    *bool
@@ -142,7 +142,7 @@ func (o *Option) join(option *Option) *Option {
 	out := &Option{
 		FIFO:       o.FIFO,
 		BufferSize: o.BufferSize,
-		Idempotent: o.Idempotent,
+		Injectable: o.Injectable,
 		Metrics:    o.Metrics,
 		Span:       o.Span,
 	}
@@ -155,8 +155,8 @@ func (o *Option) join(option *Option) *Option {
 		out.BufferSize = option.BufferSize
 	}
 
-	if option.Idempotent != nil {
-		out.Idempotent = option.Idempotent
+	if option.Injectable != nil {
+		out.Injectable = option.Injectable
 	}
 
 	if option.Metrics != nil {

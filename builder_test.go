@@ -141,7 +141,7 @@ func Benchmark_Test_New(b *testing.B) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -190,7 +190,7 @@ func Test_New(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -251,7 +251,7 @@ func Test_New2(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -333,7 +333,7 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -346,7 +346,7 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -357,7 +357,7 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -376,7 +376,7 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -391,7 +391,7 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -420,7 +420,7 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -486,7 +486,7 @@ func Test_Inject(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(0)},
@@ -501,7 +501,7 @@ func Test_Inject(b *testing.T) {
 			return fmt.Errorf("error")
 		},
 			&Option{FIFO: boolP(false)},
-			&Option{Idempotent: boolP(true)},
+			&Option{Injectable: boolP(true)},
 			&Option{Metrics: boolP(true)},
 			&Option{Span: boolP(false)},
 			&Option{BufferSize: intP(0)},
@@ -513,7 +513,7 @@ func Test_Inject(b *testing.T) {
 			return d1
 		},
 			&Option{FIFO: boolP(false)},
-			&Option{Idempotent: boolP(true)},
+			&Option{Injectable: boolP(true)},
 			&Option{Metrics: boolP(true)},
 			&Option{Span: boolP(false)},
 			&Option{BufferSize: intP(0)}).
@@ -521,14 +521,14 @@ func Test_Inject(b *testing.T) {
 			return d1
 		},
 			&Option{FIFO: boolP(false)},
-			&Option{Idempotent: boolP(true)},
+			&Option{Injectable: boolP(true)},
 			&Option{Metrics: boolP(true)},
 			&Option{Span: boolP(false)},
 			&Option{BufferSize: intP(0)},
 		).
 		Fork("fork_id", ForkError,
 			&Option{FIFO: boolP(false)},
-			&Option{Idempotent: boolP(true)},
+			&Option{Injectable: boolP(true)},
 			&Option{Metrics: boolP(true)},
 			&Option{Span: boolP(false)},
 			&Option{BufferSize: intP(0)},
@@ -539,7 +539,7 @@ func Test_Inject(b *testing.T) {
 		return nil
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -585,7 +585,7 @@ func Test_Inject_Cancel(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(0)},
@@ -658,7 +658,7 @@ func Test_Link(t *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -680,7 +680,10 @@ func Test_Link(t *testing.T) {
 			}
 
 			return false
-		}).Handler)
+		}).Handler,
+			&Option{Injectable: boolP(false)},
+			&Option{BufferSize: intP(10)},
+		)
 
 	left.Transmit("sender_id", func(d []Data) error {
 		out <- d
@@ -705,15 +708,22 @@ func Test_Link(t *testing.T) {
 
 	go func() {
 		for n := 0; n < count; n++ {
+			out := []*Packet{}
+			buf := &bytes.Buffer{}
+			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+			_ = enc.Encode(testPayload)
+			_ = dec.Decode(&out)
 			m.Inject(context.Background(), map[string][]*Packet{
-				"map_id": testPayload,
+				"map_id":  out,
+				"fork_id": out,
 			})
 		}
 	}()
 
 	<-time.After(time.Second)
 	cancel()
-	<-time.After(3 * time.Second)
+	<-time.After(time.Second)
 }
 
 func Test_Link_not_ancestor(t *testing.T) {
@@ -729,7 +739,7 @@ func Test_Link_not_ancestor(t *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -754,7 +764,7 @@ func Test_Link_not_ancestor(t *testing.T) {
 
 	left.Link("link_id", "sender_id",
 		&Option{FIFO: boolP(false)},
-		&Option{Idempotent: boolP(true)},
+		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(0)},
