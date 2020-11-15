@@ -60,9 +60,7 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 		h = v.metrics.wrap(ctx, h)
 	}
 
-	if *v.option.Span {
-		h = v.wrap(ctx, h)
-	}
+	h = v.wrap(ctx, h)
 
 	do(ctx, *v.option.FIFO, h, input)
 
@@ -73,33 +71,41 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 
 func (v *vertex) wrap(ctx context.Context, h handler) handler {
 	return func(payload []*Packet) {
-		start := time.Now()
+		if *v.option.Span {
+			start := time.Now()
 
-		for _, packet := range payload {
-			if packet.span == nil {
-				packet.newSpan(ctx, v.metrics.tracer, "stream.begin.late", v.id, v.vertexType)
+			for _, packet := range payload {
+				if packet.span == nil {
+					packet.newSpan(ctx, v.metrics.tracer, "stream.begin.late", v.id, v.vertexType)
+				}
+
+				packet.span.AddEvent(ctx, "vertex",
+					label.String("vertex_id", v.id),
+					label.String("vertex_type", v.vertexType),
+					label.String("packet_id", packet.ID),
+					label.Int64("when", start.UnixNano()),
+				)
 			}
-
-			packet.span.AddEvent(ctx, "vertex",
-				label.String("vertex_id", v.id),
-				label.String("vertex_type", v.vertexType),
-				label.String("packet_id", packet.ID),
-				label.Int64("when", start.UnixNano()),
-			)
 		}
 
 		h(payload)
 
-		for _, packet := range payload {
-			if packet.Error != nil {
-				packet.span.AddEvent(ctx, "error",
-					label.String("vertex_id", v.id),
-					label.String("vertex_type", v.vertexType),
-					label.String("packet_id", packet.ID),
-					label.Bool("error", packet.Error != nil),
-				)
+		if *v.option.Span {
+			start := time.Now()
+
+			for _, packet := range payload {
+				if packet.Error != nil {
+					packet.span.AddEvent(ctx, "error",
+						label.String("vertex_id", v.id),
+						label.String("vertex_type", v.vertexType),
+						label.String("packet_id", packet.ID),
+						label.Int64("when", start.UnixNano()),
+						label.Bool("error", packet.Error != nil),
+					)
+				}
 			}
 		}
+
 		if v.vertexType == "transmit" {
 			for _, packet := range payload {
 				if packet.span != nil {
