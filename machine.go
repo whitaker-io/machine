@@ -23,8 +23,9 @@ type vertex struct {
 	vertexType string
 	input      *edge
 	handler
-	connector func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error
+	connector func(ctx context.Context, b *builder) error
 	metrics   *metrics
+	option    *Option
 }
 
 type metrics struct {
@@ -39,33 +40,35 @@ type metrics struct {
 	batchDuration      metric.Int64ValueRecorder
 }
 
-func (v *vertex) cascade(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option, input *edge) error {
+func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	if v.input != nil && v.vertexType != "stream" {
 		input.sendTo(ctx, v.input)
 		return nil
 	}
 
+	v.option = b.option.merge(v.option)
+
 	v.input = input
 
 	h := v.handler
 
-	if r != nil {
-		h = r.wrap(v.id, v.vertexType, h)
+	if b.recorder != nil {
+		h = b.recorder.wrap(v.id, v.vertexType, h)
 	}
 
-	if *option.Metrics {
+	if *v.option.Metrics {
 		h = v.metrics.wrap(ctx, h)
 	}
 
-	if *option.Span {
+	if *v.option.Span {
 		h = v.wrap(ctx, h)
 	}
 
-	do(ctx, *option.FIFO, h, input)
+	do(ctx, *v.option.FIFO, h, input)
 
-	vertacies[v.id] = v
+	b.vertacies[v.id] = v
 
-	return v.connector(ctx, r, vertacies, option)
+	return v.connector(ctx, b)
 }
 
 func (v *vertex) wrap(ctx context.Context, h handler) handler {

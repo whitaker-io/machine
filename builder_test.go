@@ -499,22 +499,51 @@ func Test_Inject(b *testing.T) {
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return fmt.Errorf("error")
-		}).
+		},
+			&Option{FIFO: boolP(false)},
+			&Option{Idempotent: boolP(true)},
+			&Option{Metrics: boolP(true)},
+			&Option{Span: boolP(false)},
+			&Option{BufferSize: intP(0)},
+		).
 		FoldLeft("fold_id1", func(d1, d2 Data) Data {
 			return d1
 		}).
 		FoldLeft("fold_id1", func(d1, d2 Data) Data {
 			return d1
-		}).
+		},
+			&Option{FIFO: boolP(false)},
+			&Option{Idempotent: boolP(true)},
+			&Option{Metrics: boolP(true)},
+			&Option{Span: boolP(false)},
+			&Option{BufferSize: intP(0)}).
 		FoldRight("fold_id2", func(d1, d2 Data) Data {
 			return d1
-		}).
-		Fork("fork_id", ForkError)
+		},
+			&Option{FIFO: boolP(false)},
+			&Option{Idempotent: boolP(true)},
+			&Option{Metrics: boolP(true)},
+			&Option{Span: boolP(false)},
+			&Option{BufferSize: intP(0)},
+		).
+		Fork("fork_id", ForkError,
+			&Option{FIFO: boolP(false)},
+			&Option{Idempotent: boolP(true)},
+			&Option{Metrics: boolP(true)},
+			&Option{Span: boolP(false)},
+			&Option{BufferSize: intP(0)},
+		)
 
 	left.Transmit("sender_id", func(d []Data) error {
 		b.Error("unexpected")
 		return nil
-	})
+	},
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
 
 	right.Transmit("sender_id", func(d []Data) error {
 		out <- d
@@ -723,7 +752,13 @@ func Test_Link_not_ancestor(t *testing.T) {
 		return true
 	}).Handler)
 
-	left.Link("link_id", "sender_id")
+	left.Link("link_id", "sender_id",
+		&Option{FIFO: boolP(false)},
+		&Option{Idempotent: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
 
 	right.Transmit("sender_id", func(d []Data) error {
 		out <- d

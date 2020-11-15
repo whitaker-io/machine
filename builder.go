@@ -24,12 +24,12 @@ type Stream interface {
 
 // Builder interface for plotting out the data flow of the system
 type Builder interface {
-	Map(id string, a Applicative) Builder
-	FoldLeft(id string, f Fold) Builder
-	FoldRight(id string, f Fold) Builder
-	Fork(id string, f Fork) (Builder, Builder)
-	Link(id, target string)
-	Transmit(id string, s Sender)
+	Map(id string, a Applicative, options ...*Option) Builder
+	FoldLeft(id string, f Fold, options ...*Option) Builder
+	FoldRight(id string, f Fold, options ...*Option) Builder
+	Fork(id string, f Fork, options ...*Option) (Builder, Builder)
+	Link(id, target string, options ...*Option)
+	Transmit(id string, s Sender, options ...*Option)
 }
 
 type nexter func(*node) *node
@@ -38,7 +38,6 @@ type builder struct {
 	vertex
 	next      *node
 	recorder  recorder
-	option    *Option
 	vertacies map[string]*vertex
 }
 
@@ -64,7 +63,7 @@ func (m *builder) Run(ctx context.Context, recorders ...recorder) error {
 		m.recorder = mergeRecorders(recorders...)
 	}
 
-	return m.cascade(ctx, m.recorder, m.vertacies, m.option, m.input)
+	return m.cascade(ctx, m, m.input)
 }
 
 // Inject func for injecting events into the system
@@ -88,8 +87,13 @@ func (m *builder) Builder() Builder {
 	})
 }
 
-// Then apply a mutation
-func (n nexter) Map(id string, x Applicative) Builder {
+// Map apply a mutation, options default to the set used when creating the Stream
+func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
+	var opt *Option
+	if len(options) > 0 {
+		opt = options[0].merge(options...)
+	}
+
 	next := &node{}
 	edge := newEdge()
 
@@ -97,6 +101,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 		id:         id,
 		vertexType: "map",
 		metrics:    createMetrics(id, "map"),
+		option:     opt,
 		handler: func(payload []*Packet) {
 			for _, packet := range payload {
 				packet.apply(id, x)
@@ -104,11 +109,11 @@ func (n nexter) Map(id string, x Applicative) Builder {
 
 			edge.channel <- payload
 		},
-		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+		connector: func(ctx context.Context, b *builder) error {
 			if next.next == nil {
 				return fmt.Errorf("non-terminated map")
 			}
-			return next.next.cascade(ctx, r, vertacies, option, edge)
+			return next.next.cascade(ctx, b, edge)
 		},
 	}
 
@@ -120,8 +125,13 @@ func (n nexter) Map(id string, x Applicative) Builder {
 	})
 }
 
-// FoldLeft the data
-func (n nexter) FoldLeft(id string, x Fold) Builder {
+// FoldLeft the data, options default to the set used when creating the Stream
+func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
+	var opt *Option
+	if len(options) > 0 {
+		opt = options[0].merge(options...)
+	}
+
 	next := &node{}
 	edge := newEdge()
 
@@ -143,14 +153,15 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 		id:         id,
 		vertexType: "fold",
 		metrics:    createMetrics(id, "fold"),
+		option:     opt,
 		handler: func(payload []*Packet) {
 			edge.channel <- []*Packet{fr(payload...)}
 		},
-		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+		connector: func(ctx context.Context, b *builder) error {
 			if next.next == nil {
 				return fmt.Errorf("non-terminated fold")
 			}
-			return next.next.cascade(ctx, r, vertacies, option, edge)
+			return next.next.cascade(ctx, b, edge)
 		},
 	}
 	next = n(next)
@@ -161,8 +172,13 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 	})
 }
 
-// FoldRight the data
-func (n nexter) FoldRight(id string, x Fold) Builder {
+// FoldRight the data, options default to the set used when creating the Stream
+func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
+	var opt *Option
+	if len(options) > 0 {
+		opt = options[0].merge(options...)
+	}
+
 	next := &node{}
 	edge := newEdge()
 
@@ -181,14 +197,15 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 		id:         id,
 		vertexType: "fold",
 		metrics:    createMetrics(id, "fold"),
+		option:     opt,
 		handler: func(payload []*Packet) {
 			edge.channel <- []*Packet{fr(payload...)}
 		},
-		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+		connector: func(ctx context.Context, b *builder) error {
 			if next.next == nil {
 				return fmt.Errorf("non-terminated node")
 			}
-			return next.next.cascade(ctx, r, vertacies, option, edge)
+			return next.next.cascade(ctx, b, edge)
 		},
 	}
 
@@ -200,8 +217,13 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 	})
 }
 
-// Fork the data
-func (n nexter) Fork(id string, x Fork) (left, right Builder) {
+// Fork the data, options default to the set used when creating the Stream
+func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder) {
+	var opt *Option
+	if len(options) > 0 {
+		opt = options[0].merge(options...)
+	}
+
 	next := &node{}
 
 	leftEdge := newEdge()
@@ -211,17 +233,18 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 		id:         id,
 		vertexType: "fork",
 		metrics:    createMetrics(id, "fork"),
+		option:     opt,
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
 			leftEdge.channel <- lpayload
 			rightEdge.channel <- rpayload
 		},
-		connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+		connector: func(ctx context.Context, b *builder) error {
 			if next.left == nil || next.right == nil {
 				return fmt.Errorf("non-terminated fork")
-			} else if err := next.left.cascade(ctx, r, vertacies, option, leftEdge); err != nil {
+			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
 				return err
-			} else if err := next.right.cascade(ctx, r, vertacies, option, rightEdge); err != nil {
+			} else if err := next.right.cascade(ctx, b, rightEdge); err != nil {
 				return err
 			}
 
@@ -240,8 +263,15 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 		})
 }
 
-// Link the data to an existing operation creating a loop, target must be an ancestor
-func (n nexter) Link(id, target string) {
+// Link the data to an existing operation creating a loop,
+// target must be an ancestor, options default to the set
+// used when creating the Stream
+func (n nexter) Link(id, target string, options ...*Option) {
+	var opt *Option
+	if len(options) > 0 {
+		opt = options[0].merge(options...)
+	}
+
 	edge := newEdge()
 	n(&node{
 		vertex: vertex{
@@ -249,26 +279,33 @@ func (n nexter) Link(id, target string) {
 			vertexType: "link",
 			metrics:    createMetrics(id, "link"),
 			handler:    func(payload []*Packet) { edge.channel <- payload },
-			connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
-				v, ok := vertacies[target]
+			option:     opt,
+			connector: func(ctx context.Context, b *builder) error {
+				v, ok := b.vertacies[target]
 
 				if !ok {
 					return fmt.Errorf("invalid target - not in list of ancestors")
 				}
 
-				return v.cascade(ctx, r, vertacies, option, edge)
+				return v.cascade(ctx, b, edge)
 			},
 		},
 	})
 }
 
-// Transmit the data outside the system
-func (n nexter) Transmit(id string, x Sender) {
+// Transmit the data outside the system, options default to the set used when creating the Stream
+func (n nexter) Transmit(id string, x Sender, options ...*Option) {
+	var opt *Option
+	if len(options) > 0 {
+		opt = options[0].merge(options...)
+	}
+
 	n(&node{
 		vertex: vertex{
 			id:         id,
 			vertexType: "transmit",
 			metrics:    createMetrics(id, "transmit"),
+			option:     opt,
 			handler: func(payload []*Packet) {
 				data := make([]Data, len(payload))
 				for i, packet := range payload {
@@ -281,7 +318,7 @@ func (n nexter) Transmit(id string, x Sender) {
 					}
 				}
 			},
-			connector: func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error { return nil },
+			connector: func(ctx context.Context, b *builder) error { return nil },
 		},
 	})
 }
@@ -292,21 +329,21 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	edge := newEdge()
 	input := newEdge()
 
-	builder := &builder{
+	x := &builder{
 		vertex: vertex{
 			id:         id,
 			vertexType: "stream",
 			metrics:    mtrx,
+			input:      input,
+			option:     defaultOptions.merge(options...),
 			handler: func(p []*Packet) {
 				edge.channel <- p
 			},
-			input: input,
 		},
 		vertacies: map[string]*vertex{},
-		option:    defaultOptions.merge(options...),
 	}
 
-	builder.connector = func(ctx context.Context, r recorder, vertacies map[string]*vertex, option *Option) error {
+	x.connector = func(ctx context.Context, b *builder) error {
 		i := retriever(ctx)
 
 		go func() {
@@ -326,7 +363,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 							ID:   uuid.New().String(),
 							Data: item,
 						}
-						if *option.Span {
+						if *x.option.Span {
 							packet.newSpan(ctx, mtrx.tracer, "stream.begin", id, "stream")
 						}
 						payload[i] = packet
@@ -336,10 +373,10 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 				}
 			}
 		}()
-		return builder.next.cascade(ctx, r, vertacies, option, edge)
+		return x.next.cascade(ctx, x, edge)
 	}
 
-	return builder
+	return x
 }
 
 func mergeRecorders(recorders ...recorder) recorder {
