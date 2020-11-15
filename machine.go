@@ -99,7 +99,9 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 					label.Bool("error", packet.Error != nil),
 				)
 			}
-			if v.vertexType == "transmit" {
+		}
+		for _, packet := range payload {
+			if v.vertexType == "transmit" && packet.span != nil {
 				packet.span.End()
 			}
 		}
