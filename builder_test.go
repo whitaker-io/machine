@@ -756,7 +756,7 @@ func Test_Link_not_ancestor(t *testing.T) {
 		&Option{FIFO: boolP(false)},
 		&Option{Idempotent: boolP(true)},
 		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
+		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(0)},
 	)
 

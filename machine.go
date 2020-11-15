@@ -76,6 +76,10 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 		start := time.Now()
 
 		for _, packet := range payload {
+			if packet.span == nil {
+				packet.newSpan(ctx, v.metrics.tracer, "stream.begin.late", v.id, v.vertexType)
+			}
+
 			packet.span.AddEvent(ctx, "vertex",
 				label.String("vertex_id", v.id),
 				label.String("vertex_type", v.vertexType),
