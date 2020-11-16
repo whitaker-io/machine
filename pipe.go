@@ -8,7 +8,6 @@ import (
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 // Subscription interface for creating a pull based stream
@@ -256,9 +255,9 @@ func (pipe *Pipe) Use(args ...interface{}) {
 }
 
 // NewPipe func for creating a new server instance
-func NewPipe(port string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
+func NewPipe(id, port string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
 	pipe := &Pipe{
-		id:         uuid.New().String(),
+		id:         id,
 		app:        fiber.New(config...),
 		port:       port,
 		streams:    map[string]Stream{},
