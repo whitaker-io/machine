@@ -46,7 +46,6 @@ type Log struct {
 // Pipe type for holding the server information for running http servers
 type Pipe struct {
 	id         string
-	port       string
 	app        *fiber.App
 	streams    map[string]Stream
 	healthInfo map[string]*HealthInfo
@@ -62,7 +61,7 @@ type HealthInfo struct {
 }
 
 // Run func to start the server
-func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
+func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duration) error {
 	if len(pipe.streams) < 1 {
 		return fmt.Errorf("no streams found")
 	}
@@ -100,7 +99,7 @@ func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
 		}
 	}()
 
-	return pipe.app.Listen(pipe.port)
+	return pipe.app.Listen(port)
 }
 
 // StreamHTTP func for creating a Stream at the path /stream/<id>
@@ -258,11 +257,10 @@ func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
 }
 
 // NewPipe func for creating a new server instance
-func NewPipe(id, port string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
+func NewPipe(id string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
 	pipe := &Pipe{
 		id:         id,
 		app:        fiber.New(config...),
-		port:       port,
 		streams:    map[string]Stream{},
 		healthInfo: map[string]*HealthInfo{},
 		logStore:   store,
