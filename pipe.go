@@ -25,9 +25,9 @@ type Logger interface {
 
 // LogStore type for managing cluster state
 type LogStore interface {
-	Join(id string, callback InjectionCallback, streamIDs ...string)
+	Join(id string, callback InjectionCallback, streamIDs ...string) error
 	Write(logs ...*Log)
-	Leave(id string)
+	Leave(id string) error
 }
 
 // InjectionCallback func to run when the LogStore decides to restart the flow of orphaned Data
@@ -99,27 +99,36 @@ func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
 		}
 	}
 
-	pipe.logStore.Join(pipe.id, func(logs ...*Log) {
-		for _, log := range logs {
-			if stream, ok := pipe.streams[log.StreamID]; ok {
-				stream.Inject(ctx, map[string][]*Packet{
-					log.VertexID: {log.Packet},
-				})
-			} else {
-				pipe.logger.Error(map[string]interface{}{
-					"message": "unknown stream",
-					"log":     log,
-				})
+	err := pipe.logStore.Join(pipe.id,
+		func(logs ...*Log) {
+			for _, log := range logs {
+				if stream, ok := pipe.streams[log.StreamID]; ok {
+					stream.Inject(ctx, map[string][]*Packet{
+						log.VertexID: {log.Packet},
+					})
+				} else {
+					pipe.logger.Error(map[string]interface{}{
+						"message": "unknown stream",
+						"log":     log,
+					})
+				}
 			}
-		}
-	},
-		streamIDs...)
+		},
+		streamIDs...,
+	)
+
+	if err != nil {
+		return err
+	}
 
 	go func() {
 	Loop:
 		for {
 			select {
 			case <-ctx.Done():
+				if err := pipe.logStore.Leave(pipe.id); err != nil {
+					pipe.logger.Error(err)
+				}
 				if err := pipe.app.Shutdown(); err != nil {
 					pipe.logger.Error(err)
 				}
