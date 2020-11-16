@@ -68,10 +68,8 @@ func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
 	}
 
 	streamIDs := []string{}
-	recorders := map[string]recorder{}
 	for key := range pipe.streams {
 		streamIDs = append(streamIDs, key)
-		recorders[key] = pipe.recorder(key)
 	}
 
 	if err := pipe.logStore.Join(pipe.id, pipe.injectionCallback(ctx), streamIDs...); err != nil {
@@ -79,7 +77,7 @@ func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
 	}
 
 	for key, stream := range pipe.streams {
-		if err := stream.Run(ctx, recorders[key]); err != nil {
+		if err := stream.Run(ctx, pipe.recorder(key)); err != nil {
 			return err
 		}
 	}
