@@ -106,7 +106,7 @@ func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
 }
 
 // StreamHTTP func for creating a Stream at the path /stream/<id>
-func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Stream {
+func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 	channel := make(chan []Data)
 
 	pipe.app.Add(http.MethodPost, "/stream/"+id, func(ctx *fiber.Ctx) error {
@@ -150,11 +150,11 @@ func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Stream {
 		StreamID: id,
 	}
 
-	return pipe.streams[id]
+	return pipe.streams[id].Builder()
 }
 
 // StreamSubscription func for creating a Stream at the that reads from a subscription
-func (pipe *Pipe) StreamSubscription(id string, sub Subscription, interval time.Duration, opts ...*Option) Stream {
+func (pipe *Pipe) StreamSubscription(id string, sub Subscription, interval time.Duration, opts ...*Option) Builder {
 	channel := make(chan []Data)
 
 	pipe.streams[id] = NewStream(id,
@@ -196,7 +196,7 @@ func (pipe *Pipe) StreamSubscription(id string, sub Subscription, interval time.
 		StreamID: id,
 	}
 
-	return pipe.streams[id]
+	return pipe.streams[id].Builder()
 }
 
 // Use Wraps fiber.App.Use
