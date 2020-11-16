@@ -68,56 +68,20 @@ func (pipe *Pipe) Run(ctx context.Context, gracePeriod time.Duration) error {
 	}
 
 	streamIDs := []string{}
-	for key, stream := range pipe.streams {
-		streamID := key
-		streamIDs = append(streamIDs, streamID)
-
-		recorder := func(vertexID, vertexType, state string, payload []*Packet) {
-			logs := make([]*Log, len(payload))
-			now := time.Now()
-			for i, packet := range payload {
-				logs[i] = &Log{
-					OwnerID:    pipe.id,
-					StreamID:   streamID,
-					VertexID:   vertexID,
-					VertexType: vertexType,
-					State:      state,
-					Packet:     packet,
-					When:       now,
-				}
-			}
-			if pipe.logger != nil {
-				pipe.logger.Info(logs)
-			}
-			if pipe.logStore != nil {
-				pipe.logStore.Write(logs...)
-			}
-		}
-		if err := stream.Run(ctx, recorder); err != nil {
-			return err
-		}
+	recorders := map[string]recorder{}
+	for key := range pipe.streams {
+		streamIDs = append(streamIDs, key)
+		recorders[key] = pipe.recorder(key)
 	}
 
-	err := pipe.logStore.Join(pipe.id,
-		func(logs ...*Log) {
-			for _, log := range logs {
-				if stream, ok := pipe.streams[log.StreamID]; ok {
-					stream.Inject(ctx, map[string][]*Packet{
-						log.VertexID: {log.Packet},
-					})
-				} else {
-					pipe.logger.Error(map[string]interface{}{
-						"message": "unknown stream",
-						"log":     log,
-					})
-				}
-			}
-		},
-		streamIDs...,
-	)
-
-	if err != nil {
+	if err := pipe.logStore.Join(pipe.id, pipe.injectionCallback(ctx), streamIDs...); err != nil {
 		return err
+	}
+
+	for key, stream := range pipe.streams {
+		if err := stream.Run(ctx, recorders[key]); err != nil {
+			return err
+		}
 	}
 
 	go func() {
@@ -252,6 +216,47 @@ func (pipe *Pipe) StreamSubscription(id string, sub Subscription, interval time.
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (pipe *Pipe) Use(args ...interface{}) {
 	pipe.app.Use(args...)
+}
+
+func (pipe *Pipe) recorder(streamID string) recorder {
+	return func(vertexID, vertexType, state string, payload []*Packet) {
+		logs := make([]*Log, len(payload))
+		now := time.Now()
+		for i, packet := range payload {
+			logs[i] = &Log{
+				OwnerID:    pipe.id,
+				StreamID:   streamID,
+				VertexID:   vertexID,
+				VertexType: vertexType,
+				State:      state,
+				Packet:     packet,
+				When:       now,
+			}
+		}
+		if pipe.logger != nil {
+			pipe.logger.Info(logs)
+		}
+		if pipe.logStore != nil {
+			pipe.logStore.Write(logs...)
+		}
+	}
+}
+
+func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
+	return func(logs ...*Log) {
+		for _, log := range logs {
+			if stream, ok := pipe.streams[log.StreamID]; ok {
+				stream.Inject(ctx, map[string][]*Packet{
+					log.VertexID: {log.Packet},
+				})
+			} else {
+				pipe.logger.Error(map[string]interface{}{
+					"message": "unknown stream",
+					"log":     log,
+				})
+			}
+		}
+	}
 }
 
 // NewPipe func for creating a new server instance
