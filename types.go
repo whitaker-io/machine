@@ -63,9 +63,9 @@ type Data typed.Typed
 
 // Packet type that holds information traveling through the machine
 type Packet struct {
-	ID    string
-	Data  Data
-	Error error
+	ID    string `json:"id"`
+	Data  Data   `json:"data"`
+	Error error  `json:"error"`
 	span  trace.Span
 }
 
