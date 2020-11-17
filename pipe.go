@@ -1,13 +1,16 @@
 package machine
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 // Subscription interface for creating a pull based stream
@@ -106,19 +109,13 @@ func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duratio
 func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 	channel := make(chan []Data)
 
-	pipe.app.Add(http.MethodPost, "/stream/"+id, func(ctx *fiber.Ctx) error {
+	pipe.app.Post("/stream/"+id, func(ctx *fiber.Ctx) error {
 		payload := []Data{}
 		packet := Data{}
 
-		if body := string(ctx.Body()); len(body) < 4 {
-			return ctx.SendStatus(http.StatusBadRequest)
-		} else if []rune(body)[0] == rune('{') {
-			if ctx.BodyParser(packet) != nil {
-				return ctx.SendStatus(http.StatusBadRequest)
-			}
-
+		if err := ctx.BodyParser(&packet); err == nil {
 			payload = []Data{packet}
-		} else if err := ctx.BodyParser(payload); err != nil {
+		} else if err := ctx.BodyParser(&payload); err != nil {
 			return ctx.SendStatus(http.StatusBadRequest)
 		}
 
@@ -131,7 +128,14 @@ func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 			}
 		}()
 
-		channel <- payload
+		out := []Data{}
+		buf := &bytes.Buffer{}
+		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+		_ = enc.Encode(payload)
+		_ = dec.Decode(&out)
+
+		channel <- out
 
 		return ctx.SendStatus(http.StatusAccepted)
 	})
@@ -267,7 +271,9 @@ func NewPipe(id string, logger Logger, store LogStore, config ...fiber.Config) *
 		logger:     logger,
 	}
 
-	pipe.app.Add(http.MethodGet, "/health", func(c *fiber.Ctx) error {
+	pipe.Use(recover.New())
+
+	pipe.app.Get("/health", func(c *fiber.Ctx) error {
 		return c.Status(http.StatusOK).JSON(map[string]interface{}{
 			"pipe_id":     pipe.id,
 			"health_info": pipe.healthInfo,
