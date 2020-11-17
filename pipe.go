@@ -58,9 +58,9 @@ type Pipe struct {
 
 // HealthInfo type for giving info on the stream
 type HealthInfo struct {
-	StreamID    string     `json:"stream_id"`
-	LastPayload time.Time  `json:"last_payload"`
-	mtx         sync.Mutex `json:"-"`
+	StreamID    string    `json:"stream_id"`
+	LastPayload time.Time `json:"last_payload"`
+	mtx         sync.Mutex
 }
 
 // Run func to start the server
