@@ -13,7 +13,6 @@ import (
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/whitaker-io/go-mix/lib/util"
 	"github.com/whitaker-io/machine/cmd/templates"
 )
 
@@ -22,7 +21,7 @@ var force bool
 
 var rootCmd = &cobra.Command{
 	Use:   "machine",
-	Short: "",
+	Short: "Tool for creating boilerplate projects and streams based on github.com/whitaker-io/machine",
 	Long:  ``,
 }
 
@@ -89,7 +88,7 @@ func config(args []string) map[string]interface{} {
 		gosrc = filepath.Join(gopath, "src")
 	}
 
-	currentDir := util.GetCurrentDir()
+	currentDir := getCurrentDir()
 
 	return map[string]interface{}{
 		"Path": strings.TrimPrefix(currentDir, gosrc+"/"),
