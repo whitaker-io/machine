@@ -423,4 +423,5 @@ func mergeRecorders(recorders ...recorder) recorder {
 
 func init() {
 	gob.Register([]*Packet{})
+	gob.Register([]Data{})
 }

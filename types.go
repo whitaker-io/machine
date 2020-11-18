@@ -221,3 +221,14 @@ func boolP(v bool) *bool {
 func intP(v int) *int {
 	return &v
 }
+
+func deepCopy(data []Data) []Data {
+	out := []Data{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(data)
+	_ = dec.Decode(&out)
+
+	return out
+}

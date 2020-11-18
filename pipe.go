@@ -1,9 +1,7 @@
 package machine
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
 	"fmt"
 	"net/http"
 	"sync"
@@ -105,6 +103,19 @@ func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duratio
 	return pipe.app.Listen(port)
 }
 
+// Stream func for registering a Stream with the Pipe
+func (pipe *Pipe) Stream(stream Stream) Builder {
+	id := stream.ID()
+
+	pipe.streams[id] = stream
+
+	pipe.healthInfo[id] = &HealthInfo{
+		StreamID: id,
+	}
+
+	return pipe.streams[id].Builder()
+}
+
 // StreamHTTP func for creating a Stream at the path /stream/<id>
 func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 	channel := make(chan []Data)
@@ -128,14 +139,7 @@ func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 			}
 		}()
 
-		out := []Data{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&out)
-
-		channel <- out
+		channel <- deepCopy(payload)
 
 		return ctx.SendStatus(http.StatusAccepted)
 	})
