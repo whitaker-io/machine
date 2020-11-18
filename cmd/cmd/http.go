@@ -10,8 +10,12 @@ import (
 // httpCmd represents the http command
 var httpCmd = &cobra.Command{
 	Use:   "http <name>",
-	Short: "",
-	Long:  ``,
+	Short: "Adds a new machine.Stream to the machine.Pipe",
+	Long: `Adds a new machine.Stream to the machine.Pipe
+	This command sets up an HTTP based Stream in the Pipe
+	
+	Example: machine http wehbook
+	`,
 	Run: addFN(templates.Project{
 		Dirs: map[string]templates.Project{
 			"pipe": {
@@ -32,6 +36,7 @@ const httpFile = `package pipe
 import "github.com/whitaker-io/machine"
 
 func init() {
+	// HTTP Stream ready to be built
 	Pipe.StreamHTTP("{{UUID}}",
 		&machine.Option{FIFO: boolP(false)},
 		&machine.Option{Injectable: boolP(true)},

@@ -10,8 +10,12 @@ import (
 // subscriptionCmd represents the subscription command
 var subscriptionCmd = &cobra.Command{
 	Use:   "subscription <name>",
-	Short: "",
-	Long:  ``,
+	Short: "Adds a new machine.Stream to the machine.Pipe",
+	Long: `Adds a new machine.Stream to the machine.Pipe
+	This command sets up a Subscription Stream in the Pipe
+	
+	Example: machine subscription topicName
+	`,
 	Run: addFN(templates.Project{
 		Dirs: map[string]templates.Project{
 			"pipe": {
@@ -35,9 +39,11 @@ import (
 	"github.com/whitaker-io/machine"
 )
 
+// Implement machine.Subscription
 var {{.Name | ToLower}}Subscription machine.Subscription
 
 func init() {
+	// Subscription Stream ready to be built
 	Pipe.StreamSubscription("{{UUID}}",
 		{{.Name | ToLower}}Subscription,
 		5 * time.Second,

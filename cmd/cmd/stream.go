@@ -10,8 +10,12 @@ import (
 // streamCmd represents the stream command
 var streamCmd = &cobra.Command{
 	Use:   "stream <name>",
-	Short: "",
-	Long:  ``,
+	Short: "Adds a new machine.Stream to the machine.Pipe",
+	Long: `Adds a new machine.Stream to the machine.Pipe
+	This command sets up a Stream in the Pipe
+	
+	Example: machine stream custom
+	`,
 	Run: addFN(templates.Project{
 		Dirs: map[string]templates.Project{
 			"pipe": {
@@ -36,6 +40,7 @@ import (
 )
 
 func init() {
+	// Stream ready to be built
 	stream := machine.NewStream("{{UUID}}",
 		func(c context.Context) chan []machine.Data {
 			channel := make(chan []machine.Data)

@@ -18,9 +18,12 @@ var goVersionString string
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
-	Use:   "create",
-	Short: "",
-	Long:  ``,
+	Use:   "create <path>",
+	Short: "Create a new project based on github.com/whitaker-io/machine",
+	Long: `Create a new project based on github.com/whitaker-io/machine
+	
+	Example: machine create github.com/whitaker-io/test
+	`,
 	Run: func(cmd *cobra.Command, args []string) {
 		pathParts := strings.Split(args[0], string(filepath.Separator))
 
