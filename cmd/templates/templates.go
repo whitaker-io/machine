@@ -9,7 +9,6 @@ import (
 	"text/template"
 
 	"github.com/google/uuid"
-	"github.com/whitaker-io/go-mix/lib/util"
 )
 
 // TemplatesConfigKey -- config.templates -- []models.Config
@@ -39,7 +38,7 @@ type Project struct {
 func GenerateProject(path string, project Project, force bool, settings map[string]interface{}) error {
 	for dir, p := range project.Dirs {
 		dirPath := filepath.Join(path, dir)
-		util.MakeDir(dirPath)
+		makeDir(dirPath)
 		err := GenerateProject(dirPath, p, force, settings)
 
 		if err != nil {
@@ -81,4 +80,15 @@ func GenerateFile(name, templatePayload string, settings map[string]interface{})
 // RegisterTemplate func to add a template to the registry
 func RegisterTemplate(name, templatePayload string) {
 	registry[name] = templatePayload
+}
+
+func makeDir(name string) {
+	if _, err := os.Stat(name); os.IsExist(err) {
+		return
+	}
+
+	err := os.MkdirAll(name, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 }
