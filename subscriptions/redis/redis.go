@@ -24,7 +24,7 @@ func (k *redis) Read(ctx context.Context) []machine.Data {
 		if err := json.Unmarshal(v.Data, &packet); err == nil {
 			payload = []machine.Data{packet}
 		} else if err := json.Unmarshal(v.Data, &payload); err != nil {
-			k.logger.Error(fmt.Sprintf("error unmarshalling from kafka - %v", err))
+			k.logger.Error(fmt.Sprintf("error unmarshalling from redis - %v", err))
 		}
 	case error:
 		k.logger.Error(fmt.Sprintf("error reading from redis - %v", v))
@@ -37,7 +37,7 @@ func (k *redis) Close() error {
 	return k.client.Close()
 }
 
-// New func to provide a machine.Subscription based on Kafka
+// New func to provide a machine.Subscription based on Redis
 func New(pool *ps.Pool, logger machine.Logger) machine.Subscription {
 	return &redis{
 		client: &ps.PubSubConn{
