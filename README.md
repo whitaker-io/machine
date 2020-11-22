@@ -71,23 +71,23 @@ Redis Subscription with basic `receive` -> `process` -> `send` Stream
   
   // NewPipe creates a pipe in which you can run multiple streams
   // the id is the instance identifier for the cluster
-	p := NewPipe(uuid.New().String(), logger, logStore, fiber.Config{
-		ReadTimeout: time.Second,
-		WriteTimeout: time.Second,
-		BodyLimit: 4 * 1024 * 1024,
-		DisableKeepalive: true,
-	})
+  p := NewPipe(uuid.New().String(), logger, logStore, fiber.Config{
+    ReadTimeout: time.Second,
+    WriteTimeout: time.Second,
+    BodyLimit: 4 * 1024 * 1024,
+    DisableKeepalive: true,
+  })
 
   // StreamSubscription takes an instance of machine.Subscription
   // and a time interval in which to read
   // the id here needs to be the same for all the nodes for the clustering to work
-	builder := p.StreamSubscription("unique_stream_id", redisStream, 5*time.Millisecond,
-		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-		&Option{BufferSize: intP(0)},
-	).Builder()
+  builder := p.StreamSubscription("unique_stream_id", redisStream, 5*time.Millisecond,
+    &Option{FIFO: boolP(false)},
+    &Option{Injectable: boolP(true)},
+    &Option{Metrics: boolP(true)},
+    &Option{Span: boolP(false)},
+    &Option{BufferSize: intP(0)},
+  ).Builder()
 
   builder.Map("unique_id2", 
       func(m Data) error {
