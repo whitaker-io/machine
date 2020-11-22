@@ -6,48 +6,15 @@ func NewPipe(id string, logger Logger, store LogStore, config ...fiber.Config) *
 
 This fields are as follows:
 
-`id` is a unigue identifier for the pipe and used to identify the `Pipe` in uniquely in a cluster.
+* `id` is a unigue identifier for the pipe and used to identify the `Pipe` in uniquely in a cluster.
+* `logger` is an instance of `machine.Logger` and used to send log infomation regarding failures or other status information to a log system
+* `store` is an instance of `machine.LogStore` used to communicate state in a distributed system. 
+* `config` a variadic of `fiber.Config` used for setting properties of the http server used to serve the healthcheck information and the HTTP based `Stream`'s
 
------
-`logger` is an interface used to send log infomation regarding failures or other status information to a log system
-
-the interface is defined as follows:
-
-```golang
-type Logger interface {
-  Error(...interface{})
-  Info(...interface{})
-}
-```
-
------
-`store` is an interface used to communicate state in a distributed system. 
-
-```golang
-type LogStore interface {
-  Join(id string, callback InjectionCallback, streamIDs ...string) error
-  Write(logs ...*Log)
-  Leave(id string) error
-}
-```
-
-`Join` is called with the `Pipe` id, a callback for injecting dropped data back into the system, and the id's of all the `Stream`'s that the `Pipe` is running
-
------
-
-`Write` is called by a default recorder so that current state of the data flowing through a `Stream` can be communicated to peers
-
------
-
-`Leave` is called when the `Pipe` gracefully exits, letting the cluster know that it will no longer be available.
-
------
-
-The final argument is `config` a variadic of `fiber.Config` used for setting properties of the http server used to serve the healthcheck information and the HTTP based `Stream`'s
 
 ----
 
-### Adding streams to the `Pipe`
+## Adding streams to the `Pipe`
 
 The following methods can be used to add a new `Stream` to the `Pipe`
 
