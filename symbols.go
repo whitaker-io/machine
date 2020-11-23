@@ -14,7 +14,6 @@ func init() {
                 // function, constant and variable definitions
                 "ForkDuplicate": reflect.ValueOf(&ForkDuplicate).Elem(),
                 "ForkError":     reflect.ValueOf(&ForkError).Elem(),
-                "NewPipe":       reflect.ValueOf(NewPipe),
                 "NewStream":     reflect.ValueOf(NewStream),
 
                 // type definitions
@@ -24,79 +23,17 @@ func init() {
                 "Fold":              reflect.ValueOf((*Fold)(nil)),
                 "Fork":              reflect.ValueOf((*Fork)(nil)),
                 "ForkRule":          reflect.ValueOf((*ForkRule)(nil)),
-                "HealthInfo":        reflect.ValueOf((*HealthInfo)(nil)),
-                "InjectionCallback": reflect.ValueOf((*InjectionCallback)(nil)),
-                "Log":               reflect.ValueOf((*Log)(nil)),
-                "LogStore":          reflect.ValueOf((*LogStore)(nil)),
-                "Logger":            reflect.ValueOf((*Logger)(nil)),
-                "Option":            reflect.ValueOf((*Option)(nil)),
                 "Packet":            reflect.ValueOf((*Packet)(nil)),
-                "Pipe":              reflect.ValueOf((*Pipe)(nil)),
                 "Retriever":         reflect.ValueOf((*Retriever)(nil)),
                 "Sender":            reflect.ValueOf((*Sender)(nil)),
-                "Serialization":     reflect.ValueOf((*Serialization)(nil)),
                 "Stream":            reflect.ValueOf((*Stream)(nil)),
                 "Subscription":      reflect.ValueOf((*Subscription)(nil)),
 
                 // interface wrapper definitions
-                "_Builder":      reflect.ValueOf((*_github_com_whitaker_io_machine_Builder)(nil)),
-                "_LogStore":     reflect.ValueOf((*_github_com_whitaker_io_machine_LogStore)(nil)),
-                "_Logger":       reflect.ValueOf((*_github_com_whitaker_io_machine_Logger)(nil)),
                 "_Stream":       reflect.ValueOf((*_github_com_whitaker_io_machine_Stream)(nil)),
                 "_Subscription": reflect.ValueOf((*_github_com_whitaker_io_machine_Subscription)(nil)),
         }
 }
-
-// _github_com_whitaker_io_machine_Builder is an interface wrapper for Builder type
-type _github_com_whitaker_io_machine_Builder struct {
-        WFoldLeft  func(id string, f Fold, options []*Option) Builder
-        WFoldRight func(id string, f Fold, options []*Option) Builder
-        WFork      func(id string, f Fork, options []*Option) (Builder, Builder)
-        WLink      func(id string, target string, options []*Option)
-        WMap       func(id string, a Applicative, options []*Option) Builder
-        WTransmit  func(id string, s Sender, options []*Option)
-}
-
-func (W _github_com_whitaker_io_machine_Builder) FoldLeft(id string, f Fold, options []*Option) Builder {
-        return W.WFoldLeft(id, f, options)
-}
-func (W _github_com_whitaker_io_machine_Builder) FoldRight(id string, f Fold, options []*Option) Builder {
-        return W.WFoldRight(id, f, options)
-}
-func (W _github_com_whitaker_io_machine_Builder) Fork(id string, f Fork, options []*Option) (Builder, Builder) {
-        return W.WFork(id, f, options)
-}
-func (W _github_com_whitaker_io_machine_Builder) Link(id string, target string, options []*Option) {
-        W.WLink(id, target, options)
-}
-func (W _github_com_whitaker_io_machine_Builder) Map(id string, a Applicative, options []*Option) Builder {
-        return W.WMap(id, a, options)
-}
-func (W _github_com_whitaker_io_machine_Builder) Transmit(id string, s Sender, options []*Option) {
-        W.WTransmit(id, s, options)
-}
-
-// _github_com_whitaker_io_machine_LogStore is an interface wrapper for LogStore type
-type _github_com_whitaker_io_machine_LogStore struct {
-        WJoin  func(id string, callback InjectionCallback, streamIDs []string) error
-        WLeave func(id string) error
-        WWrite func(logs []*Log)
-}
-
-func (W _github_com_whitaker_io_machine_LogStore) Join(id string, callback InjectionCallback, streamIDs []string) error {
-        return W.WJoin(id, callback, streamIDs)
-}
-func (W _github_com_whitaker_io_machine_LogStore) Leave(id string) error     { return W.WLeave(id) }
-func (W _github_com_whitaker_io_machine_LogStore) Write(logs []*Log) { W.WWrite(logs) }
-
-// _github_com_whitaker_io_machine_Logger is an interface wrapper for Logger type
-type _github_com_whitaker_io_machine_Logger struct {
-        WError func(a0 []interface{})
-        WInfo  func(a0 []interface{})
-}
-
-func (W _github_com_whitaker_io_machine_Logger) Error(a0 []interface{}) { W.WError(a0) }
-func (W _github_com_whitaker_io_machine_Logger) Info(a0 []interface{})  { W.WInfo(a0) }
 
 // _github_com_whitaker_io_machine_Stream is an interface wrapper for Stream type
 type _github_com_whitaker_io_machine_Stream struct {
