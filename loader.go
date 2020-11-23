@@ -56,7 +56,7 @@ func (pipe *Pipe) Load(lc *Serialization) error {
 		x, ok := i.(func() Subscription)
 
 		if !ok {
-			return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
+			return fmt.Errorf("invalid symbol expected func() Subscription - %s - %s", lc.Type, lc.Symbol)
 		}
 
 		return lc.Next.load(pipe.StreamSubscription(lc.ID, x(), lc.Interval, lc.Options...))
@@ -74,7 +74,7 @@ func (pipe *Pipe) Load(lc *Serialization) error {
 		x, ok := i.(func(context.Context) chan []Data)
 
 		if !ok {
-			return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
+			return fmt.Errorf("invalid symbol expected func(context.Context) chan []Data - %s - %s", lc.Type, lc.Symbol)
 		}
 
 		b := pipe.Stream(NewStream(lc.ID, x, lc.Options...))
@@ -136,7 +136,7 @@ func (lc *Serialization) applicative(b Builder) error {
 	x, ok := i.(func(Data) error)
 
 	if !ok {
-		return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
+		return fmt.Errorf("invalid symbol expected func(Data) error - %s - %s", lc.Type, lc.Symbol)
 	}
 
 	b = b.Map(lc.ID, x, lc.Options...)
@@ -158,7 +158,7 @@ func (lc *Serialization) fold(b Builder) error {
 	x, ok := i.(func(Data, Data) Data)
 
 	if !ok {
-		return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
+		return fmt.Errorf("invalid symbol expected func(Data, Data) Data - %s - %s", lc.Type, lc.Symbol)
 	}
 
 	var folder func(string, Fold, ...*Option) Builder
@@ -193,7 +193,7 @@ func (lc *Serialization) fork(b Builder) error {
 		rule, ok := i.(func(Data) bool)
 
 		if !ok {
-			return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
+			return fmt.Errorf("invalid symbol expected func(Data) bool - %s - %s", lc.Type, lc.Symbol)
 		}
 
 		x = ForkRule(rule).Handler
@@ -223,7 +223,7 @@ func (lc *Serialization) transmit(b Builder) error {
 	x, ok := i.(func([]Data) error)
 
 	if !ok {
-		return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
+		return fmt.Errorf("invalid symbol expected func([]Data) error - %s - %s", lc.Type, lc.Symbol)
 	}
 
 	b.Transmit(lc.ID, x, lc.Options...)
