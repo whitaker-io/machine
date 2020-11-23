@@ -347,7 +347,7 @@ var subSerialization = &Serialization{
 	}`,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
-		{FIFO: boolP(false)},
+		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
 		{Span: boolP(false)},
@@ -421,10 +421,194 @@ func Test_Pipe_Load_Sub(b *testing.T) {
 	if err := p.Load(subSerialization); err != nil {
 		b.Error(err)
 	}
+}
 
-	go func() {
-		if err := p.Run(context.Background(), ":5000", time.Second); err != nil {
-			b.Error(err)
+var httpSerialization = &Serialization{
+	ID:   "http_id",
+	Type: "http",
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "map_id",
+		Type:   "map",
+		Symbol: "tester.Map",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Map = func(d machine.Data) error {
+			return nil
 		}
-	}()
+		`,
+		Next: &Serialization{
+			ID:     "fold_id",
+			Type:   "fold_left",
+			Symbol: "tester.Fold",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+				return next
+			}
+			`,
+			Next: &Serialization{
+				ID:     "fork_id",
+				Type:   "fork",
+				Symbol: "tester.Rule",
+				Script: `package tester
+				import "github.com/whitaker-io/machine"
+
+				var Rule = func(machine.Data) bool {
+					return true
+				}
+				`,
+				Left: &Serialization{
+					ID:     "fold_id2",
+					Type:   "fold_right",
+					Symbol: "tester.Fold",
+					Script: `package tester
+					import "github.com/whitaker-io/machine"
+
+					var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+						return next
+					}
+					`,
+					Next: &Serialization{
+						ID:     "transmit_id",
+						Type:   "transmit",
+						Symbol: "tester.Sender",
+						Script: `package tester
+						import "github.com/whitaker-io/machine"
+
+						var Sender = func(d []machine.Data) error {
+							return nil
+						}
+						`,
+					},
+				},
+				Right: &Serialization{
+					ID:   "link_id",
+					Type: "link",
+					To:   "map_id",
+				},
+			},
+		},
+	},
+}
+
+func Test_Pipe_Load_HTTP(b *testing.T) {
+	t := &tester{}
+
+	p := NewPipe("pipe_id", t, t)
+
+	if err := p.Load(httpSerialization); err != nil {
+		b.Error(err)
+	}
+}
+
+var streamSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "map_id",
+		Type:   "map",
+		Symbol: "tester.Map",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Map = func(d machine.Data) error {
+			return nil
+		}
+		`,
+		Next: &Serialization{
+			ID:     "fold_id",
+			Type:   "fold_left",
+			Symbol: "tester.Fold",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+				return next
+			}
+			`,
+			Next: &Serialization{
+				ID:     "fork_id",
+				Type:   "fork",
+				Symbol: "error",
+				Left: &Serialization{
+					ID:     "fold_id2",
+					Type:   "fold_right",
+					Symbol: "tester.Fold",
+					Script: `package tester
+					import "github.com/whitaker-io/machine"
+
+					var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+						return next
+					}
+					`,
+					Next: &Serialization{
+						ID:     "transmit_id",
+						Type:   "transmit",
+						Symbol: "tester.Sender",
+						Script: `package tester
+						import "github.com/whitaker-io/machine"
+
+						var Sender = func(d []machine.Data) error {
+							return nil
+						}
+						`,
+					},
+				},
+				Right: &Serialization{
+					ID:   "link_id",
+					Type: "link",
+					To:   "map_id",
+				},
+			},
+		},
+	},
+}
+
+func Test_Pipe_Load_Stream(b *testing.T) {
+	t := &tester{}
+
+	p := NewPipe("pipe_id", t, t)
+
+	if err := p.Load(streamSerialization); err != nil {
+		b.Error(err)
+	}
 }

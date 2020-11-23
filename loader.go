@@ -130,10 +130,6 @@ func (lc *Serialization) loadSymbol() (interface{}, error) {
 }
 
 func (lc *Serialization) applicative(b Builder) error {
-	if lc.Type != applicative {
-		return fmt.Errorf("incorrect type")
-	}
-
 	i, err := lc.loadSymbol()
 
 	if err != nil {
@@ -156,10 +152,6 @@ func (lc *Serialization) applicative(b Builder) error {
 }
 
 func (lc *Serialization) fold(b Builder) error {
-	if lc.Type != foldLeft && lc.Type != foldRight {
-		return fmt.Errorf("incorrect type")
-	}
-
 	i, err := lc.loadSymbol()
 
 	if err != nil {
@@ -190,9 +182,7 @@ func (lc *Serialization) fold(b Builder) error {
 
 func (lc *Serialization) fork(b Builder) error {
 	var x Fork
-	if lc.Type != fork {
-		return fmt.Errorf("incorrect type")
-	} else if lc.Symbol == "error" {
+	if lc.Symbol == "error" {
 		x = ForkError
 	} else if lc.Symbol == "duplicate" {
 		x = ForkDuplicate
@@ -221,20 +211,12 @@ func (lc *Serialization) fork(b Builder) error {
 }
 
 func (lc *Serialization) link(b Builder) error {
-	if lc.Type != link {
-		return fmt.Errorf("incorrect type")
-	}
-
 	b.Link(lc.ID, lc.To, lc.Options...)
 
 	return nil
 }
 
 func (lc *Serialization) transmit(b Builder) error {
-	if lc.Type != transmit {
-		return fmt.Errorf("incorrect type")
-	}
-
 	i, err := lc.loadSymbol()
 
 	if err != nil {
