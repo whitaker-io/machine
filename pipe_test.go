@@ -312,3 +312,75 @@ func request(bytez []byte) *http.Request {
 
 	return req
 }
+
+var subSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "subscription",
+	Symbol: "tester.Sub",
+	Script: `package tester
+	
+import (
+	"context"
+
+	"github.com/whitaker-io/machine"
+)
+
+var (
+	Sub = machine.Subscription(&t{})
+	testList = []machine.Data{
+		{
+			"name":  "data0",
+			"value": 0,
+		},
+	}
+)
+
+type t struct {
+	close error
+}
+
+func (t *t) Read(ctx context.Context) []machine.Data {
+	return testList
+}
+
+func (t *t) Close() error {
+	return t.close
+}`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(false)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+	
+import "github.com/whitaker-io/machine"
+
+var Sender = func(d []Data) error {
+	return nil
+}
+`,
+	},
+}
+
+func Test_Pipe_Load_Sub(b *testing.T) {
+	t := &tester{}
+
+	p := NewPipe("pipe_id", t, t)
+
+	if err := p.Load(subSerialization); err != nil {
+		b.Error(err)
+	}
+
+	go func() {
+		if err := p.Run(context.Background(), ":5000", time.Second); err != nil {
+			b.Error(err)
+		}
+	}()
+}
