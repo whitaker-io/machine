@@ -673,11 +673,13 @@ func Test_Link(t *testing.T) {
 			return nil
 		}).
 		Fork("fork_id", ForkRule(func(d Data) bool {
-			if val := typed.Typed(d).IntOr("loops", 0); val > 5 {
+			val := typed.Typed(d).IntOr("loops", 0)
+
+			if val > 5 {
 				return true
-			} else {
-				d["loops"] = val + 1
 			}
+
+			d["loops"] = val + 1
 
 			return false
 		}).Handler,
@@ -752,15 +754,18 @@ func Test_Link_not_ancestor(t *testing.T) {
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
-		}).Fork("fork_id", ForkRule(func(d Data) bool {
-		if val := typed.Typed(d).IntOr("loops", 0); val > 5 {
-			return false
-		} else {
-			d["loops"] = val + 1
-		}
+		}).Fork("fork_id", ForkRule(
+		func(d Data) bool {
+			val := typed.Typed(d).IntOr("loops", 0)
 
-		return true
-	}).Handler)
+			if val > 5 {
+				return true
+			}
+
+			d["loops"] = val + 1
+
+			return true
+		}).Handler)
 
 	left.Link("link_id", "sender_id",
 		&Option{FIFO: boolP(false)},
