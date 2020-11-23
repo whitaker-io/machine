@@ -1636,7 +1636,7 @@ var invalidForkErrorLeftSerialization = &Serialization{
 	},
 }
 
-func Test_Pipe_Load_Non_Terminated_Stream(b *testing.T) {
+func Test_Pipe_Load_Bad_Stream(b *testing.T) {
 	t := &tester{}
 
 	p := NewPipe("pipe_id", t, t)
@@ -1684,6 +1684,13 @@ func Test_Pipe_Load_Non_Terminated_Stream(b *testing.T) {
 	if err := p.Load(invalidScriptVertexSerialization); err == nil {
 		b.Error(fmt.Errorf("expected error"))
 	}
+}
+
+
+func Test_Pipe_Load_Bad_Stream2(b *testing.T) {
+	t := &tester{}
+
+	p := NewPipe("pipe_id", t, t)
 
 	if err := p.Load(invalidScriptFuncTransmitSerialization); err == nil {
 		b.Error(fmt.Errorf("expected error"))
