@@ -318,34 +318,33 @@ var subSerialization = &Serialization{
 	Type:   "subscription",
 	Symbol: "tester.Sub",
 	Script: `package tester
-	
-import (
-	"context"
+	import (
+		"context"
 
-	"github.com/whitaker-io/machine"
-)
+		"github.com/whitaker-io/machine"
+	)
 
-var (
-	Sub = machine.Subscription(&t{})
-	testList = []machine.Data{
-		{
-			"name":  "data0",
-			"value": 0,
-		},
+	var (
+		Sub = func() machine.Subscription { return &t{} }
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+
+	type t struct {
+		close error
 	}
-)
 
-type t struct {
-	close error
-}
+	func (t *t) Read(ctx context.Context) []machine.Data {
+		return testList
+	}
 
-func (t *t) Read(ctx context.Context) []machine.Data {
-	return testList
-}
-
-func (t *t) Close() error {
-	return t.close
-}`,
+	func (t *t) Close() error {
+		return t.close
+	}`,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
 		{FIFO: boolP(false)},
@@ -355,17 +354,62 @@ func (t *t) Close() error {
 		{BufferSize: intP(0)},
 	},
 	Next: &Serialization{
-		ID:     "transmit_id",
-		Type:   "transmit",
-		Symbol: "tester.Sender",
+		ID:     "map_id",
+		Type:   "map",
+		Symbol: "tester.Map",
 		Script: `package tester
-	
-import "github.com/whitaker-io/machine"
+		import "github.com/whitaker-io/machine"
 
-var Sender = func(d []Data) error {
-	return nil
-}
-`,
+		var Map = func(d machine.Data) error {
+			return nil
+		}
+		`,
+		Next: &Serialization{
+			ID:     "fold_id",
+			Type:   "fold_left",
+			Symbol: "tester.Fold",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+				return next
+			}
+			`,
+			Next: &Serialization{
+				ID:     "fork_id",
+				Type:   "fork",
+				Symbol: "duplicate",
+				Left: &Serialization{
+					ID:     "fold_id2",
+					Type:   "fold_right",
+					Symbol: "tester.Fold",
+					Script: `package tester
+					import "github.com/whitaker-io/machine"
+
+					var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+						return next
+					}
+					`,
+					Next: &Serialization{
+						ID:     "transmit_id",
+						Type:   "transmit",
+						Symbol: "tester.Sender",
+						Script: `package tester
+						import "github.com/whitaker-io/machine"
+
+						var Sender = func(d []machine.Data) error {
+							return nil
+						}
+						`,
+					},
+				},
+				Right: &Serialization{
+					ID:   "link_id",
+					Type: "link",
+					To:   "map_id",
+				},
+			},
+		},
 	},
 }
 

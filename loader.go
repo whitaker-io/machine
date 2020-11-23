@@ -1,7 +1,9 @@
 package machine
 
 import (
+	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/traefik/yaegi/interp"
@@ -17,6 +19,9 @@ const (
 	link        = "link"
 	transmit    = "transmit"
 )
+
+// SubscriptionProvider is a func used for loading the Subscription interface
+type SubscriptionProvider func() Subscription
 
 // Serialization type for holding information about github.com/traefik/yaegi based streams
 type Serialization struct {
@@ -51,13 +56,13 @@ func (pipe *Pipe) Load(lc *Serialization) error {
 			return err
 		}
 
-		x, ok := i.(Subscription)
+		x, ok := i.(func() Subscription)
 
 		if !ok {
 			return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
 		}
 
-		return lc.Next.load(pipe.StreamSubscription(lc.ID, x, lc.Interval, lc.Options...))
+		return lc.Next.load(pipe.StreamSubscription(lc.ID, x(), lc.Interval, lc.Options...))
 	case stream:
 		if lc.Next == nil {
 			return fmt.Errorf("non-terminated stream %v", lc.ID)
@@ -69,7 +74,7 @@ func (pipe *Pipe) Load(lc *Serialization) error {
 			return err
 		}
 
-		x, ok := i.(Retriever)
+		x, ok := i.(func(context.Context) chan []Data)
 
 		if !ok {
 			return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
@@ -117,6 +122,10 @@ func (lc *Serialization) loadSymbol() (interface{}, error) {
 		return nil, err
 	}
 
+	if sym.Kind() != reflect.Func {
+		return nil, fmt.Errorf("symbol is not of kind func")
+	}
+
 	return sym.Interface(), nil
 }
 
@@ -131,7 +140,7 @@ func (lc *Serialization) applicative(b Builder) error {
 		return err
 	}
 
-	x, ok := i.(Applicative)
+	x, ok := i.(func(Data) error)
 
 	if !ok {
 		return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
@@ -157,7 +166,7 @@ func (lc *Serialization) fold(b Builder) error {
 		return err
 	}
 
-	x, ok := i.(Fold)
+	x, ok := i.(func(Data, Data) Data)
 
 	if !ok {
 		return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
@@ -194,13 +203,13 @@ func (lc *Serialization) fork(b Builder) error {
 			return err
 		}
 
-		rule, ok := i.(ForkRule)
+		rule, ok := i.(func(Data) bool)
 
 		if !ok {
 			return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)
 		}
 
-		x = rule.Handler
+		x = ForkRule(rule).Handler
 	}
 
 	b1, b2 := b.Fork(lc.ID, x, lc.Options...)
@@ -232,7 +241,7 @@ func (lc *Serialization) transmit(b Builder) error {
 		return err
 	}
 
-	x, ok := i.(Sender)
+	x, ok := i.(func([]Data) error)
 
 	if !ok {
 		return fmt.Errorf("invalid symbol - %s - %s", lc.Type, lc.Symbol)

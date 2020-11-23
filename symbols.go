@@ -3,62 +3,31 @@
 package machine
 
 import (
-        "context"
-        "reflect"
+	"context"
+	"reflect"
 )
 
 var symbols = map[string]map[string]reflect.Value{}
 
 func init() {
-        symbols["github.com/whitaker-io/machine"] = map[string]reflect.Value{
-                // function, constant and variable definitions
-                "ForkDuplicate": reflect.ValueOf(&ForkDuplicate).Elem(),
-                "ForkError":     reflect.ValueOf(&ForkError).Elem(),
-                "NewStream":     reflect.ValueOf(NewStream),
+	symbols["github.com/whitaker-io/machine"] = map[string]reflect.Value{
+		// type definitions
+		"Data":                 reflect.ValueOf((*Data)(nil)),
+		"Packet":               reflect.ValueOf((*Packet)(nil)),
+		"Subscription":         reflect.ValueOf((*Subscription)(nil)),
 
-                // type definitions
-                "Applicative":       reflect.ValueOf((*Applicative)(nil)),
-                "Builder":           reflect.ValueOf((*Builder)(nil)),
-                "Data":              reflect.ValueOf((*Data)(nil)),
-                "Fold":              reflect.ValueOf((*Fold)(nil)),
-                "Fork":              reflect.ValueOf((*Fork)(nil)),
-                "ForkRule":          reflect.ValueOf((*ForkRule)(nil)),
-                "Packet":            reflect.ValueOf((*Packet)(nil)),
-                "Retriever":         reflect.ValueOf((*Retriever)(nil)),
-                "Sender":            reflect.ValueOf((*Sender)(nil)),
-                "Stream":            reflect.ValueOf((*Stream)(nil)),
-                "Subscription":      reflect.ValueOf((*Subscription)(nil)),
-
-                // interface wrapper definitions
-                "_Stream":       reflect.ValueOf((*_github_com_whitaker_io_machine_Stream)(nil)),
-                "_Subscription": reflect.ValueOf((*_github_com_whitaker_io_machine_Subscription)(nil)),
-        }
-}
-
-// _github_com_whitaker_io_machine_Stream is an interface wrapper for Stream type
-type _github_com_whitaker_io_machine_Stream struct {
-        WBuilder func() Builder
-        WID      func() string
-        WInject  func(ctx context.Context, events map[string][]*Packet)
-        WRun     func(ctx context.Context, recorders []recorder) error
-}
-
-func (W _github_com_whitaker_io_machine_Stream) Builder() Builder { return W.WBuilder() }
-func (W _github_com_whitaker_io_machine_Stream) ID() string               { return W.WID() }
-func (W _github_com_whitaker_io_machine_Stream) Inject(ctx context.Context, events map[string][]*Packet) {
-        W.WInject(ctx, events)
-}
-func (W _github_com_whitaker_io_machine_Stream) Run(ctx context.Context, recorders []recorder) error {
-        return W.WRun(ctx, recorders)
+		// interface wrapper definitions
+		"_Subscription": reflect.ValueOf((*_github_com_whitaker_io_machine_Subscription)(nil)),
+	}
 }
 
 // _github_com_whitaker_io_machine_Subscription is an interface wrapper for Subscription type
 type _github_com_whitaker_io_machine_Subscription struct {
-        WClose func() error
-        WRead  func(ctx context.Context) []Data
+	WClose func() error
+	WRead  func(ctx context.Context) []Data
 }
 
 func (W _github_com_whitaker_io_machine_Subscription) Close() error { return W.WClose() }
 func (W _github_com_whitaker_io_machine_Subscription) Read(ctx context.Context) []Data {
-        return W.WRead(ctx)
+	return W.WRead(ctx)
 }
