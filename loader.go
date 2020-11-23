@@ -20,9 +20,6 @@ const (
 	transmit    = "transmit"
 )
 
-// SubscriptionProvider is a func used for loading the Subscription interface
-type SubscriptionProvider func() Subscription
-
 // Serialization type for holding information about github.com/traefik/yaegi based streams
 type Serialization struct {
 	ID       string         `json:"id,omitempty" mapstructure:"id,omitempty"`

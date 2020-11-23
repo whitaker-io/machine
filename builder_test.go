@@ -634,7 +634,7 @@ func Test_Inject_Cancel(b *testing.T) {
 		}
 	}()
 
-	<-time.After(time.Second)
+	<-time.After(3 * time.Second)
 	cancel()
 	<-time.After(3 * time.Second)
 }
@@ -721,9 +721,9 @@ func Test_Link(t *testing.T) {
 		}
 	}()
 
-	<-time.After(time.Second)
+	<-time.After(3 * time.Second)
 	cancel()
-	<-time.After(time.Second)
+	<-time.After(3 * time.Second)
 }
 
 func Test_Link_not_ancestor(t *testing.T) {

@@ -125,7 +125,7 @@ func Test_Pipe_Sub(b *testing.T) {
 	p.injectionCallback(ctx)(logs2...)
 
 	cancel()
-	<-time.After(1 * time.Second)
+	<-time.After(3 * time.Second)
 }
 
 func Test_Pipe_HTTP(b *testing.T) {
@@ -188,7 +188,7 @@ func Test_Pipe_HTTP(b *testing.T) {
 	}
 
 	cancel()
-	<-time.After(1 * time.Second)
+	<-time.After(3 * time.Second)
 }
 
 func Test_Pipe_No_Stream(b *testing.T) {
@@ -298,7 +298,7 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 	}
 
 	cancel()
-	<-time.After(1 * time.Second)
+	<-time.After(3 * time.Second)
 }
 
 func request(bytez []byte) *http.Request {
@@ -610,5 +610,1118 @@ func Test_Pipe_Load_Stream(b *testing.T) {
 
 	if err := p.Load(streamSerialization); err != nil {
 		b.Error(err)
+	}
+}
+
+var badTypeSerialization = &Serialization{
+	ID:     "sub_id",
+	Type:   "bad",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+}
+
+var nonTerminatedSubscriptionSerialization = &Serialization{
+	ID:     "sub_id",
+	Type:   "subscription",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+}
+
+var nonTerminatedHTTPSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "http",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+}
+
+var nonTerminatedStreamSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+}
+
+var badSymbolSubscriptionSerialization = &Serialization{
+	ID:     "sub_id",
+	Type:   "subscription",
+	Symbol: "tester.A",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var badSymbolStreamSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.A",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var badScriptSubscriptionSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "subscription",
+	Symbol: "tester.Sub",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Sub = func() int { return 0 }
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+
+	type t struct {
+		close error
+	}
+
+	func (t *t) Read(ctx context.Context) []machine.Data {
+		return testList
+	}
+
+	func (t *t) Close() error {
+		return t.close
+	}`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var badScriptStreamSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func() int { return 0 }
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var badScriptNotFuncStreamSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = 10
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var badTypeVertexSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "bad",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var invalidScriptVertexSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `bad`,
+	},
+}
+
+var invalidScriptFuncTransmitSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "transmit_id",
+		Type:   "transmit",
+		Symbol: "tester.Sender",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Sender = func(d []machine.Data) {}
+		`,
+	},
+}
+
+var invalidScriptFuncMapSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "map_id",
+		Type:   "map",
+		Symbol: "tester.Map",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Map = func(d machine.Data) {}
+		`,
+		Next: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.Sender",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+	},
+}
+
+var invalidScriptNonTerminatedFuncMapSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "map_id",
+		Type:   "map",
+		Symbol: "tester.Map",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Map = func(d machine.Data) error {
+			return nil
+		}
+		`,
+	},
+}
+
+var invalidSymbolMapSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "map_id",
+		Type:   "map",
+		Symbol: "tester.A",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Map = func(d machine.Data) {
+			return nil
+		}
+		`,
+		Next: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.Sender",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+	},
+}
+
+var invalidScriptFuncFoldSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "fold_id",
+		Type:   "fold_left",
+		Symbol: "tester.Fold",
+		Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Fold = func(aggragator machine.Data, next machine.Data) {}
+			`,
+		Next: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.Sender",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+	},
+}
+
+var invalidScriptNonTerminatedFuncFoldSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "fold_id",
+		Type:   "fold_left",
+		Symbol: "tester.Fold",
+		Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+				return next
+			}
+			`,
+	},
+}
+
+var invalidSymbolFoldSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "fold_id",
+		Type:   "fold_left",
+		Symbol: "tester.A",
+		Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Fold = func(aggragator machine.Data, next machine.Data) machine.Data {
+				return next
+			}
+			`,
+		Next: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.Sender",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+	},
+}
+
+var invalidScriptFuncForkSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "fork_id",
+		Type:   "fork",
+		Symbol: "tester.Rule",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Rule = func(machine.Data) {}
+		`,
+		Left: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.A",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+		Right: &Serialization{
+			ID:   "link_id",
+			Type: "link",
+			To:   "fork_id",
+		},
+	},
+}
+
+var invalidSymbolForkSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "fork_id",
+		Type:   "fork",
+		Symbol: "tester.A",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Rule = func(machine.Data) bool {
+			return true
+		}
+		`,
+		Left: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.A",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+		Right: &Serialization{
+			ID:   "link_id",
+			Type: "link",
+			To:   "fork_id",
+		},
+	},
+}
+
+var invalidForkErrorLeftSerialization = &Serialization{
+	ID:     "stream_id",
+	Type:   "stream",
+	Symbol: "tester.Retriever",
+	Script: `package tester
+	import (
+		"context"
+
+		"github.com/whitaker-io/machine"
+	)
+
+	var (
+		Retriever = func(context.Context) chan []machine.Data {
+			channel := make(chan []machine.Data)
+
+			return channel
+		}
+		testList = []machine.Data{
+			{
+				"name":  "data0",
+				"value": 0,
+			},
+		}
+	)
+`,
+	Interval: 5 * time.Millisecond,
+	Options: []*Option{
+		{FIFO: boolP(true)},
+		{Injectable: boolP(true)},
+		{Metrics: boolP(true)},
+		{Span: boolP(false)},
+		{BufferSize: intP(0)},
+	},
+	Next: &Serialization{
+		ID:     "fork_id",
+		Type:   "fork",
+		Symbol: "tester.Rule",
+		Script: `package tester
+		import "github.com/whitaker-io/machine"
+
+		var Rule = func(machine.Data) bool {
+			return true
+		}
+		`,
+		Left: &Serialization{
+			ID:     "transmit_id",
+			Type:   "transmit",
+			Symbol: "tester.A",
+			Script: `package tester
+			import "github.com/whitaker-io/machine"
+
+			var Sender = func(d []machine.Data) error {
+				return nil
+			}
+			`,
+		},
+		Right: &Serialization{
+			ID:   "link_id",
+			Type: "link",
+			To:   "fork_id",
+		},
+	},
+}
+
+func Test_Pipe_Load_Non_Terminated_Stream(b *testing.T) {
+	t := &tester{}
+
+	p := NewPipe("pipe_id", t, t)
+
+	if err := p.Load(nonTerminatedSubscriptionSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(nonTerminatedStreamSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(nonTerminatedHTTPSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badTypeSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badSymbolStreamSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badSymbolSubscriptionSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badScriptSubscriptionSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badScriptStreamSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badScriptNotFuncStreamSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(badTypeVertexSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptVertexSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptFuncTransmitSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptFuncMapSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidSymbolMapSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptNonTerminatedFuncMapSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptFuncFoldSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidSymbolFoldSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptNonTerminatedFuncFoldSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidForkErrorLeftSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidScriptFuncForkSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
+	}
+
+	if err := p.Load(invalidSymbolForkSerialization); err == nil {
+		b.Error(fmt.Errorf("expected error"))
 	}
 }
