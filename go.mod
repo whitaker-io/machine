@@ -8,5 +8,5 @@ require (
 	github.com/karlseguin/expect v1.0.7 // indirect
 	github.com/karlseguin/typed v1.1.7
 	github.com/traefik/yaegi v0.9.7
-	go.opentelemetry.io/otel v0.14.0
+	go.opentelemetry.io/otel v0.13.0
 )
