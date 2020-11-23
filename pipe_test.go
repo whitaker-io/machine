@@ -1686,7 +1686,6 @@ func Test_Pipe_Load_Bad_Stream(b *testing.T) {
 	}
 }
 
-
 func Test_Pipe_Load_Bad_Stream2(b *testing.T) {
 	t := &tester{}
 
