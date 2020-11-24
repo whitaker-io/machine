@@ -17,7 +17,8 @@ import (
 )
 
 var (
-	// ForkDuplicate is a SplitHandler that sends data to both outputs
+	// ForkDuplicate is a Fork that creates a deep copy of the
+	// payload and sends it down both branches.
 	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
 		payload2 := []*Packet{}
 		buf := &bytes.Buffer{}
@@ -33,7 +34,9 @@ var (
 		return payload, payload2
 	}
 
-	// ForkError is a SplitHandler for splitting errors from successes
+	// ForkError is a Fork that splits machine.Packets based on
+	// the presence of an error. Errors are sent down the
+	// right side path.
 	ForkError Fork = func(payload []*Packet) (s, f []*Packet) {
 		s = []*Packet{}
 		f = []*Packet{}
@@ -58,10 +61,10 @@ var (
 	}
 )
 
-// Data wrapper on typed.Typed
+// Data wrapper on typed.Typed.
 type Data typed.Typed
 
-// Packet type that holds information traveling through the machine
+// Packet type that holds information traveling through the machine.
 type Packet struct {
 	ID    string `json:"id"`
 	Data  Data   `json:"data"`
@@ -69,32 +72,62 @@ type Packet struct {
 	span  trace.Span
 }
 
-// Option type for holding machine settings
+// Option type for holding machine settings.
 type Option struct {
-	FIFO       *bool
+	// FIFO controls the processing order of the payloads
+	// If set to true the system will wait for one payload
+	// to be processed before starting the next.
+	// Default: false
+	FIFO *bool
+	// Injectable controls whether the vertex accepts injection calls
+	// if set to false the data will be logged and processing will not
+	// take place.
+	// Default: true
 	Injectable *bool
+	// BufferSize sets the buffer size on the edge channels between the
+	// vertices, this setting can be useful when processing large amounts
+	// of data with FIFO turned on.
+	// Default: 0
 	BufferSize *int
-	Span       *bool
-	Metrics    *bool
+	// Span controls whether opentelemetry spans are created for tracing
+	// Packets processed by the system.
+	// Default: true
+	Span *bool
+	// Metrics controls whether opentelemetry metrics are recorded for
+	// Packets processed by the system.
+	// Default: true
+	Metrics *bool
 }
 
-// Retriever type for providing the data to flow into the system
-type Retriever func(context.Context) chan []Data
+// Retriever is a function that provides data to a generic Stream
+// must stop when the context receives a done signal.
+type Retriever func(ctx context.Context) chan []Data
 
-// Applicative type for applying a change to a typed.Typed
-type Applicative func(Data) error
+// Applicative is a function that is applied on an individual
+// basis for each Packet in the payload. The data may be modified
+// or checked for correctness. Any resulting error is combined
+// with current errors in the wrapping Packet.
+type Applicative func(data Data) error
 
-// Fold type for folding a 2 Data into a single element
-type Fold func(Data, Data) Data
+// Fold is a function used to combine a payload into a single Packet.
+// It may be used with either a Fold Left or Fold Right operation,
+// which starts at the corresponding side and moves through the payload.
+// The returned instance of Data is used as the aggregate in the subsequent
+// call.
+type Fold func(aggregate, next Data) Data
 
-// Fork func for splitting a payload into 2
+// Fork is a function for splitting the payload into 2 separate paths.
+// Default Forks for duplication and error checking are provided by
+// ForkDuplicate and ForkError respectively.
 type Fork func(list []*Packet) (a, b []*Packet)
 
-// ForkRule provides a SplitHandler for splitting based on the return bool
-type ForkRule func(Data) bool
+// ForkRule is a function that can be converted to a Fork via the Handler
+// method allowing for Forking based on the contents of the data.
+type ForkRule func(data Data) bool
 
-// Sender type for sending data out of the system
-type Sender func([]Data) error
+// Sender is a function used to transmit the payload to a different system
+// the returned error is logged, but not specifically acted upon.
+type Sender func(payload []Data) error
 
 type edge struct {
 	channel chan []*Packet
@@ -170,7 +203,7 @@ func (o *Option) join(option *Option) *Option {
 	return out
 }
 
-// Handler func for providing a SplitHandler
+// Handler is a method for turning the ForkRule into an instance of Fork
 func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
 	t = []*Packet{}
 	f = []*Packet{}

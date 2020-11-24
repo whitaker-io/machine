@@ -11,29 +11,54 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
 
-// Subscription interface for creating a pull based stream
+// Subscription is an interface for creating a pull based stream.
+// It requires 2 methods Read and Close.
+//
+// Read is called when the interval passes and the resulting
+// payload is sent down the Stream.
+//
+// Close is called during a graceful termination and any errors
+// are logged.
 type Subscription interface {
 	Read(ctx context.Context) []Data
 	Close() error
 }
 
-// Logger type for accepting log messages
+// Logger is an interface for sending log messages to an outside system.
 type Logger interface {
 	Error(...interface{})
 	Info(...interface{})
 }
 
-// LogStore type for managing cluster state
+// LogStore is an interface for allowing a distributed cluster of workers
+// It requires 3 methods Join, Write, and Leave.
+//
+// Join is called during the run method of the Pipe and it is used for
+// accouncing membership to the cluster with an identifier, a callback
+// for injection, and the list of Streams that will be running in the pipe.
+// Injection is how work can be restarted in the system and is the responsibility
+// of the implementation to decide when and how it is reinitiated.
+//
+// Write is called at the beginning of every vertex and provides the current
+// payload about to be run. The implementation is considered the owner of that
+// payload and may modify the data in special known circumstances if need be.
+//
+// Leave is called during a graceful termination and any errors
+// are logged.
 type LogStore interface {
 	Join(id string, callback InjectionCallback, streamIDs ...string) error
 	Write(logs ...*Log)
 	Leave(id string) error
 }
 
-// InjectionCallback func to run when the LogStore decides to restart the flow of orphaned Data
+// InjectionCallback is a function provided to the LogStore Join method so that
+// the cluster may restart work that has been dropped by one of the workers.
+// Injections will only be processed for vertices that have the Injectable option
+// set to true, which is the default.
 type InjectionCallback func(logs ...*Log)
 
-// Log type for holding the data that is recorded from the streams
+// Log type for holding the data that is recorded from the streams and sent to
+// the LogStore instance
 type Log struct {
 	OwnerID    string    `json:"owner_id"`
 	StreamID   string    `json:"stream_id"`
@@ -44,7 +69,8 @@ type Log struct {
 	When       time.Time `json:"when"`
 }
 
-// Pipe type for holding the server information for running http servers
+// Pipe is the representation of the system. It can run multiple Streams and
+// controls the start and stop functionality of the system.
 type Pipe struct {
 	id         string
 	app        *fiber.App
@@ -54,14 +80,17 @@ type Pipe struct {
 	logger     Logger
 }
 
-// HealthInfo type for giving info on the stream
+// HealthInfo is the type used for providing basic healthcheck information
+// about last start time of payloads
 type HealthInfo struct {
 	StreamID    string    `json:"stream_id"`
 	LastPayload time.Time `json:"last_payload"`
 	mtx         sync.Mutex
 }
 
-// Run func to start the server
+// Run starts the Pipe and subsequent Streams. It requires a context, a port to run
+// an instance of fiber.App which hosts the /health endpoint and any HTTP based streams
+// at /strea/:id, and a gracePeriod for which graceful shutdown can take place.
 func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duration) error {
 	if len(pipe.streams) < 1 {
 		return fmt.Errorf("no streams found")
@@ -103,7 +132,8 @@ func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duratio
 	return pipe.app.Listen(port)
 }
 
-// Stream func for registering a Stream with the Pipe
+// Stream is a method for adding a generic developer defined Stream.
+// New Streams are created by the appropriately named NewStream function.
 func (pipe *Pipe) Stream(stream Stream) Builder {
 	id := stream.ID()
 
@@ -116,7 +146,8 @@ func (pipe *Pipe) Stream(stream Stream) Builder {
 	return pipe.streams[id].Builder()
 }
 
-// StreamHTTP func for creating a Stream at the path /stream/<id>
+// StreamHTTP a method that creates a Stream at the path /stream/:id
+// which is hosted by the Pipe's fiber.App
 func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 	channel := make(chan []Data)
 
@@ -158,7 +189,8 @@ func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 	return pipe.streams[id].Builder()
 }
 
-// StreamSubscription func for creating a Stream at the that reads from a subscription
+// StreamSubscription is a method for creating a Stream based on the provided Subscription
+// which has it's Read method called at the end of each interval period.
 func (pipe *Pipe) StreamSubscription(id string, sub Subscription, interval time.Duration, opts ...*Option) Builder {
 	channel := make(chan []Data)
 
@@ -264,7 +296,8 @@ func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
 	}
 }
 
-// NewPipe func for creating a new server instance
+// NewPipe is a function for creating a new Pipe. If logger or logStore are nil then
+// the accosiated feature will be disabled.
 func NewPipe(id string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
 	pipe := &Pipe{
 		id:         id,

@@ -14,7 +14,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// Stream interface for Running and injecting data
+// Stream is a representation of a data stream and its associated logic.
+// It may be used individually or hosted by a Pipe. Creating a new Stream
+// is handled by the appropriately named NewStream function.
+//
+// The Builder method is the entrypoint into creating the data processing flow.
+// All branches of the Stream are required to end in either a Transmit or
+// a Link in order to be considered valid.
 type Stream interface {
 	ID() string
 	Run(ctx context.Context, recorders ...recorder) error
@@ -22,7 +28,7 @@ type Stream interface {
 	Builder() Builder
 }
 
-// Builder interface for plotting out the data flow of the system
+// Builder is the interface provided for creating a data processing stream.
 type Builder interface {
 	Map(id string, a Applicative, options ...*Option) Builder
 	FoldLeft(id string, f Fold, options ...*Option) Builder
@@ -48,12 +54,15 @@ type node struct {
 	right *node
 }
 
-// ID func to return the ID for the system
+// ID is a method used to return the ID for the system
 func (m *builder) ID() string {
 	return m.id
 }
 
-// Run func for starting the system
+// Run is the method used for starting the stream processing. It requires a context
+// and an optional list of recorder functions. The recorder function has the signiture
+// func(vertexID, vertexType, state string, paylaod []*Packet) and is called at the
+// beginning of every vertex.
 func (m *builder) Run(ctx context.Context, recorders ...recorder) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated builder")
@@ -66,7 +75,9 @@ func (m *builder) Run(ctx context.Context, recorders ...recorder) error {
 	return m.cascade(ctx, m, m.input)
 }
 
-// Inject func for injecting events into the system
+// Inject is a method for restarting work that has been dropped by the Stream
+// typically in a distributed system setting. Though it can be used to side load
+// data into the Stream to be processed
 func (m *builder) Inject(ctx context.Context, events map[string][]*Packet) {
 	for node, payload := range events {
 		if v, ok := m.vertacies[node]; ok {
@@ -347,7 +358,9 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 	})
 }
 
-// NewStream func for providing a Stream
+// NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
+// and a list of Options that can override the defaults and set new defaults for the
+// subsequent vertices in the Stream.
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	mtrx := createMetrics(id, "stream")
 	opt := defaultOptions.merge(options...)
