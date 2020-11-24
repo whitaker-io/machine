@@ -57,6 +57,7 @@ var (
 		Injectable: boolP(true),
 		Metrics:    boolP(true),
 		Span:       boolP(true),
+		TraceID:    boolP(false),
 		BufferSize: intP(0),
 	}
 )
@@ -97,6 +98,10 @@ type Option struct {
 	// Packets processed by the system.
 	// Default: true
 	Metrics *bool
+	// TraceID adds __traceID to the data if missing and uses incoming
+	// __traceID value as Packet.ID if provided
+	// Default: false
+	TraceID *bool
 }
 
 // Retriever is a function that provides data to a generic Stream
@@ -178,6 +183,7 @@ func (o *Option) join(option *Option) *Option {
 		Injectable: o.Injectable,
 		Metrics:    o.Metrics,
 		Span:       o.Span,
+		TraceID:    o.TraceID,
 	}
 
 	if option.FIFO != nil {
@@ -198,6 +204,10 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.Span != nil {
 		out.Span = option.Span
+	}
+
+	if option.TraceID != nil {
+		out.TraceID = option.TraceID
 	}
 
 	return out
