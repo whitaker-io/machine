@@ -399,8 +399,20 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 
 					payload := make([]*Packet, len(data))
 					for i, item := range data {
+						var id string
+
+						if val, ok := item["__traceID"]; ok && *opt.TraceID {
+							if strval, ok := val.(string); ok {
+								id = strval
+							}
+						}
+
+						if id == "" {
+							id = uuid.New().String()
+						}
+
 						packet := &Packet{
-							ID:   uuid.New().String(),
+							ID:   id,
 							Data: item,
 						}
 						if *x.option.Span {

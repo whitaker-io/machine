@@ -18,8 +18,9 @@ import (
 
 var testList = []Data{
 	{
-		"name":  "data0",
-		"value": 0,
+		"__traceID": "test_trace_id",
+		"name":      "data0",
+		"value":     0,
 	},
 	{
 		"name":  "data1",
@@ -193,6 +194,7 @@ func Test_New(b *testing.T) {
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
+		&Option{TraceID: boolP(true)},
 		&Option{BufferSize: intP(0)},
 	)
 
