@@ -79,14 +79,14 @@ var defaultProject = templates.Project{
 				"templates": {
 					Files: map[string]string{
 						"deployment.yaml": deploymentFile,
-						"service.yaml": serviceFile,
-						"config.yaml": helmConfigFile,
-						"secrets.yaml": helmSecretsFile,
+						"service.yaml":    serviceFile,
+						"config.yaml":     helmConfigFile,
+						"secrets.yaml":    helmSecretFile,
 					},
 				},
 			},
 			Files: map[string]string{
-				"Chart.yaml": chartFile,
+				"Chart.yaml":  chartFile,
 				"values.yaml": valuesFile,
 			},
 		},
@@ -403,3 +403,174 @@ fabric.properties
 
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser`
+
+var deploymentFile = `---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  labels: {{range $k, $v := .Deployment.Labels}}
+    {{$k}}: '{{$v}}' {{end}}
+  name: '{{.Name}}'
+spec:
+  progressDeadlineSeconds: 600
+  replicas: {{.Deployment.Replicas}}
+  revisionHistoryLimit: 10
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: 'RollingUpdate'
+  selector:
+    matchLabels: {{range $k, $v := .Deployment.Labels}}
+      {{$k}}: '{{$v}}' {{end}}
+  template:
+    metadata:
+      labels: {{range $k, $v := .Deployment.Labels}}
+        {{$k}}: '{{$v}}' {{end}}
+    spec:
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: {{.Deployment.GracePeriod}}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 99
+            podAffinityTerm:
+              labelSelector:
+                matchLabels: {{range $k, $v := .Deployment.Labels}}
+                  {{$k}}: '{{$v}}' {{end}}
+              topologyKey: kubernetes.io/hostname
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels: {{range $k, $v := .Deployment.Labels}}
+                  {{$k}}: '{{$v}}' {{end}}
+              topologyKey: failure-domain.beta.kubernetes.io/zone
+            weight: 100
+      containers:
+      - name: '{{.Name}}'
+        image: '{{.ImageRepo}}/{{.Name}}:{{.Tag}}'
+        imagePullPolicy: Always 
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PORT
+          value: {{.Port}}
+        envFrom:
+        - configMapRef:
+            name: '{{.Name}}-config' {{range $i, $secret := .Secrets}}
+        - secretRef:
+            name: '{{$secret.Name}}-secret'{{end}}
+        ports:
+        - containerPort: {{.Port}}
+          name: http
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{.Port}}
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{.Port}}
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        resources:
+          limits:
+            cpu: '{{.Limits.CPU}}'
+            memory: '{{.Limits.Memory}}'
+          requests: 
+            cpu: '{{.Requests.CPU}}'
+            memory: '{{.Requests.Memory}}'
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  labels: {{range $k, $v := .Deployment.Labels}}
+    {{$k}}: '{{$v}}' {{end}}
+  name: '{{.Name}}-autoscaler'
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: '{{.Name}}'
+  minReplicas: {{.Deployment.Replicas}}
+  maxReplicas: {{.Deployment.ScaleLimit}}
+  targetCPUUtilizationPercentage: {{.Deployment.ScaleTarget}}`
+
+var serviceFile = `{{$root := .}}{{range $i, $service := .Services}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels: {{range $k1, $v1 := $root.Labels}}
+    {{$k1}}: '{{$v1}}' {{end}}
+  name: '{{$service.Name}}-svc'
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: '{{$service.Port}}'
+    port: {{$service.Port}}
+    protocol: TCP
+    targetPort: {{$service.Port}}
+  selector: {{range $k1, $v1 := $root.Labels}}
+    {{$k1}}: '{{$v1}}' {{end}}
+  sessionAffinity: None
+  type: {{$service.Type}} {{end}}`
+
+var helmConfigFile = `apiVersion: v1
+data: {{range $k, $v := .Deployment.Config}}
+  {{$k | ToUpper}}: '{{$v | Base64}}' {{end}}
+kind: ConfigMap
+metadata:
+	name: {{ .Name }}-config`
+
+/* #nosec */
+var helmSecretFile = `{{$root := .}}{{range $i, $secret := .Secrets}}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret.Name }}-secret
+type: {{$secret.Type}}
+data:
+  {{$secret.Data | Base64}}{{end}}`
+
+var chartFile = `apiVersion: v2
+name: {{.Name}}
+version: {{.Version}}
+description: A Stream Processor Built With The Machine Project https://github.com/whitaker-io/machine
+type: Machine Worker`
+
+var valuesFile = `deployment:
+	labels:
+		name: {{.Name}}
+		machine: worker
+	config:
+		NAME: {{.Name}}
+		PORT: {{.PORT}}`
