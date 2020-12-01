@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/whitaker-io/machine/cmd/templates"
 )
 
@@ -73,6 +74,22 @@ func init() {
 
 var defaultProject = templates.Project{
 	Dirs: map[string]templates.Project{
+		".helm": {
+			Dirs: map[string]templates.Project{
+				"templates": {
+					Files: map[string]string{
+						"deployment.yaml": deploymentFile,
+						"service.yaml": serviceFile,
+						"config.yaml": helmConfigFile,
+						"secrets.yaml": helmSecretsFile,
+					},
+				},
+			},
+			Files: map[string]string{
+				"Chart.yaml": chartFile,
+				"values.yaml": valuesFile,
+			},
+		},
 		"pipe": {
 			Files: map[string]string{
 				"pipe.go": pipeFile,
