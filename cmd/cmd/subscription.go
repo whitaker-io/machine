@@ -19,8 +19,8 @@ var subscriptionCmd = &cobra.Command{
 	Run: addFN(templates.Project{
 		Dirs: map[string]templates.Project{
 			"pipe": {
-				Files: map[string]string{
-					"{{.Name | ToLower}}.go": subscriptionFile,
+				Files: map[string]templates.File{
+					"{{.Name | ToLower}}.go": {Template: subscriptionFile},
 				},
 			},
 		},
