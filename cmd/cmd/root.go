@@ -35,7 +35,7 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.cmd.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.machine.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "override files")
 }
 
@@ -50,7 +50,7 @@ func initConfig() {
 		}
 
 		viper.AddConfigPath(home)
-		viper.SetConfigName(".cmd")
+		viper.SetConfigName(".machine")
 	}
 
 	viper.AutomaticEnv()
