@@ -6,7 +6,9 @@
 package machine
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"time"
 
 	"go.opentelemetry.io/otel/api/global"
@@ -61,6 +63,10 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	}
 
 	h = v.wrap(ctx, h)
+
+	if *v.option.DeepCopy {
+		h = deepCopyWrap(h)
+	}
 
 	do(ctx, *v.option.FIFO, h, input)
 
@@ -159,6 +165,23 @@ func createMetrics(id, vertexType string) *metrics {
 		outCounter:         metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".outgoing"),
 		errorsCounter:      metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".errors"),
 		batchDuration:      metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".duration"),
+	}
+}
+
+func deepCopyWrap(h handler) handler {
+	return func(payload []*Packet) {
+		out := []*Packet{}
+		buf := &bytes.Buffer{}
+		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+		_ = enc.Encode(payload)
+		_ = dec.Decode(&out)
+
+		for i, val := range payload {
+			out[i].span = val.span
+		}
+
+		h(out)
 	}
 }
 

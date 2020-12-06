@@ -659,6 +659,7 @@ func Test_Link(t *testing.T) {
 		}()
 		return channel
 	},
+		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(false)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
