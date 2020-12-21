@@ -127,6 +127,7 @@ Feel free to check [issues page](https://github.com/whitaker-io/machine/issues) 
 
 👤 **Jonathan Whitaker**
 
+- Twitter: [@io_whitaker](https://twitter.com/io_whitaker)
 - Github: [@jonathan-whitaker](https://github.com/jonathan-whitaker)
 
 ## Show your support

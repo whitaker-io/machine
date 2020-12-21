@@ -30,6 +30,8 @@ github.com/whitaker-io/machine v0.8.3 h1:fUtgGarHMYNwci2ddQdAEC4EhaEu+uyLcfZ6YSV
 github.com/whitaker-io/machine v0.8.3/go.mod h1:DADjtjWN95hI25nC6bXVhPWAL/VAMTwRJraovRIjm7Y=
 github.com/whitaker-io/machine v0.9.4 h1:nFqCbaIMfVLqK59sT/AF9vyvGY6spwCuzbtzezVmSVA=
 github.com/whitaker-io/machine v0.9.4/go.mod h1:5cTwpR1UHis0jGZAdeXQYoz1va5OWzJCSJI8e8c2+ag=
+github.com/whitaker-io/machine v0.9.6 h1:Zk9ikdAEu4HAVLD2u3zGSwLvK2IZPwJv8AUI5N85RtE=
+github.com/whitaker-io/machine v0.9.6/go.mod h1:5cTwpR1UHis0jGZAdeXQYoz1va5OWzJCSJI8e8c2+ag=
 github.com/wsxiaoys/terminal v0.0.0-20160513160801-0940f3fc43a0/go.mod h1:IXCdmsXIht47RaVFLEdVnh1t+pgYtTAhQGj73kz+2DM=
 go.opentelemetry.io/otel v0.13.0 h1:2isEnyzjjJZq6r2EKMsFj4TxiQiexsM04AVhwbR/oBA=
 go.opentelemetry.io/otel v0.13.0/go.mod h1:dlSNewoRYikTkotEnxdmuBHgzT+k/idJSfDv/FxEnOY=

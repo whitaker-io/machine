@@ -53,6 +53,7 @@ var (
 	}
 
 	defaultOptions = &Option{
+		DeepCopy:   boolP(false),
 		FIFO:       boolP(false),
 		Injectable: boolP(true),
 		Metrics:    boolP(true),
@@ -75,6 +76,11 @@ type Packet struct {
 
 // Option type for holding machine settings.
 type Option struct {
+	// DeepCopy uses encoding/gob to create a deep copy of the payload
+	// before the processing to ensure concurrent map exceptions cannot
+	// happen. Is fairly resource intensive so use with caution.
+	// Default: false
+	DeepCopy *bool
 	// FIFO controls the processing order of the payloads
 	// If set to true the system will wait for one payload
 	// to be processed before starting the next.
@@ -178,12 +184,17 @@ func (o *Option) merge(options ...*Option) *Option {
 
 func (o *Option) join(option *Option) *Option {
 	out := &Option{
+		DeepCopy:   o.DeepCopy,
 		FIFO:       o.FIFO,
 		BufferSize: o.BufferSize,
 		Injectable: o.Injectable,
 		Metrics:    o.Metrics,
 		Span:       o.Span,
 		TraceID:    o.TraceID,
+	}
+
+	if option.DeepCopy != nil {
+		out.DeepCopy = option.DeepCopy
 	}
 
 	if option.FIFO != nil {

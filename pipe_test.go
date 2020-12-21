@@ -53,6 +53,7 @@ func Test_Pipe_Sub(b *testing.T) {
 	p := NewPipe("pipe_id", t, t)
 
 	p.StreamSubscription("stream_id", t, 5*time.Millisecond,
+		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(false)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
@@ -136,6 +137,7 @@ func Test_Pipe_HTTP(b *testing.T) {
 	p := NewPipe("pipe_id", t, t)
 
 	p.StreamHTTP("http_id",
+		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(true)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
@@ -209,6 +211,7 @@ func Test_Pipe_Bad_Stream(b *testing.T) {
 	p := NewPipe("pipe_id", t, t)
 
 	p.StreamSubscription("stream_id", t, 5*time.Millisecond,
+		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(false)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
@@ -235,6 +238,7 @@ func Test_Pipe_Bad_Join(b *testing.T) {
 	p := NewPipe("pipe_id", t, t)
 
 	p.StreamHTTP("http_id",
+		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(true)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
@@ -263,6 +267,7 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 	p := NewPipe("pipe_id", t, t)
 
 	p.StreamSubscription("stream_id", t, 5*time.Millisecond,
+		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(false)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
@@ -347,6 +352,7 @@ var subSerialization = &Serialization{
 	}`,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -427,6 +433,7 @@ var httpSerialization = &Serialization{
 	ID:   "http_id",
 	Type: "http",
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -537,6 +544,7 @@ var streamSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -640,6 +648,7 @@ var badTypeSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -675,6 +684,7 @@ var nonTerminatedSubscriptionSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -710,6 +720,7 @@ var nonTerminatedHTTPSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -745,6 +756,7 @@ var nonTerminatedStreamSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -780,6 +792,7 @@ var badSymbolSubscriptionSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -827,6 +840,7 @@ var badSymbolStreamSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -881,6 +895,7 @@ var badScriptSubscriptionSerialization = &Serialization{
 	}`,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -924,6 +939,7 @@ var badScriptStreamSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -967,6 +983,7 @@ var badScriptNotFuncStreamSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1014,6 +1031,7 @@ var badTypeVertexSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1061,6 +1079,7 @@ var invalidScriptVertexSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1102,6 +1121,7 @@ var invalidScriptFuncTransmitSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1147,6 +1167,7 @@ var invalidScriptFuncMapSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1204,6 +1225,7 @@ var invalidScriptNonTerminatedFuncMapSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1251,6 +1273,7 @@ var invalidSymbolMapSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1310,6 +1333,7 @@ var invalidScriptFuncFoldSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1367,6 +1391,7 @@ var invalidScriptNonTerminatedFuncFoldSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1414,6 +1439,7 @@ var invalidSymbolFoldSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1473,6 +1499,7 @@ var invalidScriptFuncForkSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1535,6 +1562,7 @@ var invalidSymbolForkSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
@@ -1599,6 +1627,7 @@ var invalidForkErrorLeftSerialization = &Serialization{
 `,
 	Interval: 5 * time.Millisecond,
 	Options: []*Option{
+		{DeepCopy: boolP(true)},
 		{FIFO: boolP(true)},
 		{Injectable: boolP(true)},
 		{Metrics: boolP(true)},
