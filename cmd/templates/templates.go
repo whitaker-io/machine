@@ -32,7 +32,13 @@ func RegisterFNMap(key string, i interface{}) {
 // Project struct for holding project hierarchy
 type Project struct {
 	Dirs  map[string]Project
-	Files map[string]string
+	Files map[string]File
+}
+
+// File struct for holding template info
+type File struct {
+	Template       string
+	IgnoreTemplate bool
 }
 
 // GenerateProject function for creating a project
@@ -48,7 +54,11 @@ func GenerateProject(path string, project Project, force bool, settings map[stri
 	}
 
 	for file, templateKey := range project.Files {
-		payload, err := GenerateFile(file, templateKey, settings)
+		payload, err := templateKey.Template, error(nil)
+
+		if !templateKey.IgnoreTemplate {
+			payload, err = GenerateFile(file, templateKey.Template, settings)
+		}
 
 		if err != nil {
 			return err

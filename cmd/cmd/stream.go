@@ -19,8 +19,8 @@ var streamCmd = &cobra.Command{
 	Run: addFN(templates.Project{
 		Dirs: map[string]templates.Project{
 			"pipe": {
-				Files: map[string]string{
-					"{{.Name | ToLower}}.go": streamFile,
+				Files: map[string]templates.File{
+					"{{.Name | ToLower}}.go": {Template: streamFile},
 				},
 			},
 		},

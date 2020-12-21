@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/whitaker-io/machine/cmd/templates"
 )
 
@@ -73,24 +74,40 @@ func init() {
 
 var defaultProject = templates.Project{
 	Dirs: map[string]templates.Project{
+		".helm": {
+			Dirs: map[string]templates.Project{
+				"templates": {
+					Files: map[string]templates.File{
+						"deployment.yaml": {Template: deploymentFile, IgnoreTemplate: true},
+						"service.yaml":    {Template: serviceFile, IgnoreTemplate: true},
+						"config.yaml":     {Template: helmConfigFile, IgnoreTemplate: true},
+						"secrets.yaml":    {Template: helmSecretFile, IgnoreTemplate: true},
+					},
+				},
+			},
+			Files: map[string]templates.File{
+				"Chart.yaml":  {Template: chartFile},
+				"values.yaml": {Template: valuesFile},
+			},
+		},
 		"pipe": {
-			Files: map[string]string{
-				"pipe.go": pipeFile,
+			Files: map[string]templates.File{
+				"pipe.go": {Template: pipeFile},
 			},
 		},
 		"version": {
-			Files: map[string]string{
-				"version.go": versionFile,
+			Files: map[string]templates.File{
+				"version.go": {Template: versionFile},
 			},
 		},
 	},
-	Files: map[string]string{
-		"main.go":        mainFile,
-		"go.mod":         modFile,
-		"bootstrap.yaml": configFile,
-		"Dockerfile":     dockerFile,
-		".gitignore":     ignoreFile,
-		".dockerignore":  ignoreFile,
+	Files: map[string]templates.File{
+		"main.go":        {Template: mainFile},
+		"go.mod":         {Template: modFile},
+		"bootstrap.yaml": {Template: configFile},
+		"Dockerfile":     {Template: dockerFile},
+		".gitignore":     {Template: ignoreFile},
+		".dockerignore":  {Template: ignoreFile},
 	},
 }
 
@@ -386,3 +403,195 @@ fabric.properties
 
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser`
+
+var deploymentFile = `---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  labels: {{range $k, $v := .labels}}
+    {{$k}}: '{{$v}}' {{end}}
+  name: '{{.Name}}'
+spec:
+  progressDeadlineSeconds: 600
+  replicas: {{.deployment.Replicas}}
+  revisionHistoryLimit: 10
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: 'RollingUpdate'
+  selector:
+    matchLabels: {{range $k, $v := .labels}}
+      {{$k}}: '{{$v}}' {{end}}
+  template:
+    metadata:
+      labels: {{range $k, $v := .labels}}
+        {{$k}}: '{{$v}}' {{end}}
+    spec:
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      terminationGracePeriodSeconds: {{.deployment.gracePeriod}}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 99
+            podAffinityTerm:
+              labelSelector:
+                matchLabels: {{range $k, $v := .labels}}
+                  {{$k}}: '{{$v}}' {{end}}
+              topologyKey: kubernetes.io/hostname
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels: {{range $k, $v := .labels}}
+                  {{$k}}: '{{$v}}' {{end}}
+              topologyKey: failure-domain.beta.kubernetes.io/zone
+            weight: 100
+      containers:
+      - name: '{{.Name}}'
+        image: '{{.imageRepo}}/{{.name}}:{{.version}}'
+        imagePullPolicy: Always 
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        envFrom:
+        - configMapRef:
+            name: '{{.Name}}-config' {{range $i, $secret := .secrets}}
+        - secretRef:
+            name: '{{$secret.name}}-secret'{{end}}
+        ports:
+        - containerPort: {{.deployment.port}}
+          name: http
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{.deployment.port}}
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{.deployment.port}}
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        resources:
+          limits:
+            cpu: '{{.deployment.limits.cpu}}'
+            memory: '{{.deployment.limits.Memory}}'
+          requests: 
+            cpu: '{{.deployment.requests.cpu}}'
+            memory: '{{.deployment.requests.Memory}}'
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  labels: {{range $k, $v := .labels}}
+    {{$k}}: '{{$v}}' {{end}}
+  name: '{{.name}}-autoscaler'
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: '{{.name}}'
+  minReplicas: {{.deployment.replicas}}
+  maxReplicas: {{.deployment.scaleLimit}}
+  targetCPUUtilizationPercentage: {{.deployment.scaleTarget}}`
+
+var serviceFile = `{{$root := .}}{{range $i, $service := .services}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels: {{range $k1, $v1 := $root.labels}}
+    {{$k1}}: '{{$v1}}' {{end}}
+  name: '{{$service.name}}-svc'
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+  - name: '{{$service.port}}'
+    port: {{$service.port}}
+    protocol: TCP
+    targetPort: {{$service.port}}
+  selector: {{range $k1, $v1 := $root.labels}}
+    {{$k1}}: '{{$v1}}' {{end}}
+  sessionAffinity: None
+  type: {{$service.type}} {{end}}`
+
+var helmConfigFile = `apiVersion: v1
+data: {{range $k, $v := .config}}
+  {{$k | ToUpper}}: '{{$v | Base64}}' {{end}}
+kind: ConfigMap
+metadata:
+	name: {{ .name }}-config`
+
+/* #nosec */
+var helmSecretFile = `{{$root := .}}{{range $i, $secret := .secrets}}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret.name }}-secret
+type: {{$secret.Type}}
+data:
+  {{$secret.data | Base64}}{{end}}`
+
+var chartFile = `apiVersion: v2
+name: {{.Name}}
+version: 0.1.0
+description: A Stream Processor Built With The Machine Project https://github.com/whitaker-io/machine
+type: Machine Worker`
+
+var valuesFile = `
+name: {{.Name}}
+version: 0.1.0
+deployment:
+	port: 5000
+	gracePeriod: 10
+	replicas: 1
+	scaleLimit: 5
+	scaleTarget: 75
+	limits:
+		cpu: 2000m
+		memory: 2Gi
+	requests:
+		cpu: 2000m
+		memory: 2Gi
+labels:
+	name: {{.Name}}
+	machine: worker
+services:
+	- name: {{.Name}}
+		port: 5000
+config:
+	NAME: {{.Name}}
+	PORT: 5000
+	GRACE_PERIOD: 10
+secrets:
+	- name: secret-1
+		type: opaque
+		Data: |
+			value`
