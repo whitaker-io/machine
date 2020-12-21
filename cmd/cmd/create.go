@@ -100,14 +100,25 @@ var defaultProject = templates.Project{
 				"version.go": {Template: versionFile},
 			},
 		},
+		".github": {
+			Dirs: map[string]templates.Project{
+				"workflows": {
+					Files: map[string]templates.File{
+						"go.yml":       {Template: goActionFile, IgnoreTemplate: true},
+						"releaser.yml": {Template: releaserActionFile, IgnoreTemplate: true},
+					},
+				},
+			},
+		},
 	},
 	Files: map[string]templates.File{
-		"main.go":        {Template: mainFile},
-		"go.mod":         {Template: modFile},
-		"bootstrap.yaml": {Template: configFile},
-		"Dockerfile":     {Template: dockerFile},
-		".gitignore":     {Template: ignoreFile},
-		".dockerignore":  {Template: ignoreFile},
+		"main.go":         {Template: mainFile},
+		"go.mod":          {Template: modFile},
+		"bootstrap.yaml":  {Template: configFile},
+		"Dockerfile":      {Template: dockerFile},
+		".gitignore":      {Template: ignoreFile},
+		".goreleaser.yml": {Template: goReleaserFile},
+		".dockerignore":   {Template: ignoreFile},
 	},
 }
 
@@ -595,3 +606,112 @@ secrets:
 		type: opaque
 		Data: |
 			value`
+
+const goActionFile = `name: Go
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.15
+        id: go
+
+      - uses: actions/checkout@master
+        with:
+          fetch-depth: 0
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v2.3.0
+        with:
+          version: v1.32
+          github-token: ${{ github.token }}
+          only-new-issues: true
+
+      - name: Get dependencies
+        run: go mod vendor
+
+      - name: Go Test
+        run: go test -timeout 60s -coverprofile=coverage.out
+
+      - name: Coverage
+        uses: brpaz/godacov-action@v1.1.1
+        with:
+            reportPath: 'coverage.out'
+            codacyToken: ${{ secrets.CODACY_TOKEN }}
+            commitId: ${{ github.sha }}
+
+      - name: Bump version and push tag
+        if: github.ref == 'refs/heads/master'
+        uses: mathieudutour/github-tag-action@v4.5
+        with:
+					github_token: ${{ secrets.token }}`
+
+const releaserActionFile = `name: goreleaser
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v2
+        with:
+          version: latest
+          args: release --rm-dist
+          workdir: cmd
+        env:
+          GITHUB_TOKEN: ${{ secrets.token }}`
+
+const goReleaserFile = `project_name: {{.Name}}
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod download
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+archives:
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      386: i386
+      amd64: x86_64
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{"{{"}} .Tag {{"}}"}}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'`
