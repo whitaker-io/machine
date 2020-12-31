@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/karlseguin/expect v1.0.7 // indirect
 	github.com/karlseguin/typed v1.1.7
+	github.com/mitchellh/mapstructure v1.4.0
 	github.com/traefik/yaegi v0.9.7
 	go.opentelemetry.io/otel v0.13.0
 )
