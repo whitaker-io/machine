@@ -16,6 +16,11 @@ import (
 	"github.com/karlseguin/typed"
 )
 
+type testType struct {
+	Name  string `mapstructure:"name"`
+	Value int    `mapstructure:"value"`
+}
+
 var testList = []Data{
 	{
 		"__traceID": "test_trace_id",
@@ -237,6 +242,14 @@ func Test_New(b *testing.T) {
 		if len(list) != 1 {
 			b.Errorf("incorrect data have %v want %v", list, testList[0])
 		}
+	}
+
+	if err := testPayload[0].As(&testType{}); err != nil {
+		b.Error(err)
+	}
+
+	if err := testPayload[0].Data.As(&testType{}); err != nil {
+		b.Error(err)
 	}
 }
 
