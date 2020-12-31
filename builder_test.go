@@ -244,11 +244,18 @@ func Test_New(b *testing.T) {
 		}
 	}
 
-	if err := testPayload[0].As(&testType{}); err != nil {
+	p := Packet{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(testPayload[0])
+	_ = dec.Decode(&p)
+
+	if err := p.As(&testType{}); err != nil {
 		b.Error(err)
 	}
 
-	if err := testPayload[0].Data.As(&testType{}); err != nil {
+	if err := p.Data.As(&testType{}); err != nil {
 		b.Error(err)
 	}
 }
