@@ -152,7 +152,7 @@ func (p *Packet) As(i interface{}) error {
 	return p.Data.As(i)
 }
 
-// As helper function used for converting the Packet into the given struct or map
+// As helper function used for converting the Data into the given struct or map
 // uses github.com/mitchellh/mapstructure under the covers and input must be a
 // pointer to a map or struct
 func (d *Data) As(i interface{}) error {
