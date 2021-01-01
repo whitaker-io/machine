@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"time"
 
 	"github.com/karlseguin/typed"
 	"github.com/mitchellh/mapstructure"
@@ -60,6 +61,7 @@ var (
 		Metrics:    boolP(true),
 		Span:       boolP(true),
 		TraceID:    boolP(false),
+		Debug:      boolP(false),
 		BufferSize: intP(0),
 	}
 )
@@ -69,10 +71,19 @@ type Data typed.Typed
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
-	ID    string `json:"id"`
-	Data  Data   `json:"data"`
-	Error error  `json:"error"`
-	span  trace.Span
+	ID        string       `json:"id"`
+	Data      Data         `json:"data"`
+	Error     error        `json:"error"`
+	Snapshots []*DebugInfo `json:"snapshots,omitempty"`
+	span      trace.Span
+}
+
+// DebugInfo holds information when the Option.Debug flag is set to true
+type DebugInfo struct {
+	ID       string    `json:"vertex_id"`
+	Snapshot Data      `json:"snapshot"`
+	Start    time.Time `json:"start"`
+	End      time.Time `json:"end"`
 }
 
 // Option type for holding machine settings.
@@ -109,6 +120,11 @@ type Option struct {
 	// __traceID value as Packet.ID if provided
 	// Default: false
 	TraceID *bool
+	// Debug adds traces of changes to the packet, useful for debugging,
+	// but very costly and production use is not advised unless the overhead
+	// is acceptable
+	// Default: false
+	Debug *bool
 }
 
 // Retriever is a function that provides data to a generic Stream
@@ -206,6 +222,7 @@ func (o *Option) join(option *Option) *Option {
 		Metrics:    o.Metrics,
 		Span:       o.Span,
 		TraceID:    o.TraceID,
+		Debug:      o.Debug,
 	}
 
 	if option.DeepCopy != nil {
@@ -234,6 +251,10 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.TraceID != nil {
 		out.TraceID = option.TraceID
+	}
+
+	if option.Debug != nil {
+		out.Debug = option.Debug
 	}
 
 	return out

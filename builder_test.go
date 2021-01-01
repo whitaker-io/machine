@@ -277,6 +277,7 @@ func Test_New2(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
+		&Option{Debug: boolP(true)},
 	)
 
 	left, right := m.Builder().

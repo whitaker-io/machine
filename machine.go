@@ -68,6 +68,10 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 		h = deepCopyWrap(h)
 	}
 
+	if *v.option.Debug {
+		h = debugWrap(v.id, h)
+	}
+
 	do(ctx, *v.option.FIFO, h, input)
 
 	b.vertacies[v.id] = v
@@ -118,6 +122,35 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 					packet.span.End()
 				}
 			}
+		}
+	}
+}
+
+func debugWrap(id string, h handler) handler {
+	return func(payload []*Packet) {
+		start := time.Now()
+
+		h(payload)
+
+		end := time.Now()
+
+		out := []*Packet{}
+		buf := &bytes.Buffer{}
+		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+		_ = enc.Encode(payload)
+		_ = dec.Decode(&out)
+
+		for i, value := range out {
+			if payload[i].Snapshots == nil {
+				payload[i].Snapshots = []*DebugInfo{}
+			}
+			payload[i].Snapshots = append(payload[i].Snapshots, &DebugInfo{
+				ID:       id,
+				Start:    start,
+				End:      end,
+				Snapshot: value.Data,
+			})
 		}
 	}
 }
