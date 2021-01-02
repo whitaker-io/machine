@@ -128,6 +128,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -139,17 +140,29 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	machinePortKey        = "machine.port"
+  machineGracePeriodKey = "machine.grace_period"
+)
+
 var cfgFile string
 
 func main() {
 	initConfig()
 
-	port := viper.GetInt("server.port")
-	gracePeriod := viper.GetDuration("server.grace_period")
+	port := viper.GetInt(machinePortKey)
+  gracePeriod := viper.GetDuration(machineGracePeriodKey)
 
-	if err := pipe.Pipe.Run(context.Background(), ":"+strconv.Itoa(port), gracePeriod*time.Second); err != nil {
-		fmt.Printf("error starting pipe - %v\n", err)
-	}
+  quit := make(chan os.Signal, 1)
+  signal.Notify(quit, os.Interrupt)
+  <-quit
+  ctx, cancel := context.WithTimeout(context.Background(), gracePeriod)
+  defer cancel()
+
+  if err := pipe.Pipe.Run(ctx, ":"+strconv.Itoa(port), gracePeriod); err != nil {
+    fmt.Printf("error running pipe [%v]", err)
+    os.Exit(1)
+  }
 }
 
 func init() {
