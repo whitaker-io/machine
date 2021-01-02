@@ -151,15 +151,15 @@ func main() {
 	initConfig()
 
 	port := viper.GetInt(machinePortKey)
-  gracePeriod := viper.GetDuration(machineGracePeriodKey)
+  gracePeriod := viper.GetInt64(machineGracePeriodKey)
 
   quit := make(chan os.Signal, 1)
   signal.Notify(quit, os.Interrupt)
   <-quit
-  ctx, cancel := context.WithTimeout(context.Background(), gracePeriod)
+  ctx, cancel := context.WithTimeout(context.Background(), time.Duration(gracePeriod)*time.Second)
   defer cancel()
 
-  if err := pipe.Pipe.Run(ctx, ":"+strconv.Itoa(port), gracePeriod); err != nil {
+  if err := pipe.Pipe.Run(ctx, ":"+strconv.Itoa(port), time.Duration(gracePeriod)*time.Second); err != nil {
     fmt.Printf("error running pipe [%v]", err)
     os.Exit(1)
   }

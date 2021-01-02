@@ -22,16 +22,35 @@ const (
 
 // Serialization type for holding information about github.com/traefik/yaegi based streams
 type Serialization struct {
-	ID       string         `json:"id,omitempty" mapstructure:"id,omitempty"`
-	Type     string         `json:"type,omitempty" mapstructure:"type,omitempty"`
-	Symbol   string         `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
-	Script   string         `json:"script,omitempty" mapstructure:"script,omitempty"`
-	Interval time.Duration  `json:"interval,omitempty" mapstructure:"interval,omitempty"`
-	Options  []*Option      `json:"options,omitempty" mapstructure:"options,omitempty"`
-	To       string         `json:"to,omitempty" mapstructure:"to,omitempty"`
-	Next     *Serialization `json:"next,omitempty" mapstructure:"next,omitempty"`
-	Left     *Serialization `json:"left,omitempty" mapstructure:"left,omitempty"`
-	Right    *Serialization `json:"right,omitempty" mapstructure:"right,omitempty"`
+	// ID unique identifier for the stream.
+	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
+	// Type type of stream to create.
+	//
+	// For root serializations valid values are 'http', 'subscription', or 'stream'.
+	//
+	// For child serializations valid values are 'map', 'fold_left', 'fold_right', 'fork'
+	// 'link', and 'transmit'
+	Type string `json:"type,omitempty" mapstructure:"type,omitempty"`
+	// Interval is the duration between pulls in a 'subscription' Type. It is only read
+	// if the Type is 'subscription'.
+	Interval time.Duration `json:"interval,omitempty" mapstructure:"interval,omitempty"`
+	// Symbol is the name of the golang symbol that provides the target of the script,
+	// this is typically the var/func name for the vertex in the script.
+	Symbol string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
+	// Script is the yaegi script that contains the code for the vertex.
+	// Symbols for the stdlib and machine are provided.
+	Script string `json:"script,omitempty" mapstructure:"script,omitempty"`
+	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
+	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
+	// To is a reference ID used for the 'link' type. The value must be the ID of a predecessor
+	// of this vertex
+	To string `json:"to,omitempty" mapstructure:"to,omitempty"`
+	// Next is the child vertex for every type other than Fork.
+	Next *Serialization `json:"next,omitempty" mapstructure:"next,omitempty"`
+	// Left is the left side child vertex for a Fork. It is only read for Forks.
+	Left *Serialization `json:"left,omitempty" mapstructure:"left,omitempty"`
+	// Right is the right side child vertex for a Fork. It is only read for Forks.
+	Right *Serialization `json:"right,omitempty" mapstructure:"right,omitempty"`
 }
 
 // Load method loads a stream based on github.com/traefik/yaegi
