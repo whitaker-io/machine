@@ -32,7 +32,7 @@ jobs:
         run: go mod vendor
 
       - name: Go Test
-        run: go test -timeout 60s -coverprofile=coverage.out
+        run: go test -timeout 120s -coverprofile=coverage.out
 
       - name: Coverage
         uses: brpaz/godacov-action@v1.1.1
