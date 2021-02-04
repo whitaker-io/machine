@@ -453,21 +453,21 @@ func (n *looper) FoldRight(id string, f Fold, options ...*Option) LoopBuilder {
 }
 
 // Fork the data, options default to the set used when creating the Stream
-func (n *looper) Fork(id string, f Fork, options ...*Option) (LoopBuilder, LoopBuilder) {
-	left, right := n.next.Fork(id, f, options...)
+func (n *looper) Fork(id string, f Fork, options ...*Option) (left, right LoopBuilder) {
+	x, y := n.next.Fork(id, f, options...)
 
 	return &looper{
 			loopstart: n.loopstart,
-			next:      left,
+			next:      x,
 		}, &looper{
 			loopstart: n.loopstart,
-			next:      right,
+			next:      y,
 		}
 }
 
 // Loop the data combining a fork and link the first output is the Builder for the loop
 // and the second is the output of the loop
-func (n *looper) Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out LoopBuilder) {
+func (n *looper) Loop(id string, x Fork, options ...*Option) (loop, out LoopBuilder) {
 	inner, outer := n.next.Loop(id, x, options...)
 	return inner, &looper{
 		loopstart: n.loopstart,
