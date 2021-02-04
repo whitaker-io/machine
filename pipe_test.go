@@ -24,7 +24,7 @@ func (t *tester) Read(ctx context.Context) []Data {
 	buf := &bytes.Buffer{}
 	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-	_ = enc.Encode(testList)
+	_ = enc.Encode(testListBase)
 	_ = dec.Decode(&out)
 	return out
 }
@@ -78,7 +78,7 @@ func Test_Pipe_Sub(b *testing.T) {
 		list := <-out
 
 		if len(list) != 10 && len(list) != 1 {
-			b.Errorf("incorrect data have %v want %v", list, testList[0])
+			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
 		}
 	}
 
@@ -86,7 +86,7 @@ func Test_Pipe_Sub(b *testing.T) {
 	buf := &bytes.Buffer{}
 	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-	_ = enc.Encode(&testList)
+	_ = enc.Encode(&testListBase)
 	_ = dec.Decode(&o)
 
 	if len(o) != 10 {
@@ -158,14 +158,14 @@ func Test_Pipe_HTTP(b *testing.T) {
 		}
 	}()
 
-	bytez, _ := json.Marshal(testList)
+	bytez, _ := json.Marshal(deepCopy(testListBase))
 	resp, err := p.app.Test(request(bytez), -1)
 
 	if resp.StatusCode != http.StatusAccepted || err != nil {
 		b.Error(resp.StatusCode, err)
 	}
 
-	bytez, _ = json.Marshal(testList[0])
+	bytez, _ = json.Marshal(testListBase[0])
 	resp, err = p.app.Test(request(bytez), -1)
 
 	if resp.StatusCode != http.StatusAccepted || err != nil {
@@ -181,12 +181,12 @@ func Test_Pipe_HTTP(b *testing.T) {
 
 	list := <-out
 	if len(list) != 10 {
-		b.Errorf("incorrect data have %v want %v", list, testList)
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
 	}
 
 	list = <-out
 	if len(list) != 1 {
-		b.Errorf("incorrect data have %v want %v", list, testList[0])
+		b.Errorf("incorrect data have %v want %v", list, testListBase[0])
 	}
 
 	cancel()

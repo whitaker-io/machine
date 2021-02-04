@@ -322,3 +322,14 @@ func deepCopy(data []Data) []Data {
 
 	return out
 }
+
+func deepCopyList(data []*Packet) []*Packet {
+	out := []*Packet{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(data)
+	_ = dec.Decode(&out)
+
+	return out
+}

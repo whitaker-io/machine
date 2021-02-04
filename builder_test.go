@@ -21,7 +21,7 @@ type testType struct {
 	Value int    `mapstructure:"value"`
 }
 
-var testList = []Data{
+var testListBase = []Data{
 	{
 		"__traceID": "test_trace_id",
 		"name":      "data0",
@@ -65,7 +65,7 @@ var testList = []Data{
 	},
 }
 
-var testPayload = []*Packet{
+var testPayloadBase = []*Packet{
 	{
 		ID: "ID_0",
 		Data: Data{
@@ -172,13 +172,13 @@ func Benchmark_Test_New(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		go func() {
-			channel <- testList
+			channel <- deepCopy(testListBase)
 		}()
 
 		list := <-out
 
-		if len(list) != len(testList) {
-			b.Errorf("incorrect data have %v want %v", list, testList)
+		if len(list) != len(testListBase) {
+			b.Errorf("incorrect data have %v want %v", list, testListBase)
 		}
 	}
 }
@@ -190,7 +190,7 @@ func Test_New(b *testing.T) {
 		channel := make(chan []Data)
 		go func() {
 			for n := 0; n < count; n++ {
-				channel <- testList
+				channel <- deepCopy(testListBase)
 			}
 		}()
 		return channel
@@ -240,7 +240,7 @@ func Test_New(b *testing.T) {
 		list := <-out
 
 		if len(list) != 1 {
-			b.Errorf("incorrect data have %v want %v", list, testList[0])
+			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
 		}
 	}
 
@@ -248,7 +248,7 @@ func Test_New(b *testing.T) {
 	buf := &bytes.Buffer{}
 	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-	_ = enc.Encode(testPayload[0])
+	_ = enc.Encode(testPayloadBase[0])
 	_ = dec.Decode(&p)
 
 	if err := p.As(&testType{}); err != nil {
@@ -267,7 +267,7 @@ func Test_New2(b *testing.T) {
 		channel := make(chan []Data)
 		go func() {
 			for n := 0; n < count; n++ {
-				channel <- testList
+				channel <- deepCopy(testListBase)
 			}
 		}()
 		return channel
@@ -333,7 +333,7 @@ func Test_New2(b *testing.T) {
 		list := <-out
 
 		if len(list) != 1 {
-			b.Errorf("incorrect data have %v want %v", list, testList[9])
+			b.Errorf("incorrect data have %v want %v", list, testListBase[9])
 		}
 	}
 }
@@ -502,7 +502,7 @@ func Test_Inject(b *testing.T) {
 	m := NewStream("machine_id", func(c context.Context) chan []Data {
 		go func() {
 			for n := 0; n < count; n++ {
-				channel <- testList
+				channel <- deepCopy(testListBase)
 				channel <- nil
 			}
 		}()
@@ -580,7 +580,7 @@ func Test_Inject(b *testing.T) {
 	go func() {
 		for n := 0; n < count; n++ {
 			m.Inject(context.Background(), map[string][]*Packet{
-				"map_id": testPayload,
+				"map_id": deepCopyList(testPayloadBase),
 			})
 		}
 	}()
@@ -589,7 +589,7 @@ func Test_Inject(b *testing.T) {
 		list := <-out
 
 		if len(list) != 1 {
-			b.Errorf("incorrect data have %v want %v", list, testList[0])
+			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
 		}
 	}
 }
@@ -601,7 +601,7 @@ func Test_Inject_Cancel(b *testing.T) {
 	m := NewStream("machine_id", func(c context.Context) chan []Data {
 		go func() {
 			for n := 0; n < count; n++ {
-				channel <- testList
+				channel <- deepCopy(testListBase)
 				channel <- nil
 			}
 		}()
@@ -652,7 +652,7 @@ func Test_Inject_Cancel(b *testing.T) {
 	go func() {
 		for n := 0; n < count; n++ {
 			m.Inject(context.Background(), map[string][]*Packet{
-				"map_id": testPayload,
+				"map_id": deepCopyList(testPayloadBase),
 			})
 		}
 	}()
@@ -673,7 +673,7 @@ func Test_Link(t *testing.T) {
 				buf := &bytes.Buffer{}
 				enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-				_ = enc.Encode(testList)
+				_ = enc.Encode(testListBase)
 				_ = dec.Decode(&out)
 				channel <- out
 			}
@@ -728,7 +728,7 @@ func Test_Link(t *testing.T) {
 		list := <-out
 
 		if len(list) != 10 || list[0]["loops"] != 6 {
-			t.Errorf("incorrect data have %v want %v", list, testList)
+			t.Errorf("incorrect data have %v want %v", list, testListBase)
 		}
 	}
 
@@ -738,7 +738,7 @@ func Test_Link(t *testing.T) {
 			buf := &bytes.Buffer{}
 			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-			_ = enc.Encode(testPayload)
+			_ = enc.Encode(testPayloadBase)
 			_ = dec.Decode(&out)
 			m.Inject(context.Background(), map[string][]*Packet{
 				"map_id":  out,
@@ -759,7 +759,7 @@ func Test_Link_not_ancestor(t *testing.T) {
 		channel := make(chan []Data)
 		go func() {
 			for n := 0; n < count; n++ {
-				channel <- testList
+				channel <- deepCopy(testListBase)
 			}
 		}()
 		return channel
