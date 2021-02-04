@@ -140,6 +140,17 @@ var testPayloadBase = []*Packet{
 
 var bufferSize = 0
 
+func deepCopyList(data []*Packet) []*Packet {
+	out := []*Packet{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(data)
+	_ = dec.Decode(&out)
+
+	return out
+}
+
 func Benchmark_Test_New(b *testing.B) {
 	out := make(chan []Data)
 	channel := make(chan []Data)
