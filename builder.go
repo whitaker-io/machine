@@ -34,11 +34,27 @@ type Builder interface {
 	FoldLeft(id string, f Fold, options ...*Option) Builder
 	FoldRight(id string, f Fold, options ...*Option) Builder
 	Fork(id string, f Fork, options ...*Option) (Builder, Builder)
+	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder)
 	Link(id, target string, options ...*Option)
 	Transmit(id string, s Sender, options ...*Option)
 }
 
+// LoopBuilder is the interface provided for creating a data processing stream that loops.
+type LoopBuilder interface {
+	Map(id string, a Applicative, options ...*Option) LoopBuilder
+	FoldLeft(id string, f Fold, options ...*Option) LoopBuilder
+	FoldRight(id string, f Fold, options ...*Option) LoopBuilder
+	Fork(id string, f Fork, options ...*Option) (LoopBuilder, LoopBuilder)
+	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out LoopBuilder)
+	Done()
+}
+
 type nexter func(*node) *node
+
+type looper struct {
+	loopstart string
+	next      Builder
+}
 
 type builder struct {
 	vertex
@@ -356,6 +372,112 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 			connector: func(ctx context.Context, b *builder) error { return nil },
 		},
 	})
+}
+
+// Loop the data combining a fork and link the first output is the Builder for the loop
+// and the second is the output of the loop
+func (n nexter) Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder) {
+	opt := &Option{
+		BufferSize: intP(0),
+	}
+
+	if len(options) > 0 {
+		opt = opt.merge(options...)
+	}
+
+	next := &node{}
+
+	leftEdge := newEdge(opt.BufferSize)
+	rightEdge := newEdge(opt.BufferSize)
+
+	next.vertex = vertex{
+		id:         id,
+		vertexType: "fork",
+		metrics:    createMetrics(id, "fork"),
+		option:     opt,
+		handler: func(payload []*Packet) {
+			lpayload, rpayload := x(payload)
+			leftEdge.channel <- lpayload
+			rightEdge.channel <- rpayload
+		},
+		connector: func(ctx context.Context, b *builder) error {
+			if next.left == nil || next.right == nil {
+				return fmt.Errorf("non-terminated fork")
+			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
+				return err
+			} else if err := next.right.cascade(ctx, b, rightEdge); err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+
+	next = n(next)
+
+	return &looper{
+			loopstart: id,
+			next: nexter(func(n *node) *node {
+				next.left = n
+				return n
+			}),
+		},
+		nexter(func(n *node) *node {
+			next.right = n
+			return n
+		})
+}
+
+// Map apply a mutation, options default to the set used when creating the Stream
+func (n *looper) Map(id string, a Applicative, options ...*Option) LoopBuilder {
+	return &looper{
+		loopstart: n.loopstart,
+		next:      n.next.Map(id, a, options...),
+	}
+}
+
+// FoldLeft the data, options default to the set used when creating the Stream
+func (n *looper) FoldLeft(id string, f Fold, options ...*Option) LoopBuilder {
+	return &looper{
+		loopstart: n.loopstart,
+		next:      n.next.FoldLeft(id, f, options...),
+	}
+}
+
+// FoldRight the data, options default to the set used when creating the Stream
+func (n *looper) FoldRight(id string, f Fold, options ...*Option) LoopBuilder {
+	return &looper{
+		loopstart: n.loopstart,
+		next:      n.next.FoldRight(id, f, options...),
+	}
+}
+
+// Fork the data, options default to the set used when creating the Stream
+func (n *looper) Fork(id string, f Fork, options ...*Option) (left, right LoopBuilder) {
+	x, y := n.next.Fork(id, f, options...)
+
+	return &looper{
+			loopstart: n.loopstart,
+			next:      x,
+		}, &looper{
+			loopstart: n.loopstart,
+			next:      y,
+		}
+}
+
+// Loop the data combining a fork and link the first output is the Builder for the loop
+// and the second is the output of the loop
+func (n *looper) Loop(id string, x Fork, options ...*Option) (loop, out LoopBuilder) {
+	inner, outer := n.next.Loop(id, x, options...)
+	return inner, &looper{
+		loopstart: n.loopstart,
+		next:      outer,
+	}
+}
+
+// Done function for ending the loop and going back to the original Fork
+func (n *looper) Done() {
+	n.next.Link(uuid.New().String(), n.loopstart)
 }
 
 // NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
