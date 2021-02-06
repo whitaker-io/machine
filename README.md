@@ -15,27 +15,14 @@ Add the primary library to your project
   go get -u github.com/whitaker-io/machine
 ```
 ------
-Download the command to generate a boilerplate project (**WIP/alpha state**)
-```bash
-  go get -u github.com/whitaker-io/machine/cmd
-  cd $GOSRC/github.com/whitaker-io/machine/cmd
-  go build -a -o pkg/machine -ldflags "-s -w"
-  sudo ln -s pkg/machine /usr/local/bin/machine
-```
+
+`Foundry` is a tool used to generate new projects quickly [Foundry](https://github.com/whitaker-io/foundry)
+
 ------
-Add the different Subscription Implementations
-```bash
-  go get -u github.com/whitaker-io/machine/subscriptions/kafka
-```
-```bash
-  go get -u github.com/whitaker-io/machine/subscriptions/redis
-```
-```bash
-  go get -u github.com/whitaker-io/machine/subscriptions/pubsub
-```
-```bash
-  go get -u github.com/whitaker-io/machine/subscriptions/sqs
-```
+
+`Subscription` implementations can be found here [Subscriptions](https://github.com/whitaker-io/subscriptions)
+
+------
 
 ***
 ## [Documentation](#docs)
