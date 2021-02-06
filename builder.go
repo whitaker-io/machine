@@ -46,6 +46,7 @@ type LoopBuilder interface {
 	FoldRight(id string, f Fold, options ...*Option) LoopBuilder
 	Fork(id string, f Fork, options ...*Option) (LoopBuilder, LoopBuilder)
 	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out LoopBuilder)
+	Transmit(id string, s Sender, options ...*Option)
 	Done()
 }
 
@@ -377,55 +378,13 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 // Loop the data combining a fork and link the first output is the Builder for the loop
 // and the second is the output of the loop
 func (n nexter) Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder) {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
-	next := &node{}
-
-	leftEdge := newEdge(opt.BufferSize)
-	rightEdge := newEdge(opt.BufferSize)
-
-	next.vertex = vertex{
-		id:         id,
-		vertexType: "fork",
-		metrics:    createMetrics(id, "fork"),
-		option:     opt,
-		handler: func(payload []*Packet) {
-			lpayload, rpayload := x(payload)
-			leftEdge.channel <- lpayload
-			rightEdge.channel <- rpayload
-		},
-		connector: func(ctx context.Context, b *builder) error {
-			if next.left == nil || next.right == nil {
-				return fmt.Errorf("non-terminated fork")
-			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
-				return err
-			} else if err := next.right.cascade(ctx, b, rightEdge); err != nil {
-				return err
-			}
-
-			return nil
-		},
-	}
-
-	next = n(next)
+	left, right := n.Fork(id, x, options...)
 
 	return &looper{
 			loopstart: id,
-			next: nexter(func(n *node) *node {
-				next.left = n
-				return n
-			}),
+			next:      left,
 		},
-		nexter(func(n *node) *node {
-			next.right = n
-			return n
-		})
+		right
 }
 
 // Map apply a mutation, options default to the set used when creating the Stream
@@ -473,6 +432,11 @@ func (n *looper) Loop(id string, x Fork, options ...*Option) (loop, out LoopBuil
 		loopstart: n.loopstart,
 		next:      outer,
 	}
+}
+
+// Transmit the data outside the system, options default to the set used when creating the Stream
+func (n *looper) Transmit(id string, x Sender, options ...*Option) {
+	n.next.Transmit(id, x, options...)
 }
 
 // Done function for ending the loop and going back to the original Fork
