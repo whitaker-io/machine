@@ -6,6 +6,10 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/aa8efa7beb3f4e66a5dc0247e25557b5)](https://www.codacy.com?utm_source=github.com&utm_medium=referral&utm_content=whitaker-io/machine&utm_campaign=Badge_Coverage)
 [![Gitter chat](https://badges.gitter.im/whitaker-io/machine.png)](https://gitter.im/whitaker-io/machine)
 
+<p align="center">
+    <img alt="Machine" height="125" src="https://raw.githubusercontent.com/whitaker-io/machine/docs/master/static/Black-No-BG.png">
+</p>
+
 `Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
 
 ### **Installation**
