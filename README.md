@@ -28,11 +28,10 @@ Add the primary library to your project
 
 ------
 
-<p align="center">
+<p align="left">
     <img alt="Gopher" height="125" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">
 </p>
 
-***
 ## [Documentation](#docs)
 
 [Docs](./docs)
