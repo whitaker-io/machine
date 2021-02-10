@@ -7,7 +7,7 @@
 [![Gitter chat](https://badges.gitter.im/whitaker-io/machine.png)](https://gitter.im/whitaker-io/machine)
 
 <p align="center">
-    <img alt="Machine" height="125" src="https://raw.githubusercontent.com/whitaker-io/machine/docs/master/static/Black-No-BG.png">
+    <img alt="Machine" height="125" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Black-No-BG.png">
 </p>
 
 `Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
