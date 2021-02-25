@@ -73,8 +73,8 @@ Add the primary library to your project
 </ul>
   </td>
     <td>
-      <p align="right">
-        <img alt="Gopher" height="250" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">
+      <p >
+        
       </p>
     </td>
   </tr>

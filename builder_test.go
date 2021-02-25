@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/karlseguin/typed"
 )
 
 type testType struct {
@@ -708,7 +706,11 @@ func Test_Link(t *testing.T) {
 			return nil
 		}).
 		Fork("fork_id", ForkRule(func(d Data) bool {
-			val := typed.Typed(d).IntOr("loops", 0)
+			if _, ok := d["loops"]; !ok {
+				d["loops"] = 0
+			}
+
+			val := d["loops"].(int)
 
 			if val > 5 {
 				return true
@@ -791,7 +793,11 @@ func Test_Link_not_ancestor(t *testing.T) {
 			return nil
 		}).Fork("fork_id", ForkRule(
 		func(d Data) bool {
-			val := typed.Typed(d).IntOr("loops", 0)
+			if _, ok := d["loops"]; !ok {
+				d["loops"] = 0
+			}
+
+			val := d["loops"].(int)
 
 			if val > 5 {
 				return true

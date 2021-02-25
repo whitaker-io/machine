@@ -104,8 +104,6 @@ Routing based on filtering the data is also possible with ForkRule
 
   left, right := right.Fork("unique_id2", 
     ForkRule(func(d Data) bool {
-      // Data is a wrapper on typed.Typed see 
-      // https://github.com/karlseguin/typed
       if val, ok := d["some_value"]; !ok {
         return false
       }

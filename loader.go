@@ -1,8 +1,8 @@
 package machine
 
 import (
-	"context"
 	"fmt"
+	"plugin"
 	"reflect"
 	"time"
 
@@ -10,129 +10,356 @@ import (
 	"github.com/traefik/yaegi/stdlib"
 )
 
-const (
-	stream      = "stream"
-	applicative = "map"
-	foldLeft    = "fold_left"
-	foldRight   = "fold_right"
-	fork        = "fork"
-	link        = "link"
-	transmit    = "transmit"
-)
+const streamConst = "stream"
 
-// Serialization type for holding information about github.com/traefik/yaegi based streams
-type Serialization struct {
-	// ID unique identifier for the stream.
-	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
+var subscriptionProviders map[string]func(map[string]interface{}) Subscription
+var retrieverProviders map[string]func(map[string]interface{}) Retriever
+var applicativeProviders map[string]func(map[string]interface{}) Applicative
+var foldProviders map[string]func(map[string]interface{}) Fold
+var forkProviders map[string]func(map[string]interface{}) Fork
+var transmitProviders map[string]func(map[string]interface{}) Sender
+
+// ProviderDefinitions type used for holding provider configuration
+type ProviderDefinitions struct {
+	SubscriptionPlugins map[string]*PluginDefinition `json:"subscription_plugins,omitempty" mapstructure:"subscription_plugins,omitempty"`
+	SubscriptionScripts map[string]*YaegiDefinition  `json:"subscription_scripts,omitempty" mapstructure:"subscription_scripts,omitempty"`
+	RetrieverPlugins    map[string]*PluginDefinition `json:"retriever_plugins,omitempty" mapstructure:"retriever_plugins,omitempty"`
+	RetrieverScripts    map[string]*YaegiDefinition  `json:"retriever_scripts,omitempty" mapstructure:"retriever_scripts,omitempty"`
+	ApplicativePlugins  map[string]*PluginDefinition `json:"applicative_plugins,omitempty" mapstructure:"applicative_plugins,omitempty"`
+	ApplicativeScripts  map[string]*YaegiDefinition  `json:"applicative_scripts,omitempty" mapstructure:"applicative_scripts,omitempty"`
+	FoldPlugins         map[string]*PluginDefinition `json:"fold_plugins,omitempty" mapstructure:"fold_plugins,omitempty"`
+	FoldScripts         map[string]*YaegiDefinition  `json:"fold_scripts,omitempty" mapstructure:"fold_scripts,omitempty"`
+	ForkPlugins         map[string]*PluginDefinition `json:"fork_plugins,omitempty" mapstructure:"fork_plugins,omitempty"`
+	ForkScripts         map[string]*YaegiDefinition  `json:"fork_scripts,omitempty" mapstructure:"fork_scripts,omitempty"`
+	TransmitPlugins     map[string]*PluginDefinition `json:"transmit_plugins,omitempty" mapstructure:"transmit_plugins,omitempty"`
+	TransmitScripts     map[string]*YaegiDefinition  `json:"transmit_scripts,omitempty" mapstructure:"transmit_scripts,omitempty"`
+}
+
+// PluginDefinition type for declaring the path and symbol for a golang plugin containing the Provider
+type PluginDefinition struct {
+	Path   string `json:"path,omitempty" mapstructure:"path,omitempty"`
+	Symbol string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
+}
+
+// YaegiDefinition type for declaring the script and symbol for a Yaegi script containing the Provider
+type YaegiDefinition struct {
+	Script string `json:"script,omitempty" mapstructure:"script,omitempty"`
+	Symbol string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
+}
+
+// StreamSerialization config based definition for a stream
+type StreamSerialization struct {
 	// Type type of stream to create.
 	//
 	// For root serializations valid values are 'http', 'subscription', or 'stream'.
-	//
-	// For child serializations valid values are 'map', 'fold_left', 'fold_right', 'fork'
-	// 'link', and 'transmit'
 	Type string `json:"type,omitempty" mapstructure:"type,omitempty"`
 	// Interval is the duration between pulls in a 'subscription' Type. It is only read
 	// if the Type is 'subscription'.
 	Interval time.Duration `json:"interval,omitempty" mapstructure:"interval,omitempty"`
-	// Symbol is the name of the golang symbol that provides the target of the script,
-	// this is typically the var/func name for the vertex in the script.
-	Symbol string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
-	// Script is the yaegi script that contains the code for the vertex.
-	// Symbols for the stdlib and machine are provided.
-	Script string `json:"script,omitempty" mapstructure:"script,omitempty"`
+
+	*VertexSerialization
+}
+
+// VertexSerialization config based definition for a stream vertex
+type VertexSerialization struct {
+	// ID unique identifier for the stream.
+	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
+	// Provider name of the registered vertex provider
+	Provider string `json:"provider,omitempty" mapstructure:"provider,omitempty"`
 	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
 	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
-	// To is a reference ID used for the 'link' type. The value must be the ID of a predecessor
-	// of this vertex
-	To string `json:"to,omitempty" mapstructure:"to,omitempty"`
-	// Next is the child vertex for every type other than Fork.
-	Next *Serialization `json:"next,omitempty" mapstructure:"next,omitempty"`
-	// Left is the left side child vertex for a Fork. It is only read for Forks.
-	Left *Serialization `json:"left,omitempty" mapstructure:"left,omitempty"`
-	// Right is the right side child vertex for a Fork. It is only read for Forks.
-	Right *Serialization `json:"right,omitempty" mapstructure:"right,omitempty"`
+	// Attributes are a map[string]interface{} of properties to be used with the provider to create the vertex
+	Attributes map[string]interface{} `json:"attributes,omitempty" mapstructure:"attributes,omitempty"`
+
+	next map[string]*VertexSerialization
 }
 
 // Load method loads a stream based on github.com/traefik/yaegi
-func (pipe *Pipe) Load(lc *Serialization) error {
-	switch lc.Type {
-	case "http":
-		if lc.Next == nil {
-			return fmt.Errorf("non-terminated http stream %v", lc.ID)
+func (pipe *Pipe) Load(streams []StreamSerialization) error {
+	for _, stream := range streams {
+		switch stream.Type {
+		case "http":
+			if stream.VertexSerialization == nil {
+				return fmt.Errorf("http stream missing retriever config")
+			}
+			return stream.VertexSerialization.load(pipe.StreamHTTP(stream.ID, stream.Options...))
+		case "subscription":
+			if stream.VertexSerialization == nil {
+				return fmt.Errorf("non-terminated subscription")
+			}
+
+			return stream.VertexSerialization.load(pipe.StreamSubscription(
+				stream.ID,
+				subscriptionProviders[stream.Provider](stream.VertexSerialization.Attributes),
+				stream.Interval,
+				stream.Options...))
+		case streamConst:
+			if stream.VertexSerialization == nil {
+				return fmt.Errorf("non-terminated subscription")
+			}
+
+			b := pipe.Stream(NewStream(stream.ID, retrieverProviders[stream.Provider](stream.VertexSerialization.Attributes), stream.Options...))
+
+			return stream.VertexSerialization.load(b)
+		default:
+			return fmt.Errorf("invalid type")
 		}
-		return lc.Next.load(pipe.StreamHTTP(lc.ID, lc.Options...))
-	case "subscription":
-		if lc.Next == nil {
-			return fmt.Errorf("non-terminated subscription %v", lc.ID)
+	}
+
+	return nil
+}
+
+func (vs *VertexSerialization) load(builder Builder) error {
+	if next, ok := vs.next["map"]; ok {
+		return next.load(builder.Map(next.ID, applicativeProviders[next.Provider](vs.Attributes), next.Options...))
+	} else if next, ok := vs.next["fold_left"]; ok {
+		return next.load(builder.FoldLeft(next.ID, foldProviders[next.Provider](vs.Attributes), next.Options...))
+	} else if next, ok := vs.next["fold_right"]; ok {
+		return next.load(builder.FoldRight(next.ID, foldProviders[next.Provider](vs.Attributes), next.Options...))
+	} else if next, ok := vs.next["fork"]; ok {
+		var left, right *VertexSerialization
+		if left, ok = next.next["left"]; !ok {
+			return fmt.Errorf("missing left side of fork %s", next.ID)
+		} else if right, ok = next.next["right"]; !ok {
+			return fmt.Errorf("missing right side of fork %s", next.ID)
 		}
 
-		i, err := lc.loadSymbol()
+		leftBuilder, rightBuilder := builder.Fork(next.ID, forkProviders[next.Provider](vs.Attributes), next.Options...)
 
-		if err != nil {
+		if err := left.load(leftBuilder); err != nil {
 			return err
 		}
 
-		x, ok := i.(func() Subscription)
-
-		if !ok {
-			return fmt.Errorf("invalid symbol expected func() Subscription - %s - %s", lc.Type, lc.Symbol)
+		return right.load(rightBuilder)
+	} else if next, ok := vs.next["loop"]; ok {
+		var left, right *VertexSerialization
+		if left, ok = next.next["in"]; !ok {
+			return fmt.Errorf("missing inside of loop %s", next.ID)
+		} else if right, ok = next.next["out"]; !ok {
+			return fmt.Errorf("missing outside of loop %s", next.ID)
 		}
 
-		return lc.Next.load(pipe.StreamSubscription(lc.ID, x(), lc.Interval, lc.Options...))
-	case stream:
-		if lc.Next == nil {
-			return fmt.Errorf("non-terminated stream %v", lc.ID)
-		}
+		leftBuilder, rightBuilder := builder.Loop(next.ID, forkProviders[next.Provider](vs.Attributes), next.Options...)
 
-		i, err := lc.loadSymbol()
-
-		if err != nil {
+		if err := left.loadLoop(leftBuilder); err != nil {
 			return err
 		}
 
-		x, ok := i.(func(context.Context) chan []Data)
+		return right.load(rightBuilder)
+	} else if next, ok := vs.next["transmit"]; ok {
+		builder.Transmit(next.ID, transmitProviders[next.Provider](vs.Attributes), next.Options...)
+		return nil
+	}
 
-		if !ok {
-			return fmt.Errorf("invalid symbol expected func(context.Context) chan []Data - %s - %s", lc.Type, lc.Symbol)
+	return fmt.Errorf("non-terminated vertex %s", vs.ID)
+}
+
+func (vs *VertexSerialization) loadLoop(builder LoopBuilder) error {
+	if next, ok := vs.next["map"]; ok {
+		return next.loadLoop(builder.Map(next.ID, applicativeProviders[next.Provider](vs.Attributes), next.Options...))
+	} else if next, ok := vs.next["fold_left"]; ok {
+		return next.loadLoop(builder.FoldLeft(next.ID, foldProviders[next.Provider](vs.Attributes), next.Options...))
+	} else if next, ok := vs.next["fold_right"]; ok {
+		return next.loadLoop(builder.FoldRight(next.ID, foldProviders[next.Provider](vs.Attributes), next.Options...))
+	} else if next, ok := vs.next["fork"]; ok {
+		var left, right *VertexSerialization
+		if left, ok = next.next["left"]; !ok {
+			return fmt.Errorf("missing left side of fork %s", next.ID)
+		} else if right, ok = next.next["right"]; !ok {
+			return fmt.Errorf("missing right side of fork %s", next.ID)
 		}
 
-		b := pipe.Stream(NewStream(lc.ID, x, lc.Options...))
+		leftBuilder, rightBuilder := builder.Fork(next.ID, forkProviders[next.Provider](vs.Attributes), next.Options...)
 
-		return lc.Next.load(b)
-	default:
-		return fmt.Errorf("invalid type")
+		if err := left.loadLoop(leftBuilder); err != nil {
+			return err
+		}
+
+		return right.loadLoop(rightBuilder)
+	} else if next, ok := vs.next["loop"]; ok {
+		var left, right *VertexSerialization
+		if left, ok = next.next["in"]; !ok {
+			return fmt.Errorf("missing inside of loop %s", next.ID)
+		} else if right, ok = next.next["out"]; !ok {
+			return fmt.Errorf("missing outside of loop %s", next.ID)
+		}
+
+		leftBuilder, rightBuilder := builder.Loop(next.ID, forkProviders[next.Provider](vs.Attributes), next.Options...)
+
+		if err := left.loadLoop(leftBuilder); err != nil {
+			return err
+		}
+
+		return right.loadLoop(rightBuilder)
+	} else if next, ok := vs.next["transmit"]; ok {
+		builder.Transmit(next.ID, transmitProviders[next.Provider](vs.Attributes), next.Options...)
+		return nil
+	} else {
+		builder.Done()
 	}
+
+	return nil
 }
 
-func (lc *Serialization) load(builder Builder) error {
-	switch lc.Type {
-	case applicative:
-		return lc.applicative(builder)
-	case foldLeft:
-		return lc.fold(builder)
-	case foldRight:
-		return lc.fold(builder)
-	case fork:
-		return lc.fork(builder)
-	case link:
-		return lc.link(builder)
-	case transmit:
-		return lc.transmit(builder)
-	default:
-		return fmt.Errorf("invalid type")
+// Load is a function to load all of the Providers into memory
+func (pd *ProviderDefinitions) Load() error {
+	if err := pd.loadSubscriptions(); err != nil {
+		return err
 	}
+
+	if err := pd.loadRetrievers(); err != nil {
+		return err
+	}
+
+	if err := pd.loadApplicatives(); err != nil {
+		return err
+	}
+
+	if err := pd.loadFolds(); err != nil {
+		return err
+	}
+
+	if err := pd.loadForks(); err != nil {
+		return err
+	}
+
+	if err := pd.loadSenders(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (lc *Serialization) loadSymbol() (interface{}, error) {
+func (pd *ProviderDefinitions) loadSubscriptions() error {
+	for name, def := range pd.SubscriptionPlugins {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		subscriptionProviders[name] = sym.(func(map[string]interface{}) Subscription)
+	}
+
+	for name, def := range pd.SubscriptionScripts {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		subscriptionProviders[name] = sym.(func(map[string]interface{}) Subscription)
+	}
+
+	return nil
+}
+
+func (pd *ProviderDefinitions) loadRetrievers() error {
+	for name, def := range pd.RetrieverPlugins {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		retrieverProviders[name] = sym.(func(map[string]interface{}) Retriever)
+	}
+
+	for name, def := range pd.RetrieverScripts {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		retrieverProviders[name] = sym.(func(map[string]interface{}) Retriever)
+	}
+
+	return nil
+}
+
+func (pd *ProviderDefinitions) loadApplicatives() error {
+	for name, def := range pd.ApplicativePlugins {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		applicativeProviders[name] = sym.(func(map[string]interface{}) Applicative)
+	}
+
+	for name, def := range pd.ApplicativeScripts {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		applicativeProviders[name] = sym.(func(map[string]interface{}) Applicative)
+	}
+
+	return nil
+}
+
+func (pd *ProviderDefinitions) loadFolds() error {
+	for name, def := range pd.FoldPlugins {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		foldProviders[name] = sym.(func(map[string]interface{}) Fold)
+	}
+
+	for name, def := range pd.FoldScripts {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		foldProviders[name] = sym.(func(map[string]interface{}) Fold)
+	}
+
+	return nil
+}
+
+func (pd *ProviderDefinitions) loadForks() error {
+	for name, def := range pd.ForkPlugins {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		forkProviders[name] = sym.(func(map[string]interface{}) Fork)
+	}
+
+	for name, def := range pd.ForkScripts {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		forkProviders[name] = sym.(func(map[string]interface{}) Fork)
+	}
+
+	return nil
+}
+
+func (pd *ProviderDefinitions) loadSenders() error {
+	for name, def := range pd.TransmitPlugins {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		transmitProviders[name] = sym.(func(map[string]interface{}) Sender)
+	}
+
+	for name, def := range pd.TransmitScripts {
+		sym, err := def.load()
+		if err != nil {
+			return err
+		}
+		transmitProviders[name] = sym.(func(map[string]interface{}) Sender)
+	}
+
+	return nil
+}
+
+func (yd *YaegiDefinition) load() (interface{}, error) {
 	i := interp.New(interp.Options{})
 	i.Use(stdlib.Symbols)
 	i.Use(symbols)
 
-	if _, err := i.Eval(lc.Script); err != nil {
+	if _, err := i.Eval(yd.Script); err != nil {
 		return nil, err
 	}
 
-	sym, err := i.Eval(lc.Symbol)
+	sym, err := i.Eval(yd.Symbol)
 
 	if err != nil {
 		return nil, err
@@ -145,107 +372,18 @@ func (lc *Serialization) loadSymbol() (interface{}, error) {
 	return sym.Interface(), nil
 }
 
-func (lc *Serialization) applicative(b Builder) error {
-	i, err := lc.loadSymbol()
+func (pd *PluginDefinition) load() (interface{}, error) {
+	p, err := plugin.Open(pd.Path)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	x, ok := i.(func(Data) error)
-
-	if !ok {
-		return fmt.Errorf("invalid symbol expected func(Data) error - %s - %s", lc.Type, lc.Symbol)
-	}
-
-	b = b.Map(lc.ID, x, lc.Options...)
-
-	if lc.Next == nil {
-		return fmt.Errorf("non-terminated map %v", lc.ID)
-	}
-
-	return lc.Next.load(b)
-}
-
-func (lc *Serialization) fold(b Builder) error {
-	i, err := lc.loadSymbol()
+	sym, err := p.Lookup(pd.Symbol)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	x, ok := i.(func(Data, Data) Data)
-
-	if !ok {
-		return fmt.Errorf("invalid symbol expected func(Data, Data) Data - %s - %s", lc.Type, lc.Symbol)
-	}
-
-	var folder func(string, Fold, ...*Option) Builder
-	if lc.Type == foldLeft {
-		folder = b.FoldLeft
-	} else {
-		folder = b.FoldRight
-	}
-
-	b = folder(lc.ID, x, lc.Options...)
-
-	if lc.Next == nil {
-		return fmt.Errorf("non-terminated fold %v", lc.ID)
-	}
-
-	return lc.Next.load(b)
-}
-
-func (lc *Serialization) fork(b Builder) error {
-	var x Fork
-	if lc.Symbol == "error" {
-		x = ForkError
-	} else if lc.Symbol == "duplicate" {
-		x = ForkDuplicate
-	} else {
-		i, err := lc.loadSymbol()
-
-		if err != nil {
-			return err
-		}
-
-		rule, ok := i.(func(Data) bool)
-
-		if !ok {
-			return fmt.Errorf("invalid symbol expected func(Data) bool - %s - %s", lc.Type, lc.Symbol)
-		}
-
-		x = ForkRule(rule).Handler
-	}
-
-	b1, b2 := b.Fork(lc.ID, x, lc.Options...)
-
-	if err := lc.Left.load(b1); err != nil {
-		return err
-	}
-	return lc.Right.load(b2)
-}
-
-func (lc *Serialization) link(b Builder) error {
-	b.Link(lc.ID, lc.To, lc.Options...)
-
-	return nil
-}
-
-func (lc *Serialization) transmit(b Builder) error {
-	i, err := lc.loadSymbol()
-
-	if err != nil {
-		return err
-	}
-
-	x, ok := i.(func([]Data) error)
-
-	if !ok {
-		return fmt.Errorf("invalid symbol expected func([]Data) error - %s - %s", lc.Type, lc.Symbol)
-	}
-
-	b.Transmit(lc.ID, x, lc.Options...)
-
-	return nil
+	return sym, nil
 }

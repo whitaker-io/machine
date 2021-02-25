@@ -12,9 +12,14 @@ var symbols = map[string]map[string]reflect.Value{}
 func init() {
 	symbols["github.com/whitaker-io/machine"] = map[string]reflect.Value{
 		// type definitions
-		"Data":                 reflect.ValueOf((*Data)(nil)),
-		"Packet":               reflect.ValueOf((*Packet)(nil)),
-		"Subscription":         reflect.ValueOf((*Subscription)(nil)),
+		"Data":         reflect.ValueOf((*Data)(nil)),
+		"Packet":       reflect.ValueOf((*Packet)(nil)),
+		"Subscription": reflect.ValueOf((*Subscription)(nil)),
+		"Applicative":  reflect.ValueOf((*Applicative)(nil)),
+		"Retriever":    reflect.ValueOf((*Retriever)(nil)),
+		"Fold":         reflect.ValueOf((*Fold)(nil)),
+		"Fork":         reflect.ValueOf((*Fork)(nil)),
+		"Sender":       reflect.ValueOf((*Sender)(nil)),
 
 		// interface wrapper definitions
 		"_Subscription": reflect.ValueOf((*_github_com_whitaker_io_machine_Subscription)(nil)),
