@@ -21,18 +21,8 @@ var transmitProviders map[string]func(map[string]interface{}) Sender
 
 // ProviderDefinitions type used for holding provider configuration
 type ProviderDefinitions struct {
-	SubscriptionPlugins map[string]*PluginDefinition `json:"subscription_plugins,omitempty" mapstructure:"subscription_plugins,omitempty"`
-	SubscriptionScripts map[string]*YaegiDefinition  `json:"subscription_scripts,omitempty" mapstructure:"subscription_scripts,omitempty"`
-	RetrieverPlugins    map[string]*PluginDefinition `json:"retriever_plugins,omitempty" mapstructure:"retriever_plugins,omitempty"`
-	RetrieverScripts    map[string]*YaegiDefinition  `json:"retriever_scripts,omitempty" mapstructure:"retriever_scripts,omitempty"`
-	ApplicativePlugins  map[string]*PluginDefinition `json:"applicative_plugins,omitempty" mapstructure:"applicative_plugins,omitempty"`
-	ApplicativeScripts  map[string]*YaegiDefinition  `json:"applicative_scripts,omitempty" mapstructure:"applicative_scripts,omitempty"`
-	FoldPlugins         map[string]*PluginDefinition `json:"fold_plugins,omitempty" mapstructure:"fold_plugins,omitempty"`
-	FoldScripts         map[string]*YaegiDefinition  `json:"fold_scripts,omitempty" mapstructure:"fold_scripts,omitempty"`
-	ForkPlugins         map[string]*PluginDefinition `json:"fork_plugins,omitempty" mapstructure:"fork_plugins,omitempty"`
-	ForkScripts         map[string]*YaegiDefinition  `json:"fork_scripts,omitempty" mapstructure:"fork_scripts,omitempty"`
-	TransmitPlugins     map[string]*PluginDefinition `json:"transmit_plugins,omitempty" mapstructure:"transmit_plugins,omitempty"`
-	TransmitScripts     map[string]*YaegiDefinition  `json:"transmit_scripts,omitempty" mapstructure:"transmit_scripts,omitempty"`
+	Plugins map[string]*PluginDefinition `json:"plugins,omitempty" mapstructure:"plugins,omitempty"`
+	Scripts map[string]*YaegiDefinition  `json:"scripts,omitempty" mapstructure:"scripts,omitempty"`
 }
 
 // PluginDefinition type for declaring the path and symbol for a golang plugin containing the Provider
@@ -203,151 +193,54 @@ func (vs *VertexSerialization) loadLoop(builder LoopBuilder) error {
 
 // Load is a function to load all of the Providers into memory
 func (pd *ProviderDefinitions) Load() error {
-	if err := pd.loadSubscriptions(); err != nil {
+	var symbols map[string]interface{}
+	var err error
+
+	if symbols, err = pd.load(); err != nil {
 		return err
 	}
 
-	if err := pd.loadRetrievers(); err != nil {
-		return err
-	}
-
-	if err := pd.loadApplicatives(); err != nil {
-		return err
-	}
-
-	if err := pd.loadFolds(); err != nil {
-		return err
-	}
-
-	if err := pd.loadForks(); err != nil {
-		return err
-	}
-
-	if err := pd.loadSenders(); err != nil {
-		return err
+	for k, v := range symbols {
+		switch x := v.(type) {
+		case func(map[string]interface{}) Subscription:
+			subscriptionProviders[k] = x
+		case func(map[string]interface{}) Retriever:
+			retrieverProviders[k] = x
+		case func(map[string]interface{}) Applicative:
+			applicativeProviders[k] = x
+		case func(map[string]interface{}) Fold:
+			foldProviders[k] = x
+		case func(map[string]interface{}) Fork:
+			forkProviders[k] = x
+		case func(map[string]interface{}) Sender:
+			transmitProviders[k] = x
+		default:
+			return fmt.Errorf("unknown provider type for key %s", k)
+		}
 	}
 
 	return nil
 }
 
-func (pd *ProviderDefinitions) loadSubscriptions() error {
-	for name, def := range pd.SubscriptionPlugins {
+func (pd *ProviderDefinitions) load() (map[string]interface{}, error) {
+	symbols := map[string]interface{}{}
+	for name, def := range pd.Plugins {
 		sym, err := def.load()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		subscriptionProviders[name] = sym.(func(map[string]interface{}) Subscription)
+		symbols[name] = sym
 	}
 
-	for name, def := range pd.SubscriptionScripts {
+	for name, def := range pd.Scripts {
 		sym, err := def.load()
 		if err != nil {
-			return err
+			return nil, err
 		}
-		subscriptionProviders[name] = sym.(func(map[string]interface{}) Subscription)
+		symbols[name] = sym
 	}
 
-	return nil
-}
-
-func (pd *ProviderDefinitions) loadRetrievers() error {
-	for name, def := range pd.RetrieverPlugins {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		retrieverProviders[name] = sym.(func(map[string]interface{}) Retriever)
-	}
-
-	for name, def := range pd.RetrieverScripts {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		retrieverProviders[name] = sym.(func(map[string]interface{}) Retriever)
-	}
-
-	return nil
-}
-
-func (pd *ProviderDefinitions) loadApplicatives() error {
-	for name, def := range pd.ApplicativePlugins {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		applicativeProviders[name] = sym.(func(map[string]interface{}) Applicative)
-	}
-
-	for name, def := range pd.ApplicativeScripts {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		applicativeProviders[name] = sym.(func(map[string]interface{}) Applicative)
-	}
-
-	return nil
-}
-
-func (pd *ProviderDefinitions) loadFolds() error {
-	for name, def := range pd.FoldPlugins {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		foldProviders[name] = sym.(func(map[string]interface{}) Fold)
-	}
-
-	for name, def := range pd.FoldScripts {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		foldProviders[name] = sym.(func(map[string]interface{}) Fold)
-	}
-
-	return nil
-}
-
-func (pd *ProviderDefinitions) loadForks() error {
-	for name, def := range pd.ForkPlugins {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		forkProviders[name] = sym.(func(map[string]interface{}) Fork)
-	}
-
-	for name, def := range pd.ForkScripts {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		forkProviders[name] = sym.(func(map[string]interface{}) Fork)
-	}
-
-	return nil
-}
-
-func (pd *ProviderDefinitions) loadSenders() error {
-	for name, def := range pd.TransmitPlugins {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		transmitProviders[name] = sym.(func(map[string]interface{}) Sender)
-	}
-
-	for name, def := range pd.TransmitScripts {
-		sym, err := def.load()
-		if err != nil {
-			return err
-		}
-		transmitProviders[name] = sym.(func(map[string]interface{}) Sender)
-	}
-
-	return nil
+	return symbols, nil
 }
 
 func (yd *YaegiDefinition) load() (interface{}, error) {
