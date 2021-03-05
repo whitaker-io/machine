@@ -6,11 +6,13 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/yaml.v3"
 )
 
 type tester struct {
@@ -306,6 +308,52 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 	<-time.After(3 * time.Second)
 }
 
+func Test_Load(b *testing.T) {
+	pd := readProviderDefinitionsTestYamlFile(b)
+
+	if len(pd.Scripts) < 1 {
+		b.Error("issue loading testing/loader_test.yaml")
+	}
+
+	if err := pd.Load(); err != nil {
+		b.Error(fmt.Sprintf("error loading plugins %v ", err))
+	}
+
+	count := 100
+	out := make(chan []Data)
+
+	t := &tester{}
+
+	p := NewPipe("pipe_id", t, t)
+
+	streams := readStreamDefinitionsTestYamlFile(b)
+
+	streams[0].next["map"].next["transmit"].Attributes["counter"] = out
+
+	if err := p.Load(streams); err != nil {
+		b.Error(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := p.Run(ctx, ":5000", time.Second); err != nil {
+			b.Error(err)
+		}
+	}()
+
+	for n := 0; n < count; n++ {
+		list := <-out
+
+		if len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+		}
+	}
+
+	cancel()
+	<-time.After(3 * time.Second)
+}
+
 func request(bytez []byte) *http.Request {
 	req, err := http.NewRequest(http.MethodPost, "http://localhost:5000/stream/http_id", bytes.NewReader(bytez))
 
@@ -316,4 +364,40 @@ func request(bytez []byte) *http.Request {
 	req.Header.Set("Content-Type", "application/json")
 
 	return req
+}
+
+func readStreamDefinitionsTestYamlFile(b *testing.T) []StreamSerialization {
+	pd := []StreamSerialization{}
+
+	yamlFile, err := ioutil.ReadFile("testing/stream_definitions_test.yaml")
+
+	if err != nil {
+		b.Error(fmt.Sprintf("testing/stream_definitions_test.yaml err %v ", err))
+	}
+
+	err = yaml.Unmarshal(yamlFile, &pd)
+
+	if err != nil {
+		b.Error(fmt.Sprintf("Unmarshal: %v", err))
+	}
+
+	return pd
+}
+
+func readProviderDefinitionsTestYamlFile(b *testing.T) *ProviderDefinitions {
+	pd := &ProviderDefinitions{}
+
+	yamlFile, err := ioutil.ReadFile("testing/provider_definitions_test.yaml")
+
+	if err != nil {
+		b.Error(fmt.Sprintf("testing/provider_definitions_test.yaml err %v ", err))
+	}
+
+	err = yaml.Unmarshal(yamlFile, pd)
+
+	if err != nil {
+		b.Error(fmt.Sprintf("Unmarshal: %v", err))
+	}
+
+	return pd
 }

@@ -109,8 +109,10 @@ var Fork = func(map[string]interface{}) machine.Fork {
 }
 
 // Sender is a testing artifact used for plugins
-var Sender = func(map[string]interface{}) machine.Sender {
+var Sender = func(m map[string]interface{}) machine.Sender {
+	counter := m["counter"].(chan []machine.Data)
 	return func(payload []machine.Data) error {
+		counter <- payload
 		return nil
 	}
 }

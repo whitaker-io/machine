@@ -1,0 +1,10 @@
+- type: subscription
+  interval: 1000000000
+  id: subscription_test_id
+  provider: testSubscription
+  map:
+    id: applicative_id
+    provider: testApplicative
+    transmit:
+      id: sender_id
+      provider: testSender
