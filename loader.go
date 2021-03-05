@@ -1,15 +1,8 @@
 package machine
 
 import (
-	"encoding/json"
 	"fmt"
-	"plugin"
-	"reflect"
 	"time"
-
-	"github.com/traefik/yaegi/interp"
-	"github.com/traefik/yaegi/stdlib"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -23,23 +16,31 @@ var applicativeProviders map[string]func(map[string]interface{}) Applicative = m
 var foldProviders map[string]func(map[string]interface{}) Fold = map[string]func(map[string]interface{}) Fold{}
 var forkProviders map[string]func(map[string]interface{}) Fork = map[string]func(map[string]interface{}) Fork{}
 var transmitProviders map[string]func(map[string]interface{}) Sender = map[string]func(map[string]interface{}) Sender{}
+var pluginProviders map[string]PluginProvider = map[string]PluginProvider{}
+
+// PluginProvider interface for providing a way of loading plugins
+// must return one of the following functions:
+//
+// func(map[string]interface{}) Subscription
+// func(map[string]interface{}) Retriever
+// func(map[string]interface{}) Applicative
+// func(map[string]interface{}) Fold
+// func(map[string]interface{}) Fork
+// func(map[string]interface{}) Sender
+type PluginProvider interface {
+	Load(*PluginDefinition) (interface{}, error)
+}
 
 // ProviderDefinitions type used for holding provider configuration
 type ProviderDefinitions struct {
 	Plugins map[string]*PluginDefinition `json:"plugins,omitempty" mapstructure:"plugins,omitempty"`
-	Scripts map[string]*YaegiDefinition  `json:"scripts,omitempty" mapstructure:"scripts,omitempty"`
 }
 
 // PluginDefinition type for declaring the path and symbol for a golang plugin containing the Provider
 type PluginDefinition struct {
-	Path   string `json:"path,omitempty" mapstructure:"path,omitempty"`
-	Symbol string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
-}
-
-// YaegiDefinition type for declaring the script and symbol for a Yaegi script containing the Provider
-type YaegiDefinition struct {
-	Script string `json:"script,omitempty" mapstructure:"script,omitempty"`
-	Symbol string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
+	Type    string `json:"type,omitempty" mapstructure:"type,omitempty"`
+	Payload string `json:"payload,omitempty" mapstructure:"payload,omitempty"`
+	Symbol  string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
 }
 
 // StreamSerialization config based definition for a stream
@@ -69,243 +70,10 @@ type VertexSerialization struct {
 	next map[string]*VertexSerialization
 }
 
-// MarshalJSON implementation to marshal json
-func (s *StreamSerialization) MarshalJSON() ([]byte, error) {
-	m := map[string]interface{}{}
-
-	s.toMap(m)
-
-	return json.Marshal(m)
-}
-
-// UnmarshalJSON implementation to unmarshal json
-func (s *StreamSerialization) UnmarshalJSON(b []byte) error {
-	m := map[string]interface{}{}
-
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-
-	return s.fromMap(m)
-}
-
-// MarshalYAML implementation to marshal yaml
-func (s *StreamSerialization) MarshalYAML() (interface{}, error) {
-	m := map[string]interface{}{}
-
-	s.toMap(m)
-
-	return yaml.Marshal(m)
-}
-
-// UnmarshalYAML implementation to unmarshal yaml
-func (s *StreamSerialization) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	m := map[string]interface{}{}
-
-	if err := unmarshal(&m); err != nil {
-		return err
-	}
-
-	return s.fromMap(m)
-}
-
-func (s *StreamSerialization) toMap(m map[string]interface{}) {
-	m["id"] = s.ID
-	m["type"] = s.Type
-	m["interval"] = s.Interval
-	m["provider"] = s.Provider
-	m["options"] = s.Options
-	m["attributes"] = s.Attributes
-
-	for k, v := range s.next {
-		m[k] = v
-	}
-}
-
-func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
-	s.VertexSerialization = &VertexSerialization{}
-
-	if id, ok := m["id"]; ok {
-		s.ID = id.(string)
-	} else {
-		return fmt.Errorf("missing id field")
-	}
-
-	if t, ok := m["type"]; ok {
-		s.Type = t.(string)
-	} else {
-		return fmt.Errorf("missing type field")
-	}
-
-	if interval, ok := m["interval"]; ok {
-		switch val := interval.(type) {
-		case int64:
-			s.Interval = time.Duration(val)
-		case int:
-			s.Interval = time.Duration(val)
-		default:
-			panic(fmt.Errorf("invalid interval type expecting int or int64 for %s", s.ID))
-		}
-	} else if s.Type == subscriptionConst {
-		return fmt.Errorf("missing interval field")
-	}
-
-	if provider, ok := m["provider"]; ok {
-		s.Provider = provider.(string)
-	} else {
-		return fmt.Errorf("missing provider field")
-	}
-
-	if options, ok := m["options"]; ok {
-		s.Options = options.([]*Option)
-	} else {
-		s.Options = []*Option{}
-	}
-
-	if attributes, ok := m["attributes"]; ok {
-		s.Attributes = attributes.(map[string]interface{})
-		delete(m, "attributes")
-	} else {
-		s.Attributes = map[string]interface{}{}
-	}
-
-	s.next = map[string]*VertexSerialization{}
-
-	for k, v := range m {
-		switch x := v.(type) {
-		case map[string]interface{}:
-			vs := &VertexSerialization{
-				Options:    []*Option{},
-				Attributes: map[string]interface{}{},
-			}
-
-			vs.fromMap(x)
-			s.next[k] = vs
-		case map[interface{}]interface{}:
-			m2 := map[string]interface{}{}
-
-			for k2, v2 := range x {
-				if str, ok := k2.(string); ok {
-					m2[str] = v2
-				}
-			}
-
-			vs := &VertexSerialization{
-				Options:    []*Option{},
-				Attributes: map[string]interface{}{},
-			}
-
-			vs.fromMap(m2)
-			s.next[k] = vs
-		}
-	}
-
-	return nil
-}
-
-// MarshalJSON implementation to marshal json
-func (vs *VertexSerialization) MarshalJSON() ([]byte, error) {
-	m := map[string]interface{}{}
-
-	vs.toMap(m)
-
-	return json.Marshal(m)
-}
-
-// UnmarshalJSON implementation to unmarshal json
-func (vs *VertexSerialization) UnmarshalJSON(b []byte) error {
-	m := map[string]interface{}{}
-
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-
-	vs.fromMap(m)
-
-	return nil
-}
-
-// MarshalYAML implementation to marshal yaml
-func (vs *VertexSerialization) MarshalYAML() (interface{}, error) {
-	m := map[string]interface{}{}
-
-	vs.toMap(m)
-
-	return yaml.Marshal(m)
-}
-
-// UnmarshalYAML implementation to unmarshal yaml
-func (vs *VertexSerialization) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	m := map[string]interface{}{}
-
-	if err := unmarshal(&m); err != nil {
-		return err
-	}
-
-	vs.fromMap(m)
-
-	return nil
-}
-
-func (vs *VertexSerialization) toMap(m map[string]interface{}) {
-	m["id"] = vs.ID
-	m["provider"] = vs.Provider
-	m["options"] = vs.Options
-	m["attributes"] = vs.Attributes
-
-	for k, v := range vs.next {
-		m[k] = v
-	}
-}
-
-func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
-	if id, ok := m["id"]; ok {
-		vs.ID = id.(string)
-	}
-
-	if provider, ok := m["provider"]; ok {
-		vs.Provider = provider.(string)
-	}
-
-	if options, ok := m["options"]; ok {
-		vs.Options = options.([]*Option)
-	}
-
-	if attributes, ok := m["attributes"]; ok {
-		vs.Attributes = attributes.(map[string]interface{})
-		delete(m, "attributes")
-	}
-
-	vs.next = map[string]*VertexSerialization{}
-
-	for k, v := range m {
-		switch x := v.(type) {
-		case map[string]interface{}:
-			vs2 := &VertexSerialization{
-				Options:    []*Option{},
-				Attributes: map[string]interface{}{},
-			}
-
-			vs2.fromMap(x)
-			vs.next[k] = vs2
-		case map[interface{}]interface{}:
-			m2 := map[string]interface{}{}
-
-			for k2, v2 := range x {
-				if str, ok := k2.(string); ok {
-					m2[str] = v2
-				}
-			}
-
-			vs2 := &VertexSerialization{
-				Options:    []*Option{},
-				Attributes: map[string]interface{}{},
-			}
-
-			vs2.fromMap(m2)
-			vs.next[k] = vs2
-		}
-	}
+// RegisterPluginProvider function for registering a PluginProvider
+// to be used for loading VertexProviders
+func RegisterPluginProvider(name string, p PluginProvider) {
+	pluginProviders[name] = p
 }
 
 // Load method loads a stream based on github.com/traefik/yaegi
@@ -441,21 +209,15 @@ func (pd *ProviderDefinitions) Load() error {
 
 	if pd.Plugins != nil {
 		for name, def := range pd.Plugins {
-			sym, err := def.load()
-			if err != nil {
-				return err
+			if provider, ok := pluginProviders[def.Type]; ok {
+				sym, err := provider.Load(def)
+				if err != nil {
+					return err
+				}
+				symbols[name] = sym
+			} else {
+				return fmt.Errorf("missing PluginProvider %s", def.Type)
 			}
-			symbols[name] = sym
-		}
-	}
-
-	if pd.Scripts != nil {
-		for name, def := range pd.Scripts {
-			sym, err := def.load()
-			if err != nil {
-				return err
-			}
-			symbols[name] = sym
 		}
 	}
 
@@ -479,42 +241,4 @@ func (pd *ProviderDefinitions) Load() error {
 	}
 
 	return nil
-}
-
-func (yd *YaegiDefinition) load() (interface{}, error) {
-	i := interp.New(interp.Options{})
-	i.Use(stdlib.Symbols)
-	i.Use(symbols)
-
-	if _, err := i.Eval(yd.Script); err != nil {
-		return nil, fmt.Errorf("error evaluating script %w", err)
-	}
-
-	sym, err := i.Eval(yd.Symbol)
-
-	if err != nil {
-		return nil, fmt.Errorf("error evaluating symbol %w", err)
-	}
-
-	if sym.Kind() != reflect.Func {
-		return nil, fmt.Errorf("symbol is not of kind func")
-	}
-
-	return sym.Interface(), nil
-}
-
-func (pd *PluginDefinition) load() (interface{}, error) {
-	p, err := plugin.Open(pd.Path)
-
-	if err != nil {
-		return nil, fmt.Errorf("error opening plugin %w", err)
-	}
-
-	sym, err := p.Lookup(pd.Symbol)
-
-	if err != nil {
-		return nil, fmt.Errorf("error looking up symbol %w", err)
-	}
-
-	return sym, nil
 }

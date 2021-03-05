@@ -6,7 +6,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"testing"
 	"time"
@@ -311,7 +310,7 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 func Test_Load(b *testing.T) {
 	pd := readProviderDefinitionsTestYamlFile(b)
 
-	if len(pd.Scripts) < 1 {
+	if len(pd.Plugins) < 1 {
 		b.Error("issue loading testing/loader_test.yaml")
 	}
 
@@ -369,13 +368,7 @@ func request(bytez []byte) *http.Request {
 func readStreamDefinitionsTestYamlFile(b *testing.T) []StreamSerialization {
 	pd := []StreamSerialization{}
 
-	yamlFile, err := ioutil.ReadFile("testing/stream_definitions_test.yaml")
-
-	if err != nil {
-		b.Error(fmt.Sprintf("testing/stream_definitions_test.yaml err %v ", err))
-	}
-
-	err = yaml.Unmarshal(yamlFile, &pd)
+	err := yaml.Unmarshal([]byte(streamDefinitions), &pd)
 
 	if err != nil {
 		b.Error(fmt.Sprintf("Unmarshal: %v", err))
@@ -387,13 +380,7 @@ func readStreamDefinitionsTestYamlFile(b *testing.T) []StreamSerialization {
 func readProviderDefinitionsTestYamlFile(b *testing.T) *ProviderDefinitions {
 	pd := &ProviderDefinitions{}
 
-	yamlFile, err := ioutil.ReadFile("testing/provider_definitions_test.yaml")
-
-	if err != nil {
-		b.Error(fmt.Sprintf("testing/provider_definitions_test.yaml err %v ", err))
-	}
-
-	err = yaml.Unmarshal(yamlFile, pd)
+	err := yaml.Unmarshal([]byte(providerDefinitions), pd)
 
 	if err != nil {
 		b.Error(fmt.Sprintf("Unmarshal: %v", err))
@@ -401,3 +388,253 @@ func readProviderDefinitionsTestYamlFile(b *testing.T) *ProviderDefinitions {
 
 	return pd
 }
+
+var providerDefinitions = `plugins:
+  testSubscription:
+    type: yaegi
+    symbol: testing.Subscription
+    script: |
+      package testing
+
+      import (
+        "bytes"
+        "context"
+        "encoding/gob"
+
+        "github.com/whitaker-io/machine"
+      )
+
+      var data = []machine.Data{
+        {
+          "__traceID": "test_trace_id",
+          "name":      "data0",
+          "value":     0,
+        },
+        {
+          "name":  "data1",
+          "value": 1,
+        },
+        {
+          "name":  "data2",
+          "value": 2,
+        },
+        {
+          "name":  "data3",
+          "value": 3,
+        },
+        {
+          "name":  "data4",
+          "value": 4,
+        },
+        {
+          "name":  "data5",
+          "value": 5,
+        },
+        {
+          "name":  "data6",
+          "value": 6,
+        },
+        {
+          "name":  "data7",
+          "value": 7,
+        },
+        {
+          "name":  "data8",
+          "value": 8,
+        },
+        {
+          "name":  "data9",
+          "value": 9,
+        },
+      }
+
+      type testSub struct{}
+
+      func (t *testSub) Read(ctx context.Context) []machine.Data {
+        return deepCopy(data)
+      }
+
+      func (t *testSub) Close() error {
+        return nil
+      }
+
+      // Subscription is a testing artifact used for plugins
+      var Subscription = func(map[string]interface{}) machine.Subscription {
+        return &testSub{}
+      }
+
+      func deepCopy(data []machine.Data) []machine.Data {
+        out := []machine.Data{}
+        buf := &bytes.Buffer{}
+        enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+        _ = enc.Encode(data)
+        _ = dec.Decode(&out)
+
+        return out
+      }
+  testRetriever:
+    type: yaegi
+    symbol: testing.Retriever
+    script: |
+      package testing
+
+      import (
+        "bytes"
+        "context"
+        "encoding/gob"
+        "time"
+
+        "github.com/whitaker-io/machine"
+      )
+
+      var data = []machine.Data{
+        {
+          "__traceID": "test_trace_id",
+          "name":      "data0",
+          "value":     0,
+        },
+        {
+          "name":  "data1",
+          "value": 1,
+        },
+        {
+          "name":  "data2",
+          "value": 2,
+        },
+        {
+          "name":  "data3",
+          "value": 3,
+        },
+        {
+          "name":  "data4",
+          "value": 4,
+        },
+        {
+          "name":  "data5",
+          "value": 5,
+        },
+        {
+          "name":  "data6",
+          "value": 6,
+        },
+        {
+          "name":  "data7",
+          "value": 7,
+        },
+        {
+          "name":  "data8",
+          "value": 8,
+        },
+        {
+          "name":  "data9",
+          "value": 9,
+        },
+      }
+
+      // Retriever is a testing artifact used for plugins
+      var Retriever = func(map[string]interface{}) machine.Retriever {
+        return func(ctx context.Context) chan []machine.Data {
+          channel := make(chan []machine.Data)
+          go func() {
+          Loop:
+            for {
+              select {
+              case <-ctx.Done():
+                break Loop
+              case <-time.After(time.Second):
+                channel <- deepCopy(data)
+              }
+            }
+          }()
+          return channel
+        }
+      }
+
+      func deepCopy(data []machine.Data) []machine.Data {
+        out := []machine.Data{}
+        buf := &bytes.Buffer{}
+        enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+        _ = enc.Encode(data)
+        _ = dec.Decode(&out)
+
+        return out
+      }
+  testApplicative:
+    type: yaegi
+    symbol: testing.Applicative
+    script: |
+      package testing
+
+      import (
+        "github.com/whitaker-io/machine"
+      )
+
+      // Applicative is a testing artifact used for plugins
+      var Applicative = func(map[string]interface{}) machine.Applicative {
+        return func(data machine.Data) error {
+          return nil
+        }
+      }
+  testFold:
+    type: yaegi
+    symbol: testing.Fold
+    script: |
+      package testing
+
+      import (
+        "github.com/whitaker-io/machine"
+      )
+
+      // Fold is a testing artifact used for plugins
+      var Fold = func(map[string]interface{}) machine.Fold {
+        return func(aggregate, next machine.Data) machine.Data {
+          return next
+        }
+      }
+  testFork:
+    type: yaegi
+    symbol: testing.Fork
+    script: |
+      package testing
+
+      import (
+        "github.com/whitaker-io/machine"
+      )
+
+      // Fork is a testing artifact used for plugins
+      var Fork = func(map[string]interface{}) machine.Fork {
+        return func(list []*machine.Packet) (a []*machine.Packet, b []*machine.Packet) {
+          return list, []*machine.Packet{}
+        }
+      }
+  testSender:
+    type: yaegi
+    symbol: testing.Sender
+    script: |
+      package testing
+
+      import (
+        "github.com/whitaker-io/machine"
+      )
+
+      // Sender is a testing artifact used for plugins
+      var Sender = func(m map[string]interface{}) machine.Sender {
+        counter := m["counter"].(chan []machine.Data)
+        return func(payload []machine.Data) error {
+          counter <- payload
+          return nil
+        }
+      }`
+
+var streamDefinitions = `- type: subscription
+  interval: 1000000000
+  id: subscription_test_id
+  provider: testSubscription
+  map:
+    id: applicative_id
+    provider: testApplicative
+    transmit:
+      id: sender_id
+      provider: testSender`
