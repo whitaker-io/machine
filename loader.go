@@ -11,13 +11,13 @@ const (
 	httpConst         = "http"
 )
 
-var subscriptionProviders map[string]func(map[string]interface{}) Subscription = map[string]func(map[string]interface{}) Subscription{}
-var retrieverProviders map[string]func(map[string]interface{}) Retriever = map[string]func(map[string]interface{}) Retriever{}
-var applicativeProviders map[string]func(map[string]interface{}) Applicative = map[string]func(map[string]interface{}) Applicative{}
-var foldProviders map[string]func(map[string]interface{}) Fold = map[string]func(map[string]interface{}) Fold{}
-var forkProviders map[string]func(map[string]interface{}) Fork = map[string]func(map[string]interface{}) Fork{}
-var transmitProviders map[string]func(map[string]interface{}) Sender = map[string]func(map[string]interface{}) Sender{}
-var pluginProviders map[string]PluginProvider = map[string]PluginProvider{}
+var subscriptionProviders = map[string]func(map[string]interface{}) Subscription{}
+var retrieverProviders = map[string]func(map[string]interface{}) Retriever{}
+var applicativeProviders = map[string]func(map[string]interface{}) Applicative{}
+var foldProviders = map[string]func(map[string]interface{}) Fold{}
+var forkProviders = map[string]func(map[string]interface{}) Fork{}
+var transmitProviders = map[string]func(map[string]interface{}) Sender{}
+var pluginProviders = map[string]PluginProvider{}
 
 // PluginProvider interface for providing a way of loading plugins
 // must return one of the following functions:
@@ -113,7 +113,13 @@ func (pipe *Pipe) Load(streams []*StreamSerialization) error {
 				return fmt.Errorf("missing retriever Provider %s", stream.Provider)
 			}
 
-			b := pipe.Stream(NewStream(stream.ID, retrieverProviders[stream.Provider](stream.VertexSerialization.Attributes), stream.Options...))
+			b := pipe.Stream(
+				NewStream(
+					stream.ID,
+					retrieverProviders[stream.Provider](stream.VertexSerialization.Attributes),
+					stream.Options...,
+				),
+			)
 
 			if err := stream.VertexSerialization.load(b); err != nil {
 				return err
