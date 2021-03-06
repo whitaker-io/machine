@@ -1,6 +1,6 @@
 module github.com/whitaker-io/machine
 
-go 1.15
+go 1.16
 
 require (
 	github.com/gofiber/fiber/v2 v2.2.0
