@@ -39,9 +39,9 @@ type ProviderDefinitions struct {
 
 // PluginDefinition type for declaring the path and symbol for a golang plugin containing the Provider
 type PluginDefinition struct {
-	Type    string `json:"type,omitempty" mapstructure:"type,omitempty"`
-	Payload string `json:"payload,omitempty" mapstructure:"payload,omitempty"`
-	Symbol  string `json:"symbol,omitempty" mapstructure:"symbol,omitempty"`
+	Type    string `mapstructure:"type,omitempty"`
+	Payload string `mapstructure:"payload,omitempty"`
+	Symbol  string `mapstructure:"symbol,omitempty"`
 }
 
 // StreamSerialization config based definition for a stream
@@ -49,10 +49,10 @@ type StreamSerialization struct {
 	// Type type of stream to create.
 	//
 	// For root serializations valid values are 'http', 'subscription', or 'stream'.
-	Type string `json:"type,omitempty" mapstructure:"type,omitempty"`
+	Type string `mapstructure:"type,omitempty"`
 	// Interval is the duration in nanoseconds between pulls in a 'subscription' Type. It is only read
 	// if the Type is 'subscription'.
-	Interval time.Duration `json:"interval,omitempty" mapstructure:"interval,omitempty"`
+	Interval time.Duration `mapstructure:"interval,omitempty"`
 
 	*VertexSerialization
 }
@@ -60,13 +60,13 @@ type StreamSerialization struct {
 // VertexSerialization config based definition for a stream vertex
 type VertexSerialization struct {
 	// ID unique identifier for the stream.
-	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
+	ID string `mapstructure:"id,omitempty"`
 	// Provider name of the registered vertex provider
-	Provider string `json:"provider,omitempty" mapstructure:"provider,omitempty"`
+	Provider string `mapstructure:"provider,omitempty"`
 	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
-	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
+	Options []*Option `mapstructure:"options,omitempty"`
 	// Attributes are a map[string]interface{} of properties to be used with the provider to create the vertex
-	Attributes map[string]interface{} `json:"attributes,omitempty" mapstructure:"attributes,omitempty"`
+	Attributes map[string]interface{} `mapstructure:"attributes,omitempty"`
 
 	next map[string]*VertexSerialization
 }
@@ -78,14 +78,16 @@ func RegisterPluginProvider(name string, p PluginProvider) {
 }
 
 // Load method loads a stream based on github.com/traefik/yaegi
-func (pipe *Pipe) Load(streams []StreamSerialization) error {
+func (pipe *Pipe) Load(streams []*StreamSerialization) error {
 	for _, stream := range streams {
 		switch stream.Type {
 		case httpConst:
 			if stream.VertexSerialization == nil {
 				return fmt.Errorf("http stream missing retriever config")
 			}
-			return stream.VertexSerialization.load(pipe.StreamHTTP(stream.ID, stream.Options...))
+			if err := stream.VertexSerialization.load(pipe.StreamHTTP(stream.ID, stream.Options...)); err != nil {
+				return err
+			}
 		case subscriptionConst:
 			if stream.VertexSerialization == nil {
 				return fmt.Errorf("non-terminated subscription")
@@ -95,11 +97,13 @@ func (pipe *Pipe) Load(streams []StreamSerialization) error {
 				return fmt.Errorf("missing subscription Provider %s", stream.Provider)
 			}
 
-			return stream.VertexSerialization.load(pipe.StreamSubscription(
+			if err := stream.VertexSerialization.load(pipe.StreamSubscription(
 				stream.ID,
 				subscriptionProviders[stream.Provider](stream.VertexSerialization.Attributes),
 				stream.Interval,
-				stream.Options...))
+				stream.Options...)); err != nil {
+				return err
+			}
 		case streamConst:
 			if stream.VertexSerialization == nil {
 				return fmt.Errorf("non-terminated subscription")
@@ -111,7 +115,9 @@ func (pipe *Pipe) Load(streams []StreamSerialization) error {
 
 			b := pipe.Stream(NewStream(stream.ID, retrieverProviders[stream.Provider](stream.VertexSerialization.Attributes), stream.Options...))
 
-			return stream.VertexSerialization.load(b)
+			if err := stream.VertexSerialization.load(b); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("invalid type")
 		}
@@ -122,68 +128,17 @@ func (pipe *Pipe) Load(streams []StreamSerialization) error {
 
 func (vs *VertexSerialization) load(builder Builder) error {
 	if next, ok := vs.next["map"]; ok {
-		if _, ok := applicativeProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing applicative Provider %s", next.Provider)
-		}
-
-		return next.load(builder.Map(next.ID, applicativeProviders[next.Provider](next.Attributes), next.Options...))
+		return next.mapper(builder)
 	} else if next, ok := vs.next["fold_left"]; ok {
-		if _, ok := foldProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing fold Provider %s", next.Provider)
-		}
-
-		return next.load(builder.FoldLeft(next.ID, foldProviders[next.Provider](next.Attributes), next.Options...))
+		return next.fold(true, builder)
 	} else if next, ok := vs.next["fold_right"]; ok {
-		if _, ok := foldProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing fold Provider %s", next.Provider)
-		}
-
-		return next.load(builder.FoldRight(next.ID, foldProviders[next.Provider](next.Attributes), next.Options...))
+		return next.fold(false, builder)
 	} else if next, ok := vs.next["fork"]; ok {
-		if _, xok := forkProviders[next.Provider]; !xok {
-			return fmt.Errorf("missing fork Provider %s", next.Provider)
-		}
-
-		var left, right *VertexSerialization
-		if left, ok = next.next["left"]; !ok {
-			return fmt.Errorf("missing left side of fork %s", next.ID)
-		} else if right, ok = next.next["right"]; !ok {
-			return fmt.Errorf("missing right side of fork %s", next.ID)
-		}
-
-		leftBuilder, rightBuilder := builder.Fork(next.ID, forkProviders[next.Provider](next.Attributes), next.Options...)
-
-		if err := left.load(leftBuilder); err != nil {
-			return err
-		}
-
-		return right.load(rightBuilder)
+		return next.fork(builder)
 	} else if next, ok := vs.next["loop"]; ok {
-		if _, xok := forkProviders[next.Provider]; !xok {
-			return fmt.Errorf("missing loop fork Provider %s", next.Provider)
-		}
-
-		var left, right *VertexSerialization
-		if left, ok = next.next["in"]; !ok {
-			return fmt.Errorf("missing inside of loop %s", next.ID)
-		} else if right, ok = next.next["out"]; !ok {
-			return fmt.Errorf("missing outside of loop %s", next.ID)
-		}
-
-		leftBuilder, rightBuilder := builder.Loop(next.ID, forkProviders[next.Provider](next.Attributes), next.Options...)
-
-		if err := left.loadLoop(leftBuilder); err != nil {
-			return err
-		}
-
-		return right.load(rightBuilder)
+		return next.loop(builder)
 	} else if next, ok := vs.next["transmit"]; ok {
-		if _, ok := transmitProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing sender Provider %s", next.Provider)
-		}
-
-		builder.Transmit(next.ID, transmitProviders[next.Provider](next.Attributes), next.Options...)
-		return nil
+		return next.transmit(builder)
 	}
 
 	return fmt.Errorf("non-terminated vertex %s", vs.ID)
@@ -191,72 +146,167 @@ func (vs *VertexSerialization) load(builder Builder) error {
 
 func (vs *VertexSerialization) loadLoop(builder LoopBuilder) error {
 	if next, ok := vs.next["map"]; ok {
-		if _, ok := applicativeProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing applicative Provider %s", next.Provider)
-		}
-
-		return next.loadLoop(builder.Map(next.ID, applicativeProviders[next.Provider](next.Attributes), next.Options...))
+		return next.mapLoop(builder)
 	} else if next, ok := vs.next["fold_left"]; ok {
-		if _, ok := foldProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing applicative Provider %s", next.Provider)
-		}
-
-		return next.loadLoop(builder.FoldLeft(next.ID, foldProviders[next.Provider](next.Attributes), next.Options...))
+		return next.foldLoop(true, builder)
 	} else if next, ok := vs.next["fold_right"]; ok {
-		if _, ok := foldProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing applicative Provider %s", next.Provider)
-		}
-
-		return next.loadLoop(builder.FoldRight(next.ID, foldProviders[next.Provider](next.Attributes), next.Options...))
+		return next.foldLoop(false, builder)
 	} else if next, ok := vs.next["fork"]; ok {
-		if _, xok := forkProviders[next.Provider]; !xok {
-			return fmt.Errorf("missing applicative Provider %s", next.Provider)
-		}
-
-		var left, right *VertexSerialization
-		if left, ok = next.next["left"]; !ok {
-			return fmt.Errorf("missing left side of fork %s", next.ID)
-		} else if right, ok = next.next["right"]; !ok {
-			return fmt.Errorf("missing right side of fork %s", next.ID)
-		}
-
-		leftBuilder, rightBuilder := builder.Fork(next.ID, forkProviders[next.Provider](next.Attributes), next.Options...)
-
-		if err := left.loadLoop(leftBuilder); err != nil {
-			return err
-		}
-
-		return right.loadLoop(rightBuilder)
+		return next.forkLoop(builder)
 	} else if next, ok := vs.next["loop"]; ok {
-		if _, xok := forkProviders[next.Provider]; !xok {
-			return fmt.Errorf("missing loop fork Provider %s", next.Provider)
-		}
-
-		var left, right *VertexSerialization
-		if left, ok = next.next["in"]; !ok {
-			return fmt.Errorf("missing inside of loop %s", next.ID)
-		} else if right, ok = next.next["out"]; !ok {
-			return fmt.Errorf("missing outside of loop %s", next.ID)
-		}
-
-		leftBuilder, rightBuilder := builder.Loop(next.ID, forkProviders[next.Provider](next.Attributes), next.Options...)
-
-		if err := left.loadLoop(leftBuilder); err != nil {
-			return err
-		}
-
-		return right.loadLoop(rightBuilder)
+		return next.nestLoop(builder)
 	} else if next, ok := vs.next["transmit"]; ok {
-		if _, ok := transmitProviders[next.Provider]; !ok {
-			return fmt.Errorf("missing sender Provider %s", next.Provider)
-		}
-
-		builder.Transmit(next.ID, transmitProviders[next.Provider](next.Attributes), next.Options...)
-		return nil
+		return next.transmitLoop(builder)
 	} else {
 		builder.Done()
 	}
 
+	return nil
+}
+
+func (vs *VertexSerialization) mapper(builder Builder) error {
+	if _, ok := applicativeProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing applicative Provider %s", vs.Provider)
+	}
+
+	return vs.load(builder.Map(vs.ID, applicativeProviders[vs.Provider](vs.Attributes), vs.Options...))
+}
+
+func (vs *VertexSerialization) mapLoop(builder LoopBuilder) error {
+	if _, ok := applicativeProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing applicative Provider %s", vs.Provider)
+	}
+
+	return vs.loadLoop(builder.Map(vs.ID, applicativeProviders[vs.Provider](vs.Attributes), vs.Options...))
+}
+
+func (vs *VertexSerialization) fold(left bool, builder Builder) error {
+	if _, ok := foldProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing applicative Provider %s", vs.Provider)
+	}
+
+	if !left {
+		return vs.load(builder.FoldRight(vs.ID, foldProviders[vs.Provider](vs.Attributes), vs.Options...))
+	}
+
+	return vs.load(builder.FoldLeft(vs.ID, foldProviders[vs.Provider](vs.Attributes), vs.Options...))
+}
+
+func (vs *VertexSerialization) foldLoop(left bool, builder LoopBuilder) error {
+	if _, ok := foldProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing applicative Provider %s", vs.Provider)
+	}
+
+	if !left {
+		return vs.loadLoop(builder.FoldRight(vs.ID, foldProviders[vs.Provider](vs.Attributes), vs.Options...))
+	}
+
+	return vs.loadLoop(builder.FoldLeft(vs.ID, foldProviders[vs.Provider](vs.Attributes), vs.Options...))
+}
+
+func (vs *VertexSerialization) fork(builder Builder) error {
+	if _, ok := forkProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing applicative Provider %s", vs.Provider)
+	}
+
+	var left, right *VertexSerialization
+	var ok bool
+	if left, ok = vs.next["left"]; !ok {
+		return fmt.Errorf("missing left side of fork %s", vs.ID)
+	} else if right, ok = vs.next["right"]; !ok {
+		return fmt.Errorf("missing right side of fork %s", vs.ID)
+	}
+
+	leftBuilder, rightBuilder := builder.Fork(vs.ID, forkProviders[vs.Provider](vs.Attributes), vs.Options...)
+
+	if err := left.load(leftBuilder); err != nil {
+		return err
+	}
+
+	return right.load(rightBuilder)
+}
+
+func (vs *VertexSerialization) forkLoop(builder LoopBuilder) error {
+	if _, ok := forkProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing applicative Provider %s", vs.Provider)
+	}
+
+	var left, right *VertexSerialization
+	var ok bool
+	if left, ok = vs.next["left"]; !ok {
+		return fmt.Errorf("missing left side of fork %s", vs.ID)
+	} else if right, ok = vs.next["right"]; !ok {
+		return fmt.Errorf("missing right side of fork %s", vs.ID)
+	}
+
+	leftBuilder, rightBuilder := builder.Fork(vs.ID, forkProviders[vs.Provider](vs.Attributes), vs.Options...)
+
+	if err := left.loadLoop(leftBuilder); err != nil {
+		return err
+	}
+
+	return right.loadLoop(rightBuilder)
+}
+
+func (vs *VertexSerialization) loop(builder Builder) error {
+	if _, ok := forkProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing loop fork Provider %s", vs.Provider)
+	}
+
+	var left, right *VertexSerialization
+	var ok bool
+	if left, ok = vs.next["in"]; !ok {
+		return fmt.Errorf("missing inside of loop %s", vs.ID)
+	} else if right, ok = vs.next["out"]; !ok {
+		return fmt.Errorf("missing outside of loop %s", vs.ID)
+	}
+
+	leftBuilder, rightBuilder := builder.Loop(vs.ID, forkProviders[vs.Provider](vs.Attributes), vs.Options...)
+
+	if err := left.loadLoop(leftBuilder); err != nil {
+		return err
+	}
+
+	return right.load(rightBuilder)
+}
+
+func (vs *VertexSerialization) nestLoop(builder LoopBuilder) error {
+	if _, ok := forkProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing loop fork Provider %s", vs.Provider)
+	}
+
+	var left, right *VertexSerialization
+	var ok bool
+	if left, ok = vs.next["in"]; !ok {
+		return fmt.Errorf("missing inside of loop %s", vs.ID)
+	} else if right, ok = vs.next["out"]; !ok {
+		return fmt.Errorf("missing outside of loop %s", vs.ID)
+	}
+
+	leftBuilder, rightBuilder := builder.Loop(vs.ID, forkProviders[vs.Provider](vs.Attributes), vs.Options...)
+
+	if err := left.loadLoop(leftBuilder); err != nil {
+		return err
+	}
+
+	return right.loadLoop(rightBuilder)
+}
+
+func (vs *VertexSerialization) transmit(builder Builder) error {
+	if _, ok := transmitProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing sender Provider %s", vs.Provider)
+	}
+
+	builder.Transmit(vs.ID, transmitProviders[vs.Provider](vs.Attributes), vs.Options...)
+	return nil
+}
+
+func (vs *VertexSerialization) transmitLoop(builder LoopBuilder) error {
+	if _, ok := transmitProviders[vs.Provider]; !ok {
+		return fmt.Errorf("missing sender Provider %s", vs.Provider)
+	}
+
+	builder.Transmit(vs.ID, transmitProviders[vs.Provider](vs.Attributes), vs.Options...)
 	return nil
 }
 
