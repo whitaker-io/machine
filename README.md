@@ -28,58 +28,19 @@ Add the primary library to your project
 
 ------
 
+## [Documentation](#docs)
 
-## [Documentation](./docs)
-<table>
-    <colgroup>
-       <col span="1" style="width: 15%;">
-       <col span="1" style="width: 70%;">
-    </colgroup>
-  <tr>
-    <td>
-<ul>
-  <li>
-    
-  [Pipe](./docs/00_Pipe.md)
-  </li>
-  <li>
-  
-  [Stream](./docs/01_Stream.md)
-  </li>
-  <li>
-  
-  [Map](./docs/02_Map.md)
-  </li>
-  <li>
+<img alt="Gopher" align="right" height="250" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">
 
-  [Fork](./docs/03_Fork.md)
-  </li>
-  <li>
-  
-  [Fold](./docs/04_Fold.md)
-  </li>
-  <li>
-  
-  [Link](./docs/05_Link.md)
-  </li>
-  <li>
-
-  [Loop](./docs/07_Loop.md)
-  </li>
-  <li>
-  
-  [Transmit](./docs/06_Transmit.md)
-  </li>
-</ul>
-  </td>
-    <td>
-      <p >
-        
-      </p>
-    </td>
-  </tr>
-</table>
-
+[Docs](./docs)
+  * [Pipe](./docs/00_Pipe.md)
+  * [Stream](./docs/01_Stream.md)
+  * [Map](./docs/02_Map.md)
+  * [Fork](./docs/03_Fork.md)
+  * [Fold](./docs/04_Fold.md)
+  * [Link](./docs/05_Link.md)
+  * [Loop](./docs/07_Loop.md)
+  * [Transmit](./docs/06_Transmit.md)
 
 ***
 ## [Example](#example)
