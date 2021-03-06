@@ -28,7 +28,6 @@ Add the primary library to your project
 
 ------
 
-
 ## [Documentation](#docs)
 
 <img alt="Gopher" align="right" height="250" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/karlseguin/typed"
 	"github.com/mitchellh/mapstructure"
 	"go.opentelemetry.io/otel/api/trace"
 	"go.opentelemetry.io/otel/label"
@@ -67,7 +66,7 @@ var (
 )
 
 // Data wrapper on typed.Typed.
-type Data typed.Typed
+type Data map[string]interface{}
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
