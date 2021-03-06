@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -308,6 +309,8 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 }
 
 func Test_Load(b *testing.T) {
+	RegisterPluginProvider("test", &testPlugin{})
+
 	pd := readProviderDefinitionsTestYamlFile(b)
 
 	if len(pd.Plugins) < 1 {
@@ -327,16 +330,14 @@ func Test_Load(b *testing.T) {
 
 	streams := readStreamDefinitionsTestYamlFile(b)
 
-	streams[0].next["map"].next["transmit"].Attributes["counter"] = out
+	streams[0].next["map"].next["fold_left"].next["fork"].next["left"].next["transmit"].Attributes["counter"] = out
 
 	if err := p.Load(streams); err != nil {
 		b.Error(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	go func() {
-		if err := p.Run(ctx, ":5000", time.Second); err != nil {
+		if err := p.Run(context.Background(), ":5000", time.Second); err != nil {
 			b.Error(err)
 		}
 	}()
@@ -348,9 +349,6 @@ func Test_Load(b *testing.T) {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
 		}
 	}
-
-	cancel()
-	<-time.After(3 * time.Second)
 }
 
 func request(bytez []byte) *http.Request {
@@ -389,9 +387,86 @@ func readProviderDefinitionsTestYamlFile(b *testing.T) *ProviderDefinitions {
 	return pd
 }
 
+type testPlugin struct{}
+
+func (t *testPlugin) Load(pd *PluginDefinition) (interface{}, error) {
+	if strings.Contains(pd.Symbol, "Subscription") {
+		return func(map[string]interface{}) Subscription {
+			return t
+		}, nil
+	} else if strings.Contains(pd.Symbol, "Retriever") {
+		return t.retriever, nil
+	} else if strings.Contains(pd.Symbol, "Applicative") {
+		return t.applicative, nil
+	} else if strings.Contains(pd.Symbol, "Fork") {
+		return t.fork, nil
+	} else if strings.Contains(pd.Symbol, "Fold") {
+		return t.fold, nil
+	} else if strings.Contains(pd.Symbol, "Sender") {
+		return t.sender, nil
+	}
+
+	return nil, fmt.Errorf("not found")
+}
+
+func (t *testPlugin) Read(ctx context.Context) []Data {
+	return deepCopy(testListBase)
+}
+
+func (t *testPlugin) Close() error {
+	return nil
+}
+
+func (t *testPlugin) retriever(map[string]interface{}) Retriever {
+	return func(ctx context.Context) chan []Data {
+		channel := make(chan []Data)
+		go func() {
+		Loop:
+			for {
+				select {
+				case <-ctx.Done():
+					break Loop
+				case <-time.After(time.Second):
+					channel <- deepCopy(testListBase)
+				}
+			}
+		}()
+		return channel
+	}
+}
+
+func (t *testPlugin) applicative(map[string]interface{}) Applicative {
+	return func(data Data) error {
+		return nil
+	}
+}
+
+func (t *testPlugin) fold(map[string]interface{}) Fold {
+	return func(aggregate, next Data) Data {
+		return next
+	}
+}
+
+func (t *testPlugin) fork(map[string]interface{}) Fork {
+	return func(list []*Packet) (a []*Packet, b []*Packet) {
+		return list, []*Packet{}
+	}
+}
+
+func (t *testPlugin) sender(m map[string]interface{}) Sender {
+	var counter chan []Data
+	if channel, ok := m["counter"]; ok {
+		counter = channel.(chan []Data)
+	}
+	return func(payload []Data) error {
+		counter <- payload
+		return nil
+	}
+}
+
 var providerDefinitions = `plugins:
   testSubscription:
-    type: yaegi
+    type: test
     symbol: testing.Subscription
     script: |
       package testing
@@ -474,7 +549,7 @@ var providerDefinitions = `plugins:
         return out
       }
   testRetriever:
-    type: yaegi
+    type: test
     symbol: testing.Retriever
     script: |
       package testing
@@ -562,7 +637,7 @@ var providerDefinitions = `plugins:
         return out
       }
   testApplicative:
-    type: yaegi
+    type: test
     symbol: testing.Applicative
     script: |
       package testing
@@ -578,7 +653,7 @@ var providerDefinitions = `plugins:
         }
       }
   testFold:
-    type: yaegi
+    type: test
     symbol: testing.Fold
     script: |
       package testing
@@ -594,7 +669,7 @@ var providerDefinitions = `plugins:
         }
       }
   testFork:
-    type: yaegi
+    type: test
     symbol: testing.Fork
     script: |
       package testing
@@ -610,7 +685,7 @@ var providerDefinitions = `plugins:
         }
       }
   testSender:
-    type: yaegi
+    type: test
     symbol: testing.Sender
     script: |
       package testing
@@ -629,12 +704,92 @@ var providerDefinitions = `plugins:
       }`
 
 var streamDefinitions = `- type: subscription
-  interval: 1000000000
+  interval: 100000
   id: subscription_test_id
   provider: testSubscription
   map:
     id: applicative_id
     provider: testApplicative
-    transmit:
-      id: sender_id
-      provider: testSender`
+    fold_left:
+      id: fold_id
+      provider: testFold
+      fork:
+        id: fork_id
+        provider: testFork
+        left:
+          transmit:
+            id: sender_id
+            provider: testSender
+        right:
+          loop:
+            id: loop_id
+            provider: testFork
+            in:
+              map:
+                id: applicative_id
+                provider: testApplicative
+                fold_left:
+                  id: fold_id
+                  provider: testFold
+                  fork:
+                    id: fork_id
+                    provider: testFork
+                    left:
+                      map:
+                        id: applicative_id
+                        provider: testApplicative
+                    right:
+                      loop:
+                        id: loop_id
+                        provider: testFork
+                        in:
+                          transmit:
+                            id: sender_id
+                            provider: testSender
+                        out:
+                          transmit:
+                            id: sender_id
+                            provider: testSender
+            out:
+              transmit:
+                id: sender_id
+                provider: testSender
+- type: http
+  id: http_test_id
+  map:
+    id: applicative_id
+    provider: testApplicative
+    fold_left:
+      id: fold_id
+      provider: testFold
+      fork:
+        id: fork_id
+        provider: testFork
+        left:
+          transmit:
+            id: sender_id
+            provider: testSender
+        right:
+          transmit:
+            id: sender_id
+            provider: testSender
+- type: stream
+  id: stream_test_id
+  provider: testRetriever
+  map:
+    id: applicative_id
+    provider: testApplicative
+    fold_left:
+      id: fold_id
+      provider: testFold
+      fork:
+        id: fork_id
+        provider: testFork
+        left:
+          transmit:
+            id: sender_id
+            provider: testSender
+        right:
+          transmit:
+            id: sender_id
+            provider: testSender`

@@ -91,7 +91,7 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 
 	if provider, ok := m["provider"]; ok {
 		s.Provider = provider.(string)
-	} else {
+	} else if s.Type != httpConst {
 		return fmt.Errorf("missing provider field")
 	}
 
