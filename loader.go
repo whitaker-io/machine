@@ -39,9 +39,15 @@ type ProviderDefinitions struct {
 
 // PluginDefinition type for declaring the path and symbol for a golang plugin containing the Provider
 type PluginDefinition struct {
-	Type    string `mapstructure:"type,omitempty"`
+	// Type is the name of the PluginProvider to use.
+	Type string `mapstructure:"type,omitempty"`
+	// Payload is the location, script, etc provided to load the plugin.
+	// Depends on the PluginProvider.
 	Payload string `mapstructure:"payload,omitempty"`
-	Symbol  string `mapstructure:"symbol,omitempty"`
+	// Symbol is the name of the symbol to be loaded from the plugin.
+	Symbol string `mapstructure:"symbol,omitempty"`
+	// Attributes are a map[string]interface{} of properties to be used with the PluginProvider.
+	Attributes map[string]interface{} `mapstructure:"attributes,omitempty"`
 }
 
 // StreamSerialization config based definition for a stream
