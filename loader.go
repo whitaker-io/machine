@@ -83,7 +83,7 @@ func RegisterPluginProvider(name string, p PluginProvider) {
 	pluginProviders[name] = p
 }
 
-// Load method loads a stream based on github.com/traefik/yaegi
+// Load method loads a stream based on the StreamSerialization
 func (pipe *Pipe) Load(streams []*StreamSerialization) error {
 	for _, stream := range streams {
 		switch stream.Type {

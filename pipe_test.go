@@ -707,22 +707,6 @@ var providerDefinitions = `plugins:
           counter <- payload
           return nil
         }
-      }
-  testYaegi:
-    type: yaegi
-    symbol: testing.Applicative
-    payload: |
-      package testing
-
-      import (
-        "github.com/whitaker-io/machine"
-      )
-
-      // Applicative is a testing artifact used for plugins
-      var Applicative = func(map[string]interface{}) machine.Applicative {
-        return func(data machine.Data) error {
-          return nil
-        }
       }`
 
 var streamDefinitions = `- type: subscription
