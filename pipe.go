@@ -4,12 +4,22 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+
+	"github.com/sirupsen/logrus"
 )
+
+var defaultLogger Logger = &logrus.Logger{
+	Out:       os.Stderr,
+	Formatter: new(logrus.TextFormatter),
+	Hooks:     make(logrus.LevelHooks),
+	Level:     logrus.WarnLevel,
+}
 
 // Subscription is an interface for creating a pull based stream.
 // It requires 2 methods Read and Close.
@@ -299,6 +309,10 @@ func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
 // NewPipe is a function for creating a new Pipe. If logger or logStore are nil then
 // the accosiated feature will be disabled.
 func NewPipe(id string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
+	if logger == nil {
+		logger = defaultLogger
+	}
+
 	pipe := &Pipe{
 		id:         id,
 		app:        fiber.New(config...),
