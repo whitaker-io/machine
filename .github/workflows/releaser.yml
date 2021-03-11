@@ -30,18 +30,11 @@ jobs:
 
       - name: Update version
         run: |
-          git checkout -b ${{ steps.get_version.outputs.VERSION }}
           find . -name 'go.mod' | grep -v vendor | xargs sed -i 's|github.com/whitaker-io/machine .*|github.com/whitaker-io/machine ${{ steps.get_version.outputs.VERSION }}|g'
           find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | xargs -I {} bash -c 'cd {}; go mod vendor'
+          git config user.name jonathan-whitaker
+          git config user.email github@whitaker.io
           git commit -am '${{ steps.get_version.outputs.VERSION }}'
-          git push origin ${{ steps.get_version.outputs.VERSION }}
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
-        with:
-          token: ${{ secrets.token }}
-          committer: jonathan-whitaker <github@whitaker.io>
-          title: ${{ steps.get_version.outputs.VERSION }}
-          base: master
-          branch: ${{ steps.get_version.outputs.VERSION }}
-          delete-branch: true
+          git tag ${{ steps.get_version.outputs.VERSION }}
+          git push
+          git push --tags
