@@ -1,4 +1,4 @@
-name: goreleaser
+name: update components
 
 on:
   push:
@@ -6,15 +6,42 @@ on:
       - "*"
 
 jobs:
-  goreleaser:
+  update-components:
     runs-on: ubuntu-latest
     steps:
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v2
+        with:
+          go-version: ^1.16
+        id: go
+
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          fetch-depth: 0
+          repository: https://github.com/whitaker-io/components
 
-      - name: Set up Go
-        uses: actions/setup-go@v2
+      - uses: fusion-engineering/setup-git-credentials@v2
         with:
-          go-version: 1.15
+          credentials: ${{ secrets.token }}
+
+      - name: Update version
+        run: |
+          git checkout -b ${{ steps.get_version.outputs.VERSION }}
+          find . -name 'go.mod' | grep -v vendor | xargs sed -i '' 's|github.com/whitaker-io/machine .*|github.com/whitaker-io/machine ${{ steps.get_version.outputs.VERSION }}|g'
+          find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | xargs -I {} bash -c 'cd {}; go mod vendor'
+          git commit -am '${{ steps.get_version.outputs.VERSION }}'
+          git push origin ${{ steps.get_version.outputs.VERSION }}
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v3
+        with:
+          token: ${{ secrets.token }}
+          committer: jonathan-whitaker <github@whitaker.io>
+          title: ${{ steps.get_version.outputs.VERSION }}
+          base: master
+          branch: ${{ steps.get_version.outputs.VERSION }}
+          delete-branch: true
