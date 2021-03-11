@@ -30,9 +30,8 @@ jobs:
 
       - name: Update version
         run: |
-          ls -lart
           git checkout -b ${{ steps.get_version.outputs.VERSION }}
-          find . -name 'go.mod' | grep -v vendor | xargs sed -i '' 's|github.com/whitaker-io/machine .*|github.com/whitaker-io/machine ${{ steps.get_version.outputs.VERSION }}|g'
+          find . -name 'go.mod' | grep -v vendor | xargs sed -i 's|github.com/whitaker-io/machine .*|github.com/whitaker-io/machine ${{ steps.get_version.outputs.VERSION }}|g'
           find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | xargs -I {} bash -c 'cd {}; go mod vendor'
           git commit -am '${{ steps.get_version.outputs.VERSION }}'
           git push origin ${{ steps.get_version.outputs.VERSION }}
