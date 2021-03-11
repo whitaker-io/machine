@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          repository: https://github.com/whitaker-io/components
+          repository: whitaker-io/components
 
       - uses: fusion-engineering/setup-git-credentials@v2
         with:
