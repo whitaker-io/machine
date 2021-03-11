@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: whitaker-io/components
+          token: ${{ secrets.token }}
 
       - uses: fusion-engineering/setup-git-credentials@v2
         with:
