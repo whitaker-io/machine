@@ -36,7 +36,7 @@ jobs:
           git config user.name jonathan-whitaker
           git config user.email github@whitaker.io
           git commit -am '${{ steps.get_version.outputs.VERSION }}'
-          git tag ${{ steps.get_version.outputs.VERSION }}
+          find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
           git push
           git push --tags
   update-foundry:
