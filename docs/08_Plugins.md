@@ -44,6 +44,7 @@ These functions when appropriate take a `map`[`string`]`interface`{} containing 
 There are 2 steps to using Plugin based steams
 
 1.) Load the plugins with the `PluginDefinition`'s Load method
+
 2.) Load the `Stream`s with the `Pipe`'s Load method
 
 
