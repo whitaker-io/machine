@@ -2,7 +2,11 @@ package machine
 
 import (
 	"fmt"
+	"plugin"
+	"reflect"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -11,13 +15,17 @@ const (
 	httpConst         = "http"
 )
 
-var subscriptionProviders = map[string]func(map[string]interface{}) Subscription{}
-var retrieverProviders = map[string]func(map[string]interface{}) Retriever{}
-var applicativeProviders = map[string]func(map[string]interface{}) Applicative{}
-var foldProviders = map[string]func(map[string]interface{}) Fold{}
-var forkProviders = map[string]func(map[string]interface{}) Fork{}
-var transmitProviders = map[string]func(map[string]interface{}) Sender{}
-var pluginProviders = map[string]PluginProvider{}
+var (
+	subscriptionProviders = map[string]func(map[string]interface{}) Subscription{}
+	retrieverProviders    = map[string]func(map[string]interface{}) Retriever{}
+	applicativeProviders  = map[string]func(map[string]interface{}) Applicative{}
+	foldProviders         = map[string]func(map[string]interface{}) Fold{}
+	forkProviders         = map[string]func(map[string]interface{}) Fork{}
+	transmitProviders     = map[string]func(map[string]interface{}) Sender{}
+	pluginProviders       = map[string]PluginProvider{
+		"plugin": &goPluginProvider{},
+	}
+)
 
 // PluginProvider interface for providing a way of loading plugins
 // must return one of the following functions:
@@ -360,4 +368,134 @@ func (pd *ProviderDefinitions) Load() error {
 	}
 
 	return nil
+}
+
+// MarshalYAML implementation to marshal yaml
+func (s *StreamSerialization) MarshalYAML() (interface{}, error) {
+	m := map[string]interface{}{}
+
+	s.toMap(m)
+
+	return yaml.Marshal(m)
+}
+
+// UnmarshalYAML implementation to unmarshal yaml
+func (s *StreamSerialization) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	m := map[string]interface{}{}
+
+	if err := unmarshal(&m); err != nil {
+		return err
+	}
+
+	return s.fromMap(m)
+}
+
+func (s *StreamSerialization) toMap(m map[string]interface{}) {
+	m["id"] = s.ID
+	m["type"] = s.Type
+	m["interval"] = int64(s.Interval)
+	m["provider"] = s.Provider
+	m["options"] = s.Options
+	m["attributes"] = s.Attributes
+
+	for k, v := range s.next {
+		out := map[string]interface{}{}
+		v.toMap(out)
+		m[k] = out
+	}
+}
+
+func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
+	s.VertexSerialization = &VertexSerialization{}
+
+	if t, ok := m["type"]; ok {
+		s.Type = t.(string)
+	} else {
+		return fmt.Errorf("missing type field")
+	}
+
+	if interval, ok := m["interval"]; ok {
+		switch val := interval.(type) {
+		case int64:
+			s.Interval = time.Duration(val)
+		case int:
+			s.Interval = time.Duration(val)
+		case string:
+		default:
+			return fmt.Errorf("invalid interval type expecting int or int64 for %s found %v", s.ID, reflect.TypeOf(val))
+		}
+	} else if s.Type == subscriptionConst {
+		return fmt.Errorf("missing interval field")
+	}
+
+	delete(m, "type")
+	delete(m, "interval")
+
+	s.VertexSerialization.fromMap(m)
+
+	return nil
+}
+
+func (vs *VertexSerialization) toMap(m map[string]interface{}) {
+	m["id"] = vs.ID
+	m["provider"] = vs.Provider
+	m["options"] = vs.Options
+	m["attributes"] = vs.Attributes
+
+	for k, v := range vs.next {
+		out := map[string]interface{}{}
+		v.toMap(out)
+		m[k] = out
+	}
+}
+
+func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
+	if id, ok := m["id"]; ok {
+		vs.ID = id.(string)
+	}
+
+	if provider, ok := m["provider"]; ok {
+		vs.Provider = provider.(string)
+	}
+
+	if options, ok := m["options"]; ok {
+		vs.Options = options.([]*Option)
+	}
+
+	if attributes, ok := m["attributes"]; ok {
+		vs.Attributes = attributes.(map[string]interface{})
+		delete(m, "attributes")
+	}
+
+	vs.next = map[string]*VertexSerialization{}
+
+	for k, v := range m {
+		if x, ok := v.(map[string]interface{}); ok {
+			vs2 := &VertexSerialization{
+				Options:    []*Option{},
+				Attributes: map[string]interface{}{},
+			}
+
+			vs2.fromMap(x)
+			vs.next[k] = vs2
+		}
+	}
+}
+
+type goPluginProvider struct{}
+
+func (g *goPluginProvider) Load(pd *PluginDefinition) (interface{}, error) {
+	p, err := plugin.Open(pd.Payload)
+
+	if err != nil {
+		return nil, fmt.Errorf("error opening plugin %w", err)
+	}
+
+	sym, err := p.Lookup(pd.Symbol)
+
+	if err != nil {
+		return nil, fmt.Errorf("error looking up symbol %w", err)
+	}
+
+	return sym, nil
 }
