@@ -38,9 +38,9 @@ Add the primary library to your project
   * [Map](./docs/02_Map.md)
   * [Fork](./docs/03_Fork.md)
   * [Fold](./docs/04_Fold.md)
-  * [Link](./docs/05_Link.md)
   * [Loop](./docs/07_Loop.md)
   * [Transmit](./docs/06_Transmit.md)
+  * [Plugins](./docs/08_Plugins.md)
 
 ***
 ## [Example](#example)
