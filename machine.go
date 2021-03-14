@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"fmt"
 	"time"
 
 	"go.opentelemetry.io/otel/api/global"
@@ -71,6 +72,8 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	if *v.option.Debug {
 		h = debugWrap(v.id, h)
 	}
+
+	h = recoverWrapper(v.id, v.vertexType, h)
 
 	do(ctx, *v.option.FIFO, h, input)
 
@@ -173,6 +176,25 @@ func (mtrx *metrics) wrap(ctx context.Context, h handler) handler {
 		mtrx.errorsCounter.Record(ctx, int64(failures), mtrx.labels...)
 		mtrx.errorsTotalCounter.Add(ctx, float64(failures), mtrx.labels...)
 		mtrx.batchDuration.Record(ctx, int64(duration), mtrx.labels...)
+	}
+}
+
+func recoverWrapper(id, vertexType string, h handler) handler {
+	return func(payload []*Packet) {
+		defer func() {
+			if r := recover(); r != nil {
+				var err error
+				var ok bool
+
+				if err, ok = r.(error); !ok {
+					err = fmt.Errorf("%v", r)
+				}
+
+				defaultLogger.Error("panic recovery id: %s, type: %s -- %w", id, vertexType, err)
+			}
+		}()
+
+		h(payload)
 	}
 }
 

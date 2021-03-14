@@ -347,6 +347,91 @@ func Test_New2(b *testing.T) {
 	}
 }
 
+func Test_Panic(b *testing.T) {
+	count := 1000
+	panicCount := 0
+	out := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []Data {
+		channel := make(chan []Data)
+		go func() {
+			for n := 0; n < count; n++ {
+				channel <- deepCopy(testListBase)
+			}
+		}()
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Injectable: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+		&Option{Debug: boolP(true)},
+	)
+
+	left, right := m.Builder().
+		Map("map_id", func(m Data) error {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+			}
+			return nil
+		}).
+		FoldRight("fold_id2", func(d1, d2 Data) Data {
+			return d1
+		}).
+		Fork("fork_id", ForkDuplicate)
+
+	left.Transmit("sender_id", func(d []Data) error {
+		out <- d
+		return nil
+	})
+
+	l2, r2 := right.Fork("fork_id2", ForkRule(func(d Data) bool {
+		return true
+	}).Handler)
+
+	l3, r3 := l2.Fork("fork_id3", ForkRule(func(d Data) bool {
+		return false
+	}).Handler)
+
+	r2.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	l3.Transmit("sender_id", func(d []Data) error {
+		b.Error("unexpected")
+		return nil
+	})
+
+	r3.Transmit("sender_id", func(d []Data) error {
+		panicCount++
+
+		if panicCount % 2 == 0 {
+			panic("test panic")
+		}
+
+		out <- d
+		return fmt.Errorf("error")
+	})
+
+	if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+		b.Error(err)
+	}
+
+	if m.ID() != "machine_id" {
+		b.Errorf("incorrect id have %v want %v", m.ID(), "machine_id")
+	}
+
+	for n := 0; n < count; n++ {
+		list := <-out
+
+		if len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testListBase[9])
+		}
+	}
+}
+
 func Test_Missing_Leaves(b *testing.T) {
 	m := NewStream("machine_id", func(c context.Context) chan []Data {
 		channel := make(chan []Data)
