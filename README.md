@@ -121,7 +121,6 @@ Feel free to check [issues page](https://github.com/whitaker-io/machine/issues) 
 
 - Twitter: [@io_whitaker](https://twitter.com/io_whitaker)
 - Github: [@jonathan-whitaker](https://github.com/jonathan-whitaker)
-- Subreddit: [golang_machine](https://www.reddit.com/r/golang_machine/)
 
 ## Show your support
 
