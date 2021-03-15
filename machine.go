@@ -194,7 +194,7 @@ func (v *vertex) recover() {
 					ids[i] = packet.ID
 				}
 
-				defaultLogger.Error(fmt.Sprintf("panic recovery id: %s, type: %s\n%v\npackets: %v\n", v.id, v.vertexType, err, ids))
+				defaultLogger.Error(fmt.Sprintf("panic-recovery [id: %s type: %s error: %v packets: %v]", v.id, v.vertexType, err, ids))
 			}
 		}()
 
