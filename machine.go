@@ -190,7 +190,13 @@ func recoverWrapper(id, vertexType string, h handler) handler {
 					err = fmt.Errorf("%v", r)
 				}
 
-				defaultLogger.Error("panic recovery id: %s, type: %s -- %w", id, vertexType, err)
+				ids := make([]string, len(payload))
+
+				for i, packet := range payload {
+					ids[i] = packet.ID
+				}
+
+				defaultLogger.Error("panic recovery id: %s, type: %s\n%w\npackets: %v\n", id, vertexType, err, ids)
 			}
 		}()
 
