@@ -52,7 +52,7 @@ func Test_Pipe_Sub(b *testing.T) {
 
 	t := &tester{}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	p.StreamSubscription("stream_id", t, 5*time.Millisecond,
 		&Option{DeepCopy: boolP(true)},
@@ -136,7 +136,7 @@ func Test_Pipe_HTTP(b *testing.T) {
 
 	t := &tester{}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	p.StreamHTTP("http_id",
 		&Option{DeepCopy: boolP(true)},
@@ -200,7 +200,7 @@ func Test_Pipe_No_Stream(b *testing.T) {
 		join: fmt.Errorf("bad join"),
 	}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	if err := p.Run(context.Background(), ":5000", time.Second); err == nil {
 		b.Error("expected error")
@@ -210,7 +210,7 @@ func Test_Pipe_No_Stream(b *testing.T) {
 func Test_Pipe_Bad_Stream(b *testing.T) {
 	t := &tester{}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	p.StreamSubscription("stream_id", t, 5*time.Millisecond,
 		&Option{DeepCopy: boolP(true)},
@@ -237,7 +237,7 @@ func Test_Pipe_Bad_Join(b *testing.T) {
 		join: fmt.Errorf("bad join"),
 	}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	p.StreamHTTP("http_id",
 		&Option{DeepCopy: boolP(true)},
@@ -266,7 +266,7 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 		close: fmt.Errorf("bad close"),
 	}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	p.StreamSubscription("stream_id", t, 5*time.Millisecond,
 		&Option{DeepCopy: boolP(true)},
@@ -326,7 +326,7 @@ func Test_Load(b *testing.T) {
 
 	t := &tester{}
 
-	p := NewPipe("pipe_id", t, t)
+	p := NewPipe("pipe_id", nil, t)
 
 	streams := readStreamDefinitionsTestYamlFile(b)
 

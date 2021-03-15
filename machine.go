@@ -14,12 +14,11 @@ import (
 
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/metric"
-	"go.opentelemetry.io/otel/api/trace"
 	"go.opentelemetry.io/otel/label"
 )
 
-type handler func([]*Packet)
-type recorder func(string, string, string, []*Packet)
+type handler func(payload []*Packet)
+type recorder func(id, vertexType, operation string, payload []*Packet)
 
 type vertex struct {
 	id         string
@@ -27,20 +26,7 @@ type vertex struct {
 	input      *edge
 	handler
 	connector func(ctx context.Context, b *builder) error
-	metrics   *metrics
 	option    *Option
-}
-
-type metrics struct {
-	tracer             trace.Tracer
-	labels             []label.KeyValue
-	inCounter          metric.Int64ValueRecorder
-	outCounter         metric.Int64ValueRecorder
-	errorsCounter      metric.Int64ValueRecorder
-	inTotalCounter     metric.Float64Counter
-	outTotalCounter    metric.Float64Counter
-	errorsTotalCounter metric.Float64Counter
-	batchDuration      metric.Int64ValueRecorder
 }
 
 func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
@@ -50,53 +36,40 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	}
 
 	v.option = b.option.merge(v.option)
-
 	v.input = input
 
-	h := v.handler
-
-	if b.recorder != nil {
-		h = b.recorder.wrap(v.id, v.vertexType, h)
-	}
-
-	if *v.option.Metrics {
-		h = v.metrics.wrap(ctx, h)
-	}
-
-	h = v.wrap(ctx, h)
-
-	if *v.option.DeepCopy {
-		h = deepCopyWrap(h)
-	}
-
-	if *v.option.Debug {
-		h = debugWrap(v.id, h)
-	}
-
-	h = recoverWrapper(v.id, v.vertexType, h)
-
-	do(ctx, *v.option.FIFO, h, input)
+	v.record(b.recorder)
+	v.metrics(ctx)
+	v.span(ctx)
+	v.deepCopy()
+	v.debug()
+	v.recover()
+	v.run(ctx)
 
 	b.vertacies[v.id] = v
 
 	return v.connector(ctx, b)
 }
 
-func (v *vertex) wrap(ctx context.Context, h handler) handler {
-	return func(payload []*Packet) {
+func (v *vertex) span(ctx context.Context) {
+	h := v.handler
+
+	tracer := global.Tracer(v.vertexType + "." + v.id)
+
+	v.handler = func(payload []*Packet) {
 		if *v.option.Span {
-			start := time.Now()
+			now := time.Now()
 
 			for _, packet := range payload {
 				if packet.span == nil {
-					packet.newSpan(ctx, v.metrics.tracer, "stream.begin.late", v.id, v.vertexType)
+					packet.newSpan(ctx, tracer, "stream.inject", v.id, v.vertexType)
 				}
 
 				packet.span.AddEvent(ctx, "vertex",
 					label.String("vertex_id", v.id),
 					label.String("vertex_type", v.vertexType),
 					label.String("packet_id", packet.ID),
-					label.Int64("when", start.UnixNano()),
+					label.Int64("when", now.UnixNano()),
 				)
 			}
 		}
@@ -104,7 +77,7 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 		h(payload)
 
 		if *v.option.Span {
-			start := time.Now()
+			now := time.Now()
 
 			for _, packet := range payload {
 				if packet.Error != nil {
@@ -112,7 +85,7 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 						label.String("vertex_id", v.id),
 						label.String("vertex_type", v.vertexType),
 						label.String("packet_id", packet.ID),
-						label.Int64("when", start.UnixNano()),
+						label.Int64("when", now.UnixNano()),
 						label.Bool("error", packet.Error != nil),
 					)
 				}
@@ -129,58 +102,83 @@ func (v *vertex) wrap(ctx context.Context, h handler) handler {
 	}
 }
 
-func debugWrap(id string, h handler) handler {
-	return func(payload []*Packet) {
-		start := time.Now()
+func (v *vertex) metrics(ctx context.Context) {
+	if *v.option.Metrics {
+		h := v.handler
 
-		h(payload)
+		meter := global.Meter(v.id)
 
-		end := time.Now()
+		labels := []label.KeyValue{
+			label.String("vertex_id", v.id),
+			label.String("vertex_type", v.vertexType),
+		}
 
-		out := []*Packet{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+		inTotalCounter := metric.Must(meter).NewFloat64Counter(v.vertexType + "." + v.id + ".total.incoming")
+		outTotalCounter := metric.Must(meter).NewFloat64Counter(v.vertexType + "." + v.id + ".total.outgoing")
+		errorsTotalCounter := metric.Must(meter).NewFloat64Counter(v.vertexType + "." + v.id + ".total.errors")
+		inCounter := metric.Must(meter).NewInt64ValueRecorder(v.vertexType + "." + v.id + ".incoming")
+		outCounter := metric.Must(meter).NewInt64ValueRecorder(v.vertexType + "." + v.id + ".outgoing")
+		errorsCounter := metric.Must(meter).NewInt64ValueRecorder(v.vertexType + "." + v.id + ".errors")
+		batchDuration := metric.Must(meter).NewInt64ValueRecorder(v.vertexType + "." + v.id + ".duration")
 
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&out)
-
-		for i, value := range out {
-			if payload[i].Snapshots == nil {
-				payload[i].Snapshots = []*DebugInfo{}
+		v.handler = func(payload []*Packet) {
+			inCounter.Record(ctx, int64(len(payload)), labels...)
+			inTotalCounter.Add(ctx, float64(len(payload)), labels...)
+			start := time.Now()
+			h(payload)
+			duration := time.Since(start)
+			failures := 0
+			for _, packet := range payload {
+				if packet.Error != nil {
+					failures++
+				}
 			}
-			payload[i].Snapshots = append(payload[i].Snapshots, &DebugInfo{
-				ID:       id,
-				Start:    start,
-				End:      end,
-				Snapshot: value.Data,
-			})
+			outCounter.Record(ctx, int64(len(payload)), labels...)
+			outTotalCounter.Add(ctx, float64(len(payload)), labels...)
+			errorsCounter.Record(ctx, int64(failures), labels...)
+			errorsTotalCounter.Add(ctx, float64(failures), labels...)
+			batchDuration.Record(ctx, int64(duration), labels...)
 		}
 	}
 }
 
-func (mtrx *metrics) wrap(ctx context.Context, h handler) handler {
-	return func(payload []*Packet) {
-		mtrx.inCounter.Record(ctx, int64(len(payload)), mtrx.labels...)
-		mtrx.inTotalCounter.Add(ctx, float64(len(payload)), mtrx.labels...)
-		start := time.Now()
-		h(payload)
-		duration := time.Since(start)
-		failures := 0
-		for _, packet := range payload {
-			if packet.Error != nil {
-				failures++
+func (v *vertex) debug() {
+	if *v.option.Debug {
+		h := v.handler
+
+		v.handler = func(payload []*Packet) {
+			start := time.Now()
+
+			h(payload)
+
+			end := time.Now()
+
+			out := []*Packet{}
+			buf := &bytes.Buffer{}
+			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+			_ = enc.Encode(payload)
+			_ = dec.Decode(&out)
+
+			for i, value := range out {
+				if payload[i].Snapshots == nil {
+					payload[i].Snapshots = []*DebugInfo{}
+				}
+				payload[i].Snapshots = append(payload[i].Snapshots, &DebugInfo{
+					ID:       v.id,
+					Start:    start,
+					End:      end,
+					Snapshot: value.Data,
+				})
 			}
 		}
-		mtrx.outCounter.Record(ctx, int64(len(payload)), mtrx.labels...)
-		mtrx.outTotalCounter.Add(ctx, float64(len(payload)), mtrx.labels...)
-		mtrx.errorsCounter.Record(ctx, int64(failures), mtrx.labels...)
-		mtrx.errorsTotalCounter.Add(ctx, float64(failures), mtrx.labels...)
-		mtrx.batchDuration.Record(ctx, int64(duration), mtrx.labels...)
 	}
 }
 
-func recoverWrapper(id, vertexType string, h handler) handler {
-	return func(payload []*Packet) {
+func (v *vertex) recover() {
+	h := v.handler
+
+	v.handler = func(payload []*Packet) {
 		defer func() {
 			if r := recover(); r != nil {
 				var err error
@@ -196,7 +194,7 @@ func recoverWrapper(id, vertexType string, h handler) handler {
 					ids[i] = packet.ID
 				}
 
-				defaultLogger.Error("panic recovery id: %s, type: %s\n%w\npackets: %v\n", id, vertexType, err, ids)
+				defaultLogger.Error(fmt.Sprintf("panic recovery id: %s, type: %s\n%v\npackets: %v\n", v.id, v.vertexType, err, ids))
 			}
 		}()
 
@@ -204,64 +202,54 @@ func recoverWrapper(id, vertexType string, h handler) handler {
 	}
 }
 
-func (r recorder) wrap(id, vertexType string, h handler) handler {
-	return func(payload []*Packet) {
-		r(id, vertexType, "start", payload)
-		h(payload)
-	}
-}
+func (v *vertex) deepCopy() {
+	if *v.option.DeepCopy {
+		h := v.handler
 
-func createMetrics(id, vertexType string) *metrics {
-	meter := global.Meter(id)
-	return &metrics{
-		tracer: global.Tracer(vertexType + "." + id),
-		labels: []label.KeyValue{
-			label.String("vertex_id", id),
-			label.String("vertex_type", vertexType),
-		},
-		inTotalCounter:     metric.Must(meter).NewFloat64Counter(vertexType + "." + id + ".total.incoming"),
-		outTotalCounter:    metric.Must(meter).NewFloat64Counter(vertexType + "." + id + ".total.outgoing"),
-		errorsTotalCounter: metric.Must(meter).NewFloat64Counter(vertexType + "." + id + ".total.errors"),
-		inCounter:          metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".incoming"),
-		outCounter:         metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".outgoing"),
-		errorsCounter:      metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".errors"),
-		batchDuration:      metric.Must(meter).NewInt64ValueRecorder(vertexType + "." + id + ".duration"),
-	}
-}
+		v.handler = func(payload []*Packet) {
+			out := []*Packet{}
+			buf := &bytes.Buffer{}
+			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 
-func deepCopyWrap(h handler) handler {
-	return func(payload []*Packet) {
-		out := []*Packet{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+			_ = enc.Encode(payload)
+			_ = dec.Decode(&out)
 
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&out)
+			for i, val := range payload {
+				out[i].span = val.span
+			}
 
-		for i, val := range payload {
-			out[i].span = val.span
+			h(out)
 		}
-
-		h(out)
 	}
 }
 
-func do(ctx context.Context, fifo bool, h handler, input *edge) {
+func (v *vertex) record(r recorder) {
+	if r != nil {
+		h := v.handler
+
+		v.handler = func(payload []*Packet) {
+			r(v.id, v.vertexType, "start", payload)
+			h(payload)
+		}
+	}
+}
+
+func (v *vertex) run(ctx context.Context) {
 	go func() {
 	Loop:
 		for {
 			select {
 			case <-ctx.Done():
 				break Loop
-			case data := <-input.channel:
+			case data := <-v.input.channel:
 				if len(data) < 1 {
 					continue
 				}
 
-				if fifo {
-					h(data)
+				if *v.option.FIFO {
+					v.handler(data)
 				} else {
-					go h(data)
+					go v.handler(data)
 				}
 			}
 		}

@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/api/global"
 )
 
 // Stream is a representation of a data stream and its associated logic.
@@ -98,12 +99,6 @@ func (m *builder) Run(ctx context.Context, recorders ...recorder) error {
 func (m *builder) Inject(ctx context.Context, events map[string][]*Packet) {
 	for node, payload := range events {
 		if v, ok := m.vertacies[node]; ok {
-			if *m.option.Span {
-				for _, packet := range payload {
-					packet.newSpan(ctx, v.metrics.tracer, v.vertexType+".inject", v.id, v.vertexType)
-				}
-			}
-
 			if !*v.option.Injectable {
 				m.recorder(v.id, v.vertexType, "injection-denied", payload)
 				continue
@@ -137,7 +132,6 @@ func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "map",
-		metrics:    createMetrics(id, "map"),
 		option:     opt,
 		handler: func(payload []*Packet) {
 			for _, packet := range payload {
@@ -192,7 +186,6 @@ func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fold",
-		metrics:    createMetrics(id, "fold"),
 		option:     opt,
 		handler: func(payload []*Packet) {
 			edge.channel <- []*Packet{fr(payload...)}
@@ -239,7 +232,6 @@ func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fold",
-		metrics:    createMetrics(id, "fold"),
 		option:     opt,
 		handler: func(payload []*Packet) {
 			edge.channel <- []*Packet{fr(payload...)}
@@ -278,7 +270,6 @@ func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fork",
-		metrics:    createMetrics(id, "fork"),
 		option:     opt,
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
@@ -326,7 +317,6 @@ func (n nexter) Link(id, target string, options ...*Option) {
 		vertex: vertex{
 			id:         id,
 			vertexType: "link",
-			metrics:    createMetrics(id, "link"),
 			handler:    func(payload []*Packet) { edge.channel <- payload },
 			option:     opt,
 			connector: func(ctx context.Context, b *builder) error {
@@ -356,7 +346,6 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 		vertex: vertex{
 			id:         id,
 			vertexType: "transmit",
-			metrics:    createMetrics(id, "transmit"),
 			option:     opt,
 			handler: func(payload []*Packet) {
 				data := make([]Data, len(payload))
@@ -448,8 +437,9 @@ func (n *looper) Done() {
 // and a list of Options that can override the defaults and set new defaults for the
 // subsequent vertices in the Stream.
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
-	mtrx := createMetrics(id, "stream")
 	opt := defaultOptions.merge(options...)
+
+	tracer := global.Tracer("stream" + "." + id)
 
 	edge := newEdge(opt.BufferSize)
 	input := newEdge(opt.BufferSize)
@@ -458,7 +448,6 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 		vertex: vertex{
 			id:         id,
 			vertexType: "stream",
-			metrics:    mtrx,
 			input:      input,
 			option:     opt,
 			handler: func(p []*Packet) {
@@ -502,7 +491,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 							Data: item,
 						}
 						if *x.option.Span {
-							packet.newSpan(ctx, mtrx.tracer, "stream.begin", id, "stream")
+							packet.newSpan(ctx, tracer, "stream.begin", id, "stream")
 						}
 						payload[i] = packet
 					}

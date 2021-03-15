@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var defaultLogger Logger = &logrus.Logger{
+var defaultLogger = &logrus.Logger{
 	Out:       os.Stderr,
 	Formatter: new(logrus.TextFormatter),
 	Hooks:     make(logrus.LevelHooks),
@@ -32,12 +32,6 @@ var defaultLogger Logger = &logrus.Logger{
 type Subscription interface {
 	Read(ctx context.Context) []Data
 	Close() error
-}
-
-// Logger is an interface for sending log messages to an outside system.
-type Logger interface {
-	Error(...interface{})
-	Info(...interface{})
 }
 
 // LogStore is an interface for allowing a distributed cluster of workers
@@ -87,7 +81,7 @@ type Pipe struct {
 	streams    map[string]Stream
 	healthInfo map[string]*HealthInfo
 	logStore   LogStore
-	logger     Logger
+	logger     *logrus.Logger
 }
 
 // HealthInfo is the type used for providing basic healthcheck information
@@ -308,7 +302,7 @@ func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
 
 // NewPipe is a function for creating a new Pipe. If logger or logStore are nil then
 // the accosiated feature will be disabled.
-func NewPipe(id string, logger Logger, store LogStore, config ...fiber.Config) *Pipe {
+func NewPipe(id string, logger *logrus.Logger, store LogStore, config ...fiber.Config) *Pipe {
 	if logger == nil {
 		logger = defaultLogger
 	}
