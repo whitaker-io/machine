@@ -292,8 +292,8 @@ func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
 				})
 			} else {
 				pipe.logger.Error(map[string]interface{}{
-					"message": "unknown stream",
-					"log":     log,
+					"message": fmt.Sprintf("stream id not found: %s", log.StreamID),
+					"log":     *log,
 				})
 			}
 		}
