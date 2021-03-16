@@ -49,10 +49,6 @@ Add the primary library to your project
 Redis Subscription with basic `receive` -> `process` -> `send` Stream
 
 ```golang
-
-  // logger allows for logs to be transmitted to your log provider
-  var logger machine.Logger
-
   // logStore allows for running a cluster and handles communication
   var logStore machine.LogStore
 
@@ -64,7 +60,7 @@ Redis Subscription with basic `receive` -> `process` -> `send` Stream
   
   // NewPipe creates a pipe in which you can run multiple streams
   // the id is the instance identifier for the cluster
-  p := NewPipe(uuid.New().String(), logger, logStore, fiber.Config{
+  p := NewPipe(uuid.New().String(), nil, logStore, fiber.Config{
     ReadTimeout: time.Second,
     WriteTimeout: time.Second,
     BodyLimit: 4 * 1024 * 1024,
