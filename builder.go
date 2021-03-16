@@ -432,7 +432,7 @@ func (n *looper) Transmit(id string, x Sender, options ...*Option) {
 
 // Done function for ending the loop and going back to the original Fork
 func (n *looper) Done() {
-	n.next.Link(uuid.New().String(), n.loopstart)
+	n.next.Link(uuid.NewString(), n.loopstart)
 }
 
 // NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
@@ -489,7 +489,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 						}
 
 						if id == "" {
-							id = uuid.New().String()
+							id = uuid.NewString()
 						}
 
 						packet := &Packet{
