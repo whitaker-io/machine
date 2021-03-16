@@ -24,7 +24,7 @@ Add the primary library to your project
 
 ------
 
-[Components](https://github.com/whitaker-io/components) is a repository of different implementations 
+[Components](https://github.com/whitaker-io/components) is a repository of different vertex implementations 
 
 ------
 
