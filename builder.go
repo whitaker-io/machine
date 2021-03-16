@@ -12,7 +12,9 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/api/global"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Stream is a representation of a data stream and its associated logic.
@@ -439,7 +441,11 @@ func (n *looper) Done() {
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	opt := defaultOptions.merge(options...)
 
-	tracer := global.Tracer("stream" + "." + id)
+	tracer := otel.GetTracerProvider().Tracer("stream" + "." + id)
+	vertexAttributes := trace.WithAttributes(
+		attribute.String("vertex_id", id),
+		attribute.String("vertex_type", "stream"),
+	)
 
 	edge := newEdge(opt.BufferSize)
 	input := newEdge(opt.BufferSize)
@@ -491,7 +497,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 							Data: item,
 						}
 						if *x.option.Span {
-							packet.newSpan(ctx, tracer, "stream.begin", id, "stream")
+							packet.newSpan(ctx, tracer, "stream.begin", vertexAttributes)
 						}
 						payload[i] = packet
 					}

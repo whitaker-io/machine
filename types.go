@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/mitchellh/mapstructure"
-	"go.opentelemetry.io/otel/api/trace"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -186,22 +186,9 @@ func (p *Packet) handleError(id string, err error) {
 	}
 }
 
-func (p *Packet) newSpan(ctx context.Context, tracer trace.Tracer, name, vertexID, vertexType string) {
-	_, span := tracer.Start(
-		ctx,
-		p.ID,
-		trace.WithAttributes(
-			label.String("vertex_id", vertexID),
-			label.String("vertex_type", vertexType),
-			label.String("packet_id", p.ID),
-		),
-	)
-	p.span = span
-	p.span.AddEvent(ctx, name,
-		label.String("vertex_id", vertexID),
-		label.String("vertex_type", vertexType),
-		label.String("packet_id", p.ID),
-	)
+func (p *Packet) newSpan(ctx context.Context, tracer trace.Tracer, name string, vertexAttributes trace.LifeCycleOption) {
+	_, p.span = tracer.Start(ctx, p.ID, trace.WithAttributes(attribute.String("packet_id", p.ID)))
+	p.span.AddEvent(name, vertexAttributes)
 }
 
 func (o *Option) merge(options ...*Option) *Option {

@@ -12,9 +12,11 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/api/global"
-	"go.opentelemetry.io/otel/api/metric"
-	"go.opentelemetry.io/otel/label"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/global"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type handler func(payload []*Packet)
@@ -54,7 +56,14 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 func (v *vertex) span(ctx context.Context) {
 	h := v.handler
 
-	tracer := global.Tracer(v.vertexType + "." + v.id)
+	tracer := otel.GetTracerProvider().Tracer(v.vertexType + "." + v.id)
+
+	vertexAttributes := trace.WithAttributes(
+		attribute.String("vertex_id", v.id),
+		attribute.String("vertex_type", v.vertexType),
+	)
+
+	errorName := v.vertexType + "-error"
 
 	v.handler = func(payload []*Packet) {
 		if *v.option.Span {
@@ -62,15 +71,10 @@ func (v *vertex) span(ctx context.Context) {
 
 			for _, packet := range payload {
 				if packet.span == nil {
-					packet.newSpan(ctx, tracer, "stream.inject", v.id, v.vertexType)
+					packet.newSpan(ctx, tracer, "stream.inject", vertexAttributes)
 				}
 
-				packet.span.AddEvent(ctx, "vertex",
-					label.String("vertex_id", v.id),
-					label.String("vertex_type", v.vertexType),
-					label.String("packet_id", packet.ID),
-					label.Int64("when", now.UnixNano()),
-				)
+				packet.span.AddEvent(v.vertexType, vertexAttributes, trace.WithTimestamp(now))
 			}
 		}
 
@@ -81,13 +85,7 @@ func (v *vertex) span(ctx context.Context) {
 
 			for _, packet := range payload {
 				if packet.Error != nil {
-					packet.span.AddEvent(ctx, "error",
-						label.String("vertex_id", v.id),
-						label.String("vertex_type", v.vertexType),
-						label.String("packet_id", packet.ID),
-						label.Int64("when", now.UnixNano()),
-						label.Bool("error", packet.Error != nil),
-					)
+					packet.span.AddEvent(errorName, vertexAttributes, trace.WithTimestamp(now))
 				}
 			}
 		}
@@ -108,9 +106,9 @@ func (v *vertex) metrics(ctx context.Context) {
 
 		meter := global.Meter(v.id)
 
-		labels := []label.KeyValue{
-			label.String("vertex_id", v.id),
-			label.String("vertex_type", v.vertexType),
+		labels := []attribute.KeyValue{
+			attribute.String("vertex_id", v.id),
+			attribute.String("vertex_type", v.vertexType),
 		}
 
 		inTotalCounter := metric.Must(meter).NewFloat64Counter(v.vertexType + "." + v.id + ".total.incoming")
