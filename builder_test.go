@@ -170,10 +170,12 @@ func Benchmark_Test_New(b *testing.B) {
 			}
 			return nil
 		}).
-		Transmit("sender_id", func(d []Data) error {
-			out <- d
-			return nil
-		})
+		Publish("sender_id",
+			publishFN(func(d []Data) error {
+				out <- d
+				return nil
+			}),
+		)
 
 	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
@@ -231,15 +233,19 @@ func Test_New(b *testing.T) {
 		}).
 		Fork("fork_id", ForkError)
 
-	left.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	left.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
-	right.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	right.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
 	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
@@ -302,10 +308,12 @@ func Test_New2(b *testing.T) {
 		}).
 		Fork("fork_id", ForkDuplicate)
 
-	left.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	left.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
 	l2, r2 := right.Fork("fork_id2", ForkRule(func(d Data) bool {
 		return true
@@ -315,20 +323,26 @@ func Test_New2(b *testing.T) {
 		return false
 	}).Handler)
 
-	r2.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	r2.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
-	l3.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	l3.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
-	r3.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return fmt.Errorf("error")
-	})
+	r3.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return fmt.Errorf("error")
+		}),
+	)
 
 	if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
 		b.Error(err)
@@ -381,10 +395,12 @@ func Test_Panic(b *testing.T) {
 		}).
 		Fork("fork_id", ForkDuplicate)
 
-	left.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	left.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
 	l2, r2 := right.Fork("fork_id2", ForkRule(func(d Data) bool {
 		return true
@@ -394,26 +410,31 @@ func Test_Panic(b *testing.T) {
 		return false
 	}).Handler)
 
-	r2.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	r2.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
-	l3.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	l3.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
-	r3.Transmit("sender_id", func(d []Data) error {
+	r3.Publish("sender_id", publishFN(func(d []Data) error {
 		panicCount++
 
-		if panicCount % 2 == 0 {
+		if panicCount%2 == 0 {
 			panic("test panic")
 		}
 
 		out <- d
 		return fmt.Errorf("error")
-	})
+	}),
+	)
 
 	if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
 		b.Error(err)
@@ -440,10 +461,12 @@ func Test_Missing_Leaves(b *testing.T) {
 
 	left, _ := m.Builder().Fork("fork_id", ForkDuplicate)
 
-	left.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	left.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
 	m2 := NewStream("machine_id", func(c context.Context) chan []Data {
 		channel := make(chan []Data)
@@ -551,10 +574,12 @@ func Test_Missing_Leaves(b *testing.T) {
 			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
 		return nil
-	}).Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	})
+	}).Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
+	)
 
 	r7.FoldLeft("fold_id2", func(d1, d2 Data) Data {
 		return d1
@@ -651,10 +676,11 @@ func Test_Inject(b *testing.T) {
 			&Option{BufferSize: intP(0)},
 		)
 
-	left.Transmit("sender_id", func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	},
+	left.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			b.Error("unexpected")
+			return nil
+		}),
 		&Option{FIFO: boolP(false)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
@@ -662,10 +688,12 @@ func Test_Inject(b *testing.T) {
 		&Option{BufferSize: intP(0)},
 	)
 
-	right.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	right.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
 	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
@@ -727,15 +755,18 @@ func Test_Inject_Cancel(b *testing.T) {
 		}).
 		Fork("fork_id", ForkError)
 
-	left.Transmit("sender_id", func(d []Data) error {
+	left.Publish("sender_id", publishFN(func(d []Data) error {
 		b.Error("unexpected")
 		return nil
-	})
+	}),
+	)
 
-	right.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	right.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -809,10 +840,12 @@ func Test_Link(t *testing.T) {
 			&Option{BufferSize: intP(10)},
 		)
 
-	left.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	left.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
 	right.Link("link_id", "map_id")
 
@@ -901,10 +934,12 @@ func Test_Link_not_ancestor(t *testing.T) {
 		&Option{BufferSize: intP(0)},
 	)
 
-	right.Transmit("sender_id", func(d []Data) error {
-		out <- d
-		return nil
-	})
+	right.Publish("sender_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
 
 	if err := m.Run(context.Background()); err == nil {
 		t.Error("expecting error")
