@@ -16,7 +16,7 @@ This interface has a single method
 func Load(*machine.PluginDefinition) (interface{}, error)
 ```
 
-This method takes a *`machine`.`PluginDefinition` and uses that information to create what is referred to as a Vertex Type. The possible Vertex Types are as follows:
+This method takes a *`machine`.`PluginDefinition` and uses that information to create a Vertex Type. The possible Vertex Types are as follows:
 
 ```golang
   machine.Subscription
