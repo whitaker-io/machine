@@ -364,7 +364,10 @@ func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
 	}
 
 	if options, ok := m["options"]; ok {
-		vs.Options = options.([]*Option)
+		vs.Options = []*Option{}
+		if err := mapstructure.Decode(options, &vs.Options); err != nil {
+			panic(err)
+		}
 	}
 
 	vs.next = map[string]*VertexSerialization{}
