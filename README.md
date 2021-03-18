@@ -56,6 +56,9 @@ Redis Subscription with basic `receive` -> `process` -> `send` Stream
   // see also the Google Pub/Sub, Kafka, and SQS implementations
   var pool *redigo.Pool
 
+  // publisher is a machine.Publisher used for sending data outside of the Stream
+  var publisher machine.Publisher
+
   redisStream := redis.New(pool, logger)
   
   // NewPipe creates a pipe in which you can run multiple streams
@@ -87,13 +90,7 @@ Redis Subscription with basic `receive` -> `process` -> `send` Stream
         return err
       },
     ).
-    Transmit("unique_id3", 
-      func(d []Data) error {
-        // send a copy of the data somewhere
-
-        return nil
-      },
-    )
+    Publish("unique_id3", publisher)
 
   // Run requires a context, the port to run the fiber.App,
   // and the timeout for graceful shutdown
