@@ -39,7 +39,7 @@ Add the primary library to your project
   * [Fork](./docs/03_Fork.md)
   * [Fold](./docs/04_Fold.md)
   * [Loop](./docs/07_Loop.md)
-  * [Transmit](./docs/06_Transmit.md)
+  * [Publish](./docs/06_Transmit.md)
   * [Plugins](./docs/08_Plugins.md)
 
 ***
