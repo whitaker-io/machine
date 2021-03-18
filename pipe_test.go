@@ -15,6 +15,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type publishFN func([]Data) error
+
+func (p publishFN) Send(payload []Data) error {
+	return p(payload)
+}
+
 type tester struct {
 	close error
 	join  error
@@ -61,11 +67,11 @@ func Test_Pipe_Sub(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Transmit("transmit_id",
-		func(d []Data) error {
+	).Publish("publish_id",
+		publishFN(func(d []Data) error {
 			out <- d
 			return nil
-		},
+		}),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -101,8 +107,8 @@ func Test_Pipe_Sub(b *testing.T) {
 		logs[i] = &Log{
 			OwnerID:    "pipe_id",
 			StreamID:   "stream_id",
-			VertexID:   "transmit_id",
-			VertexType: "transmit",
+			VertexID:   "publish_id",
+			VertexType: "publish",
 			State:      "start",
 			Packet: &Packet{
 				ID:   uuid.New().String(),
@@ -113,8 +119,8 @@ func Test_Pipe_Sub(b *testing.T) {
 		logs2[i] = &Log{
 			OwnerID:    "pipe_id",
 			StreamID:   "bad_stream_id",
-			VertexID:   "transmit_id",
-			VertexType: "transmit",
+			VertexID:   "publish_id",
+			VertexType: "publish",
 			State:      "start",
 			Packet: &Packet{
 				ID:   uuid.New().String(),
@@ -145,11 +151,11 @@ func Test_Pipe_HTTP(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Transmit("transmit_id",
-		func(d []Data) error {
+	).Publish("publish_id",
+		publishFN(func(d []Data) error {
 			out <- d
 			return nil
-		},
+		}),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -219,7 +225,7 @@ func Test_Pipe_Bad_Stream(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Map("transmit_id",
+	).Map("publish_id",
 		func(d Data) error {
 			return nil
 		},
@@ -246,11 +252,11 @@ func Test_Pipe_Bad_Join(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Transmit("transmit_id",
-		func(d []Data) error {
+	).Publish("publish_id",
+		publishFN(func(d []Data) error {
 			out <- d
 			return nil
-		},
+		}),
 	)
 
 	if err := p.Run(context.Background(), ":5000", time.Second); err == nil {
@@ -275,11 +281,11 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
-	).Transmit("transmit_id",
-		func(d []Data) error {
+	).Publish("publish_id",
+		publishFN(func(d []Data) error {
 			out <- d
 			return nil
-		},
+		}),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -309,20 +315,10 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 }
 
 func Test_Load(b *testing.T) {
-	RegisterPluginProvider("test", &testPlugin{})
-
-	pd := readProviderDefinitionsTestYamlFile(b)
-
-	if len(pd.Plugins) < 1 {
-		b.Error("issue loading testing/loader_test.yaml")
-	}
-
-	if err := pd.Load(); err != nil {
-		b.Error(fmt.Sprintf("error loading plugins %v ", err))
-	}
-
 	count := 100
 	out := make(chan []Data)
+
+	RegisterPluginProvider("test", &testPlugin{})
 
 	t := &tester{}
 
@@ -336,7 +332,16 @@ func Test_Load(b *testing.T) {
 		yaml.Unmarshal(bytez, &[]StreamSerialization{})
 	}
 
-	streams[0].next["map"].next["fold_left"].next["fold_right"].next["fork"].next["left"].next["transmit"].Attributes["counter"] = out
+	streams[0].
+		next["map"].
+		next["fold_left"].
+		next["fold_right"].
+		next["fork"].
+		next["left"].
+		next["publish"].
+		Provider.Attributes = map[string]interface{}{
+		"counter": out,
+	}
 
 	if err := p.Load(streams); err != nil {
 		b.Error(err)
@@ -381,35 +386,21 @@ func readStreamDefinitionsTestYamlFile(b *testing.T) []*StreamSerialization {
 	return pd
 }
 
-func readProviderDefinitionsTestYamlFile(b *testing.T) *ProviderDefinitions {
-	pd := &ProviderDefinitions{}
-
-	err := yaml.Unmarshal([]byte(providerDefinitions), pd)
-
-	if err != nil {
-		b.Error(fmt.Sprintf("Unmarshal: %v", err))
-	}
-
-	return pd
-}
-
 type testPlugin struct{}
 
 func (t *testPlugin) Load(pd *PluginDefinition) (interface{}, error) {
 	if strings.Contains(pd.Symbol, "Subscription") {
-		return func(map[string]interface{}) Subscription {
-			return t
-		}, nil
+		return t, nil
 	} else if strings.Contains(pd.Symbol, "Retriever") {
-		return t.retriever, nil
+		return t.retriever(pd.Attributes), nil
 	} else if strings.Contains(pd.Symbol, "Applicative") {
-		return t.applicative, nil
+		return t.applicative(pd.Attributes), nil
 	} else if strings.Contains(pd.Symbol, "Fork") {
-		return t.fork, nil
+		return t.fork(pd.Attributes), nil
 	} else if strings.Contains(pd.Symbol, "Fold") {
-		return t.fold, nil
-	} else if strings.Contains(pd.Symbol, "Sender") {
-		return t.sender, nil
+		return t.fold(pd.Attributes), nil
+	} else if strings.Contains(pd.Symbol, "Publisher") {
+		return t.publisher(pd.Attributes), nil
 	}
 
 	return nil, fmt.Errorf("not found")
@@ -459,349 +450,192 @@ func (t *testPlugin) fork(map[string]interface{}) Fork {
 	}
 }
 
-func (t *testPlugin) sender(m map[string]interface{}) Sender {
+func (t *testPlugin) publisher(m map[string]interface{}) Publisher {
 	var counter chan []Data
 	if channel, ok := m["counter"]; ok {
 		counter = channel.(chan []Data)
 	}
-	return func(payload []Data) error {
+	
+	return publishFN(func(payload []Data) error {
 		counter <- payload
 		return nil
-	}
+	})
 }
-
-var providerDefinitions = `plugins:
-  testSubscription:
-    type: test
-    symbol: testing.Subscription
-    payload: |
-      package testing
-
-      import (
-        "bytes"
-        "context"
-        "encoding/gob"
-
-        "github.com/whitaker-io/machine"
-      )
-
-      var data = []machine.Data{
-        {
-          "__traceID": "test_trace_id",
-          "name":      "data0",
-          "value":     0,
-        },
-        {
-          "name":  "data1",
-          "value": 1,
-        },
-        {
-          "name":  "data2",
-          "value": 2,
-        },
-        {
-          "name":  "data3",
-          "value": 3,
-        },
-        {
-          "name":  "data4",
-          "value": 4,
-        },
-        {
-          "name":  "data5",
-          "value": 5,
-        },
-        {
-          "name":  "data6",
-          "value": 6,
-        },
-        {
-          "name":  "data7",
-          "value": 7,
-        },
-        {
-          "name":  "data8",
-          "value": 8,
-        },
-        {
-          "name":  "data9",
-          "value": 9,
-        },
-      }
-
-      type testSub struct{}
-
-      func (t *testSub) Read(ctx context.Context) []machine.Data {
-        return deepCopy(data)
-      }
-
-      func (t *testSub) Close() error {
-        return nil
-      }
-
-      // Subscription is a testing artifact used for plugins
-      var Subscription = func(map[string]interface{}) machine.Subscription {
-        return &testSub{}
-      }
-
-      func deepCopy(data []machine.Data) []machine.Data {
-        out := []machine.Data{}
-        buf := &bytes.Buffer{}
-        enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-        _ = enc.Encode(data)
-        _ = dec.Decode(&out)
-
-        return out
-      }
-  testRetriever:
-    type: test
-    symbol: testing.Retriever
-    payload: |
-      package testing
-
-      import (
-        "bytes"
-        "context"
-        "encoding/gob"
-        "time"
-
-        "github.com/whitaker-io/machine"
-      )
-
-      var data = []machine.Data{
-        {
-          "__traceID": "test_trace_id",
-          "name":      "data0",
-          "value":     0,
-        },
-        {
-          "name":  "data1",
-          "value": 1,
-        },
-        {
-          "name":  "data2",
-          "value": 2,
-        },
-        {
-          "name":  "data3",
-          "value": 3,
-        },
-        {
-          "name":  "data4",
-          "value": 4,
-        },
-        {
-          "name":  "data5",
-          "value": 5,
-        },
-        {
-          "name":  "data6",
-          "value": 6,
-        },
-        {
-          "name":  "data7",
-          "value": 7,
-        },
-        {
-          "name":  "data8",
-          "value": 8,
-        },
-        {
-          "name":  "data9",
-          "value": 9,
-        },
-      }
-
-      // Retriever is a testing artifact used for plugins
-      var Retriever = func(map[string]interface{}) machine.Retriever {
-        return func(ctx context.Context) chan []machine.Data {
-          channel := make(chan []machine.Data)
-          go func() {
-          Loop:
-            for {
-              select {
-              case <-ctx.Done():
-                break Loop
-              case <-time.After(time.Second):
-                channel <- deepCopy(data)
-              }
-            }
-          }()
-          return channel
-        }
-      }
-
-      func deepCopy(data []machine.Data) []machine.Data {
-        out := []machine.Data{}
-        buf := &bytes.Buffer{}
-        enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-        _ = enc.Encode(data)
-        _ = dec.Decode(&out)
-
-        return out
-      }
-  testApplicative:
-    type: test
-    symbol: testing.Applicative
-    payload: |
-      package testing
-
-      import (
-        "github.com/whitaker-io/machine"
-      )
-
-      // Applicative is a testing artifact used for plugins
-      var Applicative = func(map[string]interface{}) machine.Applicative {
-        return func(data machine.Data) error {
-          return nil
-        }
-      }
-  testFold:
-    type: test
-    symbol: testing.Fold
-    payload: |
-      package testing
-
-      import (
-        "github.com/whitaker-io/machine"
-      )
-
-      // Fold is a testing artifact used for plugins
-      var Fold = func(map[string]interface{}) machine.Fold {
-        return func(aggregate, next machine.Data) machine.Data {
-          return next
-        }
-      }
-  testFork:
-    type: test
-    symbol: testing.Fork
-    payload: |
-      package testing
-
-      import (
-        "github.com/whitaker-io/machine"
-      )
-
-      // Fork is a testing artifact used for plugins
-      var Fork = func(map[string]interface{}) machine.Fork {
-        return func(list []*machine.Packet) (a []*machine.Packet, b []*machine.Packet) {
-          return list, []*machine.Packet{}
-        }
-      }
-  testSender:
-    type: test
-    symbol: testing.Sender
-    payload: |
-      package testing
-
-      import (
-        "github.com/whitaker-io/machine"
-      )
-
-      // Sender is a testing artifact used for plugins
-      var Sender = func(m map[string]interface{}) machine.Sender {
-        counter := m["counter"].(chan []machine.Data)
-        return func(payload []machine.Data) error {
-          counter <- payload
-          return nil
-        }
-      }`
 
 var streamDefinitions = `- type: subscription
   interval: 100000
   id: subscription_test_id
-  provider: testSubscription
+  provider: 
+    type: test
+    symbol: Subscription
+    payload: ""
   map:
     id: applicative_id
-    provider: testApplicative
+    provider: 
+      type: test
+      symbol: Applicative
+      payload: ""
     fold_left:
       id: fold_id
-      provider: testFold
+      provider: 
+        type: test
+        symbol: Fold
+        payload: ""
       fold_right:
         id: fold_id
-        provider: testFold
+        provider: 
+          type: test
+          symbol: Fold
+          payload: ""
         fork:
           id: fork_id
-          provider: testFork
+          provider: 
+            type: test
+            symbol: Fork
+            payload: ""
           left:
-            transmit:
-              id: sender_id
-              provider: testSender
+            publish:
+              id: publisher_id
+              provider: 
+                type: test
+                symbol: Publisher
+                payload: ""
           right:
             loop:
               id: loop_id
-              provider: testFork
+              provider: 
+                type: test
+                symbol: Fork
+                payload: ""
               in:
                 map:
                   id: applicative_id
-                  provider: testApplicative
+                  provider: 
+                    type: test
+                    symbol: Applicative
+                    payload: ""
                   fold_left:
                     id: fold_id
-                    provider: testFold
+                    provider: 
+                      type: test
+                      symbol: Fold
+                      payload: ""
                     fold_right:
                       id: fold_id
-                      provider: testFold
+                      provider: 
+                        type: test
+                        symbol: Fold
+                        payload: ""
                       fork:
                         id: fork_id
-                        provider: testFork
+                        provider: 
+                          type: test
+                          symbol: Fork
+                          payload: ""
                         left:
                           map:
                             id: applicative_id
-                            provider: testApplicative
+                            provider: 
+                              type: test
+                              symbol: Applicative
+                              payload: ""
                         right:
                           loop:
                             id: loop_id
-                            provider: testFork
+                            provider: 
+                              type: test
+                              symbol: Fork
+                              payload: ""
                             in:
-                              transmit:
-                                id: sender_id
-                                provider: testSender
+                              publish:
+                                id: publisher_id
+                                provider: 
+                                  type: test
+                                  symbol: Publisher
+                                  payload: ""
                             out:
-                              transmit:
-                                id: sender_id
-                                provider: testSender
+                              publish:
+                                id: publisher_id
+                                provider: 
+                                  type: test
+                                  symbol: Publisher
+                                  payload: ""
               out:
-                transmit:
-                  id: sender_id
-                  provider: testSender
+                publish:
+                  id: publisher_id
+                  provider: 
+                    type: test
+                    symbol: Publisher
+                    payload: ""
 - type: http
   id: http_test_id
   map:
     id: applicative_id
-    provider: testApplicative
+    provider:
+      type: test
+      symbol: Applicative
+      payload: ""
     fold_left:
       id: fold_id
-      provider: testFold
+      provider: 
+        type: test
+        symbol: Fold
+        payload: ""
       fork:
         id: fork_id
-        provider: testFork
+        provider: 
+          type: test
+          symbol: Fork
+          payload: ""
         left:
-          transmit:
-            id: sender_id
-            provider: testSender
+          publish:
+            id: publisher_id
+            provider: 
+              type: test
+              symbol: Publisher
+              payload: ""
         right:
-          transmit:
-            id: sender_id
-            provider: testSender
+          publish:
+            id: publisher_id
+            provider: 
+              type: test
+              symbol: Publisher
+              payload: ""
 - type: stream
   id: stream_test_id
-  provider: testRetriever
+  provider: 
+    type: test
+    symbol: Retriever
+    payload: ""
   map:
     id: applicative_id
-    provider: testApplicative
+    provider: 
+      type: test
+      symbol: Applicative
+      payload: ""
     fold_left:
       id: fold_id
-      provider: testFold
+      provider: 
+        type: test
+        symbol: Fold
+        payload: ""
       fork:
         id: fork_id
-        provider: testFork
+        provider: 
+          type: test
+          symbol: Fork
+          payload: ""
         left:
-          transmit:
-            id: sender_id
-            provider: testSender
+          publish:
+            id: publisher_id
+            provider: 
+              type: test
+              symbol: Publisher
+              payload: ""
         right:
-          transmit:
-            id: sender_id
-            provider: testSender`
+          publish:
+            id: publisher_id
+            provider: 
+              type: test
+              symbol: Publisher
+              payload: ""`

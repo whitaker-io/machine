@@ -22,7 +22,7 @@ import (
 // is handled by the appropriately named NewStream function.
 //
 // The Builder method is the entrypoint into creating the data processing flow.
-// All branches of the Stream are required to end in either a Transmit or
+// All branches of the Stream are required to end in either a Publish or
 // a Link in order to be considered valid.
 type Stream interface {
 	ID() string
@@ -39,7 +39,7 @@ type Builder interface {
 	Fork(id string, f Fork, options ...*Option) (Builder, Builder)
 	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder)
 	Link(id, target string, options ...*Option)
-	Transmit(id string, s Sender, options ...*Option)
+	Publish(id string, s Publisher, options ...*Option)
 }
 
 // LoopBuilder is the interface provided for creating a data processing stream that loops.
@@ -49,7 +49,7 @@ type LoopBuilder interface {
 	FoldRight(id string, f Fold, options ...*Option) LoopBuilder
 	Fork(id string, f Fork, options ...*Option) (LoopBuilder, LoopBuilder)
 	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out LoopBuilder)
-	Transmit(id string, s Sender, options ...*Option)
+	Publish(id string, s Publisher, options ...*Option)
 	Done()
 }
 
@@ -334,8 +334,8 @@ func (n nexter) Link(id, target string, options ...*Option) {
 	})
 }
 
-// Transmit the data outside the system, options default to the set used when creating the Stream
-func (n nexter) Transmit(id string, x Sender, options ...*Option) {
+// Publish the data outside the system, options default to the set used when creating the Stream
+func (n nexter) Publish(id string, x Publisher, options ...*Option) {
 	opt := &Option{
 		BufferSize: intP(0),
 	}
@@ -347,7 +347,7 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 	n(&node{
 		vertex: vertex{
 			id:         id,
-			vertexType: "transmit",
+			vertexType: "publish",
 			option:     opt,
 			handler: func(payload []*Packet) {
 				data := make([]Data, len(payload))
@@ -355,7 +355,7 @@ func (n nexter) Transmit(id string, x Sender, options ...*Option) {
 					data[i] = packet.Data
 				}
 
-				if err := x(data); err != nil {
+				if err := x.Send(data); err != nil {
 					for _, packet := range payload {
 						packet.handleError(id, err)
 					}
@@ -425,9 +425,9 @@ func (n *looper) Loop(id string, x Fork, options ...*Option) (loop, out LoopBuil
 	}
 }
 
-// Transmit the data outside the system, options default to the set used when creating the Stream
-func (n *looper) Transmit(id string, x Sender, options ...*Option) {
-	n.next.Transmit(id, x, options...)
+// Publish the data outside the system, options default to the set used when creating the Stream
+func (n *looper) Publish(id string, x Publisher, options ...*Option) {
+	n.next.Publish(id, x, options...)
 }
 
 // Done function for ending the loop and going back to the original Fork

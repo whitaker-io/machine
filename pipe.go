@@ -34,6 +34,11 @@ type Subscription interface {
 	Close() error
 }
 
+// Publisher is an interface for sending data out of the Stream
+type Publisher interface {
+	Send([]Data) error
+}
+
 // LogStore is an interface for allowing a distributed cluster of workers
 // It requires 3 methods Join, Write, and Leave.
 //

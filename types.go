@@ -154,10 +154,6 @@ type Fork func(list []*Packet) (a, b []*Packet)
 // method allowing for Forking based on the contents of the data.
 type ForkRule func(data Data) bool
 
-// Sender is a function used to transmit the payload to a different system
-// the returned error is logged, but not specifically acted upon.
-type Sender func(payload []Data) error
-
 type edge struct {
 	channel chan []*Packet
 }
