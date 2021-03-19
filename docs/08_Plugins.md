@@ -142,7 +142,7 @@ func main() {
               provider: 
                 <<: *testFork
               left:
-                transmit:
+                publish:
                   id: sender_id
                   provider: 
                     <<: *testSender
@@ -179,17 +179,17 @@ func main() {
                                 provider: 
                                   <<: *testFork
                                 in:
-                                  transmit:
+                                  publish:
                                     id: sender_id
                                     provider: 
                                       <<: *testSender
                                 out:
-                                  transmit:
+                                  publish:
                                     id: sender_id
                                     provider: 
                                       <<: *testSender
                   out:
-                    transmit:
+                    publish:
                       id: sender_id
                       provider: 
                         <<: *testSender
@@ -208,12 +208,12 @@ func main() {
             provider: 
               <<: *testFork
             left:
-              transmit:
+              publish:
                 id: sender_id
                 provider: 
                   <<: *testSender
             right:
-              transmit:
+              publish:
                 id: sender_id
                 provider: 
                   <<: *testSender
@@ -234,12 +234,12 @@ func main() {
             provider: 
               <<: *testFork
             left:
-              transmit:
+              publish:
                 id: sender_id
                 provider: 
                   <<: *testSender
             right:
-              transmit:
+              publish:
                 id: sender_id
                 provider: 
                   <<: *testSender

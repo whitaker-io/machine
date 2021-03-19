@@ -90,7 +90,7 @@ func (v *vertex) span(ctx context.Context) {
 			}
 		}
 
-		if v.vertexType == "transmit" {
+		if v.vertexType == "publish" {
 			for _, packet := range payload {
 				if packet.span != nil {
 					packet.span.End()
