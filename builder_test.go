@@ -210,7 +210,6 @@ func Test_New(b *testing.T) {
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
-		&Option{TraceID: boolP(true)},
 		&Option{BufferSize: intP(0)},
 	)
 
@@ -292,7 +291,6 @@ func Test_New2(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
-		&Option{Debug: boolP(true)},
 	)
 
 	left, right := m.Builder().
@@ -379,7 +377,6 @@ func Test_Panic(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
-		&Option{Debug: boolP(true)},
 	)
 
 	left, right := m.Builder().
@@ -847,7 +844,7 @@ func Test_Link(t *testing.T) {
 		}),
 	)
 
-	right.Link("link_id", "map_id")
+	right.link("link_id", "map_id")
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -926,7 +923,7 @@ func Test_Link_not_ancestor(t *testing.T) {
 			return true
 		}).Handler)
 
-	left.Link("link_id", "sender_id",
+	left.link("link_id", "sender_id",
 		&Option{FIFO: boolP(false)},
 		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},

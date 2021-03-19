@@ -38,7 +38,7 @@ type Builder interface {
 	FoldRight(id string, f Fold, options ...*Option) Builder
 	Fork(id string, f Fork, options ...*Option) (Builder, Builder)
 	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder)
-	Link(id, target string, options ...*Option)
+	link(id, target string, options ...*Option)
 	Publish(id string, s Publisher, options ...*Option)
 }
 
@@ -305,7 +305,7 @@ func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder
 // Link the data to an existing operation creating a loop,
 // target must be an ancestor, options default to the set
 // used when creating the Stream
-func (n nexter) Link(id, target string, options ...*Option) {
+func (n nexter) link(id, target string, options ...*Option) {
 	opt := &Option{
 		BufferSize: intP(0),
 	}
@@ -432,7 +432,7 @@ func (n *looper) Publish(id string, x Publisher, options ...*Option) {
 
 // Done function for ending the loop and going back to the original Fork
 func (n *looper) Done() {
-	n.next.Link(uuid.NewString(), n.loopstart)
+	n.next.link(uuid.NewString(), n.loopstart)
 }
 
 // NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
@@ -480,20 +480,8 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 
 					payload := make([]*Packet, len(data))
 					for i, item := range data {
-						var id string
-
-						if val, ok := item["__traceID"]; ok && *opt.TraceID {
-							if strval, ok := val.(string); ok {
-								id = strval
-							}
-						}
-
-						if id == "" {
-							id = uuid.NewString()
-						}
-
 						packet := &Packet{
-							ID:   id,
+							ID:   uuid.NewString(),
 							Data: item,
 						}
 						if *x.option.Span {

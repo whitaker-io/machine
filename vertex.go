@@ -19,9 +19,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type handler func(payload []*Packet)
-type recorder func(id, vertexType, operation string, payload []*Packet)
-
 type vertex struct {
 	id         string
 	vertexType string
@@ -44,7 +41,6 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	v.metrics(ctx)
 	v.span(ctx)
 	v.deepCopy()
-	v.debug()
 	v.recover()
 	v.run(ctx)
 
@@ -136,39 +132,6 @@ func (v *vertex) metrics(ctx context.Context) {
 			errorsCounter.Record(ctx, int64(failures), labels...)
 			errorsTotalCounter.Add(ctx, float64(failures), labels...)
 			batchDuration.Record(ctx, int64(duration), labels...)
-		}
-	}
-}
-
-func (v *vertex) debug() {
-	if *v.option.Debug {
-		h := v.handler
-
-		v.handler = func(payload []*Packet) {
-			start := time.Now()
-
-			h(payload)
-
-			end := time.Now()
-
-			out := []*Packet{}
-			buf := &bytes.Buffer{}
-			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-			_ = enc.Encode(payload)
-			_ = dec.Decode(&out)
-
-			for i, value := range out {
-				if payload[i].Snapshots == nil {
-					payload[i].Snapshots = []*DebugInfo{}
-				}
-				payload[i].Snapshots = append(payload[i].Snapshots, &DebugInfo{
-					ID:       v.id,
-					Start:    start,
-					End:      end,
-					Snapshot: value.Data,
-				})
-			}
 		}
 	}
 }
