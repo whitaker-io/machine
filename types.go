@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"time"
 
 	"github.com/mitchellh/mapstructure"
 	"go.opentelemetry.io/otel/attribute"
@@ -59,8 +58,6 @@ var (
 		Injectable: boolP(true),
 		Metrics:    boolP(true),
 		Span:       boolP(true),
-		TraceID:    boolP(false),
-		Debug:      boolP(false),
 		BufferSize: intP(0),
 	}
 )
@@ -72,19 +69,10 @@ type Data map[string]interface{}
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
-	ID        string       `json:"id"`
-	Data      Data         `json:"data"`
-	Error     error        `json:"error"`
-	Snapshots []*DebugInfo `json:"snapshots,omitempty"`
-	span      trace.Span
-}
-
-// DebugInfo holds information when the Option.Debug flag is set to true
-type DebugInfo struct {
-	ID       string    `json:"vertex_id"`
-	Snapshot Data      `json:"snapshot"`
-	Start    time.Time `json:"start"`
-	End      time.Time `json:"end"`
+	ID    string `json:"id"`
+	Data  Data   `json:"data"`
+	Error error  `json:"error"`
+	span  trace.Span
 }
 
 // Option type for holding machine settings.
@@ -117,15 +105,6 @@ type Option struct {
 	// Packets processed by the system.
 	// Default: true
 	Metrics *bool
-	// TraceID adds __traceID to the data if missing and uses incoming
-	// __traceID value as Packet.ID if provided
-	// Default: false
-	TraceID *bool
-	// Debug adds traces of changes to the packet, useful for debugging,
-	// but very costly and production use is not advised unless the overhead
-	// is acceptable
-	// Default: false
-	Debug *bool
 }
 
 // Retriever is a function that provides data to a generic Stream
@@ -153,6 +132,10 @@ type Fork func(list []*Packet) (a, b []*Packet)
 // ForkRule is a function that can be converted to a Fork via the Handler
 // method allowing for Forking based on the contents of the data.
 type ForkRule func(data Data) bool
+
+type handler func(payload []*Packet)
+
+type recorder func(id, vertexType, operation string, payload []*Packet)
 
 type edge struct {
 	channel chan []*Packet
@@ -205,8 +188,6 @@ func (o *Option) join(option *Option) *Option {
 		Injectable: o.Injectable,
 		Metrics:    o.Metrics,
 		Span:       o.Span,
-		TraceID:    o.TraceID,
-		Debug:      o.Debug,
 	}
 
 	if option.DeepCopy != nil {
@@ -231,14 +212,6 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.Span != nil {
 		out.Span = option.Span
-	}
-
-	if option.TraceID != nil {
-		out.TraceID = option.TraceID
-	}
-
-	if option.Debug != nil {
-		out.Debug = option.Debug
 	}
 
 	return out
