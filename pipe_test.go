@@ -362,6 +362,24 @@ func Test_Load(b *testing.T) {
 	}
 }
 
+func Test_Serialization(b *testing.T) {
+	streams := readStreamDefinitionsTestYamlFile(b)
+
+	var bytez []byte
+	var err error
+	if bytez, err = json.Marshal(streams); err != nil {
+		b.Error(err)
+	} else if err := json.Unmarshal(bytez, &streams); err != nil {
+		b.Error(err)
+	}
+
+	if bytez, err = yaml.Marshal(streams); err != nil {
+		b.Error(err)
+	} else if err := yaml.Unmarshal(bytez, &streams); err != nil {
+		b.Error(err)
+	}
+}
+
 func request(bytez []byte) *http.Request {
 	req, err := http.NewRequest(http.MethodPost, "http://localhost:5000/stream/http_id", bytes.NewReader(bytez))
 
@@ -455,7 +473,7 @@ func (t *testPlugin) publisher(m map[string]interface{}) Publisher {
 	if channel, ok := m["counter"]; ok {
 		counter = channel.(chan []Data)
 	}
-	
+
 	return publishFN(func(payload []Data) error {
 		counter <- payload
 		return nil

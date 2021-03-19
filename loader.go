@@ -1,12 +1,12 @@
 package machine
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
 
 	"github.com/mitchellh/mapstructure"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -35,14 +35,14 @@ type PluginProvider interface {
 // PluginDefinition type for declaring the path and symbol for a golang plugin containing the Provider
 type PluginDefinition struct {
 	// Type is the name of the PluginProvider to use.
-	Type string `mapstructure:"type,omitempty"`
+	Type string `json:"type" mapstructure:"type"`
 	// Payload is the location, script, etc provided to load the plugin.
 	// Depends on the PluginProvider.
-	Payload string `mapstructure:"payload,omitempty"`
+	Payload string `json:"payload" mapstructure:"payload"`
 	// Symbol is the name of the symbol to be loaded from the plugin.
-	Symbol string `mapstructure:"symbol,omitempty"`
+	Symbol string `json:"symbol" mapstructure:"symbol"`
 	// Attributes are a map[string]interface{} of properties to be used with the PluginProvider.
-	Attributes map[string]interface{} `mapstructure:"attributes,omitempty"`
+	Attributes map[string]interface{} `json:"attributes" mapstructure:"attributes"`
 }
 
 // StreamSerialization config based definition for a stream
@@ -50,10 +50,10 @@ type StreamSerialization struct {
 	// Type type of stream to create.
 	//
 	// For root serializations valid values are 'http', 'subscription', or 'stream'.
-	Type string `mapstructure:"type,omitempty"`
+	Type string `json:"type,omitempty" mapstructure:"type,omitempty"`
 	// Interval is the duration in nanoseconds between pulls in a 'subscription' Type. It is only read
 	// if the Type is 'subscription'.
-	Interval time.Duration `mapstructure:"interval,omitempty"`
+	Interval time.Duration `json:"interval,omitempty" mapstructure:"interval,omitempty"`
 
 	*VertexSerialization
 }
@@ -61,11 +61,11 @@ type StreamSerialization struct {
 // VertexSerialization config based definition for a stream vertex
 type VertexSerialization struct {
 	// ID unique identifier for the stream.
-	ID string `mapstructure:"id,omitempty"`
+	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
 	// Provider Plugin information to load
-	Provider PluginDefinition `mapstructure:"provider,omitempty"`
+	Provider *PluginDefinition `json:"provider,omitempty" mapstructure:"provider,omitempty"`
 	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
-	Options []*Option `mapstructure:"options,omitempty"`
+	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
 
 	next map[string]*VertexSerialization
 }
@@ -274,13 +274,33 @@ func (def *PluginDefinition) load() (interface{}, error) {
 	return nil, fmt.Errorf("missing PluginProvider %s", def.Type)
 }
 
+// MarshalJSON implementation to marshal json
+func (s *StreamSerialization) MarshalJSON() ([]byte, error) {
+	m := map[string]interface{}{}
+
+	s.toMap(m)
+
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON implementation to unmarshal json
+func (s *StreamSerialization) UnmarshalJSON(data []byte) error {
+	m := map[string]interface{}{}
+
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+
+	return s.fromMap(m)
+}
+
 // MarshalYAML implementation to marshal yaml
 func (s *StreamSerialization) MarshalYAML() (interface{}, error) {
 	m := map[string]interface{}{}
 
 	s.toMap(m)
 
-	return yaml.Marshal(m)
+	return m, nil
 }
 
 // UnmarshalYAML implementation to unmarshal yaml
@@ -297,7 +317,11 @@ func (s *StreamSerialization) UnmarshalYAML(unmarshal func(interface{}) error) e
 func (s *StreamSerialization) toMap(m map[string]interface{}) {
 	m["id"] = s.ID
 	m["type"] = s.Type
-	m["interval"] = int64(s.Interval)
+
+	if s.Type == subscriptionConst {
+		m["interval"] = int64(s.Interval)
+	}
+
 	m["provider"] = s.Provider
 	m["options"] = s.Options
 
@@ -317,11 +341,13 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 		return fmt.Errorf("missing type field")
 	}
 
-	if interval, ok := m["interval"]; ok {
+	if interval, ok := m["interval"]; ok && s.Type == subscriptionConst {
 		switch val := interval.(type) {
 		case int64:
 			s.Interval = time.Duration(val)
 		case int:
+			s.Interval = time.Duration(val)
+		case float64:
 			s.Interval = time.Duration(val)
 		case string:
 		default:
@@ -333,6 +359,7 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 
 	delete(m, "type")
 	delete(m, "interval")
+	delete(m, "provider")
 
 	s.VertexSerialization.fromMap(m)
 
@@ -340,9 +367,15 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 }
 
 func (vs *VertexSerialization) toMap(m map[string]interface{}) {
-	m["id"] = vs.ID
-	m["provider"] = vs.Provider
-	m["options"] = vs.Options
+	if vs.ID != "" {
+		m["id"] = vs.ID
+	}
+	if vs.Provider != nil {
+		m["provider"] = vs.Provider
+	}
+	if vs.Options != nil || len(vs.Options) < 1 {
+		m["options"] = vs.Options
+	}
 
 	for k, v := range vs.next {
 		out := map[string]interface{}{}
@@ -357,10 +390,11 @@ func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
 	}
 
 	if provider, ok := m["provider"]; ok {
-		vs.Provider = PluginDefinition{}
-		if err := mapstructure.Decode(provider, &vs.Provider); err != nil {
+		vs.Provider = &PluginDefinition{}
+		if err := mapstructure.Decode(provider, vs.Provider); err != nil {
 			panic(err)
 		}
+		delete(m, "provider")
 	}
 
 	if options, ok := m["options"]; ok {
@@ -368,6 +402,7 @@ func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
 		if err := mapstructure.Decode(options, &vs.Options); err != nil {
 			panic(err)
 		}
+		delete(m, "options")
 	}
 
 	vs.next = map[string]*VertexSerialization{}
