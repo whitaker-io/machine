@@ -39,6 +39,13 @@ jobs:
           find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
           git push
           git push --tags
+          find . -name 'go.mod' | grep -v vendor | xargs sed -i 's|github.com/whitaker-io/\(.*\) .*|github.com/whitaker-io/\1 ${{ steps.get_version.outputs.VERSION }}|g'
+          find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | xargs -I {} bash -c 'cd {}; go mod vendor'
+          git commit -am '${{ steps.get_version.outputs.VERSION }}'
+          find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
+          git push -f
+          git push --tags -f
+
   update-foundry:
     needs: update-components
     runs-on: ubuntu-latest
