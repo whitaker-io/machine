@@ -357,6 +357,13 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 		return fmt.Errorf("missing interval field")
 	}
 
+	if provider, ok := m["provider"]; ok {
+		s.VertexSerialization.Provider = &PluginDefinition{}
+		if err := mapstructure.Decode(provider, s.VertexSerialization.Provider); err != nil {
+			panic(err)
+		}
+	}
+
 	delete(m, "type")
 	delete(m, "interval")
 	delete(m, "provider")
