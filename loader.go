@@ -13,6 +13,7 @@ const (
 	streamConst       = "stream"
 	subscriptionConst = "subscription"
 	httpConst         = "http"
+	websocketConst    = "websocket"
 )
 
 var (
@@ -85,6 +86,13 @@ func (pipe *Pipe) Load(streams []*StreamSerialization) error {
 				return fmt.Errorf("http stream missing retriever config")
 			}
 			if err := stream.VertexSerialization.load(pipe.StreamHTTP(stream.ID, stream.Options...)); err != nil {
+				return err
+			}
+		case websocketConst:
+			if stream.VertexSerialization == nil {
+				return fmt.Errorf("websocket stream missing retriever config")
+			}
+			if err := stream.VertexSerialization.load(pipe.StreamWebsocket(stream.ID, stream.Options...)); err != nil {
 				return err
 			}
 		case subscriptionConst:

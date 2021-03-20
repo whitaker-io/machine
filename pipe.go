@@ -3,6 +3,7 @@ package machine
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -10,6 +11,7 @@ import (
 
 	fiber "github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	websocket "github.com/gofiber/websocket/v2"
 
 	"github.com/sirupsen/logrus"
 )
@@ -183,6 +185,74 @@ func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 
 		return ctx.SendStatus(http.StatusAccepted)
 	})
+
+	pipe.streams[id] = NewStream(id,
+		func(ctx context.Context) chan []Data {
+			return channel
+		},
+		opts...,
+	)
+
+	pipe.healthInfo[id] = &HealthInfo{
+		StreamID: id,
+	}
+
+	return pipe.streams[id].Builder()
+}
+
+// StreamWebsocket a method that creates a Stream at the path /ws/:id
+// which is hosted by the Pipe's fiber.App
+func (pipe *Pipe) StreamWebsocket(id string, opts ...*Option) Builder {
+	channel := make(chan []Data)
+
+	acceptedMessage := map[string]interface{}{
+		"message": "OK",
+		"status":  http.StatusAccepted,
+	}
+
+	badMessage := map[string]interface{}{
+		"message": "error bad type",
+		"status":  http.StatusBadRequest,
+	}
+
+	pipe.app.Use("/ws/"+id, func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+
+	pipe.app.Get("/ws/"+id, websocket.New(func(c *websocket.Conn) {
+		payload := []Data{}
+
+		for {
+			var err error
+			for err = c.ReadJSON(&payload); err == io.ErrUnexpectedEOF; {
+				<-time.After(10 * time.Millisecond)
+			}
+
+			if err != nil {
+				if err := c.WriteJSON(badMessage); err != nil {
+					break
+				}
+			}
+
+			now := time.Now()
+			go func() {
+				pipe.healthInfo[id].mtx.Lock()
+				defer pipe.healthInfo[id].mtx.Unlock()
+				if now.After(pipe.healthInfo[id].LastPayload) {
+					pipe.healthInfo[id].LastPayload = now
+				}
+			}()
+
+			channel <- deepCopy(payload)
+
+			if err := c.WriteJSON(acceptedMessage); err != nil {
+				break
+			}
+		}
+	}))
 
 	pipe.streams[id] = NewStream(id,
 		func(ctx context.Context) chan []Data {
