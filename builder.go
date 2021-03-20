@@ -74,7 +74,7 @@ type node struct {
 	right *node
 }
 
-// ID is a method used to return the ID for the system
+// ID is a method used to return the ID for the Stream
 func (m *builder) ID() string {
 	return m.id
 }
