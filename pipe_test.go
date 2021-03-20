@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fasthttp/websocket"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
@@ -134,7 +136,7 @@ func Test_Pipe_Sub(b *testing.T) {
 	p.injectionCallback(ctx)(logs2...)
 
 	cancel()
-	<-time.After(3 * time.Second)
+	<-time.After(time.Second)
 }
 
 func Test_Pipe_HTTP(b *testing.T) {
@@ -198,7 +200,56 @@ func Test_Pipe_HTTP(b *testing.T) {
 	}
 
 	cancel()
-	<-time.After(3 * time.Second)
+	<-time.After(time.Second)
+}
+
+func Test_Pipe_Websocket(b *testing.T) {
+	out := make(chan []Data)
+
+	t := &tester{}
+
+	p := NewPipe("pipe_id", nil, t)
+
+	p.StreamWebsocket("websocket_id",
+		&Option{DeepCopy: boolP(true)},
+		&Option{FIFO: boolP(true)},
+		&Option{Injectable: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	).Publish("publish_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := p.Run(ctx, ":5000", time.Second); err != nil {
+			b.Error(err)
+		}
+	}()
+
+	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:5000/ws/websocket_id", http.Header{})
+	defer conn.Close()
+
+	if err != nil || resp.StatusCode != fiber.StatusSwitchingProtocols {
+		b.Error(err)
+	}
+
+	if err := conn.WriteJSON(deepCopy(testListBase)); err != nil {
+		b.Error(err)
+	}
+
+	list := <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+	}
+
+	cancel()
+	<-time.After(time.Second)
 }
 
 func Test_Pipe_No_Stream(b *testing.T) {
@@ -311,7 +362,7 @@ func Test_Pipe_Bad_Leave_Close(b *testing.T) {
 	}
 
 	cancel()
-	<-time.After(3 * time.Second)
+	<-time.After(time.Second)
 }
 
 func Test_Load(b *testing.T) {
@@ -587,6 +638,40 @@ var streamDefinitions = `- type: subscription
                     payload: ""
 - type: http
   id: http_test_id
+  map:
+    id: applicative_id
+    provider:
+      type: test
+      symbol: Applicative
+      payload: ""
+    fold_left:
+      id: fold_id
+      provider: 
+        type: test
+        symbol: Fold
+        payload: ""
+      fork:
+        id: fork_id
+        provider: 
+          type: test
+          symbol: Fork
+          payload: ""
+        left:
+          publish:
+            id: publisher_id
+            provider: 
+              type: test
+              symbol: Publisher
+              payload: ""
+        right:
+          publish:
+            id: publisher_id
+            provider: 
+              type: test
+              symbol: Publisher
+              payload: ""
+- type: websocket
+  id: websocket_test_id
   map:
     id: applicative_id
     provider:
