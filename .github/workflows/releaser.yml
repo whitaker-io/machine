@@ -40,9 +40,9 @@ jobs:
           git push
           git push --tags
           find plugin_providers/components -name 'go.mod' | grep -v vendor | xargs sed -i 's|github.com/whitaker-io/\(.*\) .*|github.com/whitaker-io/\1 ${{ steps.get_version.outputs.VERSION }}|g'
-          cd plugin_providers/components; go mod vendor
-          git commit -am '${{ steps.get_version.outputs.VERSION }}'
-          git tag plugin_providers/components/${{ steps.get_version.outputs.VERSION }}'
+          find plugin_providers/components -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | xargs -I {} bash -c 'cd {}; go mod vendor'
+          git commit -am '${{ steps.get_version.outputs.VERSION }}-components'
+          find plugin_providers/components -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
           git push
           git push --tags
 
