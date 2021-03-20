@@ -4,10 +4,10 @@ on:
   push:
     branches: [master]
     paths:
-      - '*.go'
-      - '*.mod'
-      - '*.sum'
-      - '*.yml'
+      - '**.go'
+      - '**.mod'
+      - '**.sum'
+      - '**.yml'
   pull_request:
     branches: [master]
 
