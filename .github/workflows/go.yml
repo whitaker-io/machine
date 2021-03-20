@@ -21,7 +21,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify Changed files
+        uses: tj-actions/verify-changed-files@v5.5
+        id: changed_files
+        with:
+          files: |
+             .(go)$
+             .(mod)$
+             .(sum)$
+             .(yml)$
+
       - name: Run golangci-lint
+        if: steps.changed_files.outputs.files_changed == 'true'
         uses: golangci/golangci-lint-action@v2.3.0
         with:
           version: v1.32
@@ -29,12 +40,15 @@ jobs:
           only-new-issues: true
 
       - name: Get dependencies
+        if: steps.changed_files.outputs.files_changed == 'true'
         run: go mod vendor
 
       - name: Go Test
+        if: steps.changed_files.outputs.files_changed == 'true'
         run: go test -timeout 120s -coverprofile=coverage.out
 
       - name: Coverage
+        if: steps.changed_files.outputs.files_changed == 'true'
         uses: brpaz/godacov-action@v1.1.1
         with:
             reportPath: 'coverage.out'
@@ -42,7 +56,7 @@ jobs:
             commitId: ${{ github.sha }}
 
       - name: Bump version and push tag
-        if: github.ref == 'refs/heads/master'
+        if: github.ref == 'refs/heads/master' && steps.changed_files.outputs.files_changed == 'true'
         uses: mathieudutour/github-tag-action@v4.5
         with:
           github_token: ${{ secrets.token }}
