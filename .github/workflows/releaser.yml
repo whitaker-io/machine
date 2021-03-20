@@ -36,7 +36,7 @@ jobs:
           git config user.name jonathan-whitaker
           git config user.email github@whitaker.io
           git commit -am '${{ steps.get_version.outputs.VERSION }}'
-          find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
+          find . -name 'go.mod' | grep -v vendor | grep -v plugin_providers/components | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
           git push
           git push --tags
           sed -i 's|github.com/whitaker-io/\(.*\) .*|github.com/whitaker-io/\1 ${{ steps.get_version.outputs.VERSION }}|g' plugin_providers/components/go.mod
