@@ -18,6 +18,7 @@ Add the primary library to your project
 ```bash
   go get -u github.com/whitaker-io/machine
 ```
+
 ------
 
 [Foundry](https://github.com/whitaker-io/foundry) is a tool used to generate new projects quickly 
