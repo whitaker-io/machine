@@ -243,7 +243,25 @@ func Test_Pipe_Websocket(b *testing.T) {
 		b.Error(err)
 	}
 
+	if err := conn.WriteJSON(deepCopy(testListBase)); err != nil {
+		b.Error(err)
+	}
+
 	list := <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+	}
+
+	list = <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+	}
+
+	if err := conn.WriteJSON(deepCopy(testListBase)); err != nil {
+		b.Error(err)
+	}
+
+	list = <-out
 	if len(list) != 10 {
 		b.Errorf("incorrect data have %v want %v", list, testListBase)
 	}

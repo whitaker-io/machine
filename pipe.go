@@ -228,6 +228,7 @@ func (pipe *Pipe) StreamWebsocket(id string, opts ...*Option) Builder {
 		for {
 			var err error
 			for err = c.ReadJSON(&payload); err == io.ErrUnexpectedEOF; {
+				<-time.After(10 * time.Millisecond)
 			}
 
 			if err != nil {
