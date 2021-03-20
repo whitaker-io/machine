@@ -7,7 +7,6 @@ on:
       - '**.go'
       - '**.mod'
       - '**.sum'
-      - '**.yml'
   pull_request:
     branches: [master]
 
