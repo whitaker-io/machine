@@ -1,0 +1,10 @@
+checkoutLocation: go/src/github.com/whitaker-io/machine
+workspaceLocation: go/src/github.com/whitaker-io/machine
+image:
+  file: .devcontainer/Dockerfile
+tasks:
+  - init: 
+      go mod vendor
+ports:
+  - port: 5000
+    onOpen: ignore
