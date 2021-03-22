@@ -39,13 +39,8 @@ RUN apt-get update \
     && GOPATH=/tmp/gotools GO111MODULE=on go get -x github.com/mgechev/revive 2>&1  \
     && GOPATH=/tmp/gotools GO111MODULE=on go get -x github.com/go-delve/delve/cmd/dlv 2>&1 \
     #
-    # Build gocode-gomod
-    && GOPATH=/tmp/gotools go get -x -d github.com/stamblerre/gocode 2>&1 \
-    && GOPATH=/tmp/gotools go build -o gocode-gomod github.com/stamblerre/gocode \
-    #
     # Install Go tools
     && mv /tmp/gotools/bin/* /usr/local/bin/ \
-    && mv gocode-gomod /usr/local/bin/ \
     #
     # Install golangci-lint
     && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin 2>&1 \
