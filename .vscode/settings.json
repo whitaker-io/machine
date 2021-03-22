@@ -25,6 +25,7 @@
     "**/CODEOWNERS": true,
     "**/CONTRIBUTING.md": true,
     "**/LICENSE": true,
-    "**/vendor": true
+    "**/vendor": true,
+    "**/.vscode": true
   }
 }
