@@ -330,8 +330,15 @@ func (pipe *Pipe) StreamSubscription(id string, sub Subscription, interval time.
 //   })
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (pipe *Pipe) Use(args ...interface{}) {
-	pipe.app.Use(args...)
+func (pipe *Pipe) Use(args ...interface{}) fiber.Router {
+	return pipe.app.Use(args...)
+}
+
+// Add Wraps fiber.App.Add
+//
+// Add allows you to specify a HTTP method to register a route
+func (pipe *Pipe) Add(method, path string, handlers ...func(*fiber.Ctx) error) fiber.Router {
+	return pipe.app.Add(method, path, handlers...)
 }
 
 func (pipe *Pipe) recorder(streamID string) recorder {
