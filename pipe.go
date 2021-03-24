@@ -83,12 +83,13 @@ type Log struct {
 // Pipe is the representation of the system. It can run multiple Streams and
 // controls the start and stop functionality of the system.
 type Pipe struct {
-	id         string
-	app        *fiber.App
-	streams    map[string]Stream
-	healthInfo map[string]*HealthInfo
-	logStore   LogStore
-	logger     *logrus.Logger
+	id            string
+	app           *fiber.App
+	providerFiber bool
+	streams       map[string]Stream
+	healthInfo    map[string]*HealthInfo
+	logStore      LogStore
+	logger        *logrus.Logger
 }
 
 // HealthInfo is the type used for providing basic healthcheck information
@@ -101,7 +102,10 @@ type HealthInfo struct {
 
 // Run starts the Pipe and subsequent Streams. It requires a context, a port to run
 // an instance of fiber.App which hosts the /health endpoint and any HTTP based streams
-// at /strea/:id, and a gracePeriod for which graceful shutdown can take place.
+// at /stream/:id, and a gracePeriod for which graceful shutdown can take place.
+//
+// if NewPipeWithFiber is used port is ignored and the previously mentioned paths are prefixed
+// with /pipe/:pipe_id
 func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duration) error {
 	if len(pipe.streams) < 1 {
 		return fmt.Errorf("no streams found")
@@ -140,7 +144,11 @@ func (pipe *Pipe) Run(ctx context.Context, port string, gracePeriod time.Duratio
 		}
 	}()
 
-	return pipe.app.Listen(port)
+	if !pipe.providerFiber {
+		return pipe.app.Listen(port)
+	}
+
+	return nil
 }
 
 // Stream is a method for adding a generic developer defined Stream.
@@ -162,7 +170,13 @@ func (pipe *Pipe) Stream(stream Stream) Builder {
 func (pipe *Pipe) StreamHTTP(id string, opts ...*Option) Builder {
 	channel := make(chan []Data)
 
-	pipe.app.Post("/stream/"+id, func(ctx *fiber.Ctx) error {
+	prefix := ""
+
+	if pipe.providerFiber {
+		prefix = "/pipe/" + pipe.id
+	}
+
+	pipe.app.Post(prefix+"/stream/"+id, func(ctx *fiber.Ctx) error {
 		payload := []Data{}
 		packet := Data{}
 
@@ -215,14 +229,20 @@ func (pipe *Pipe) StreamWebsocket(id string, opts ...*Option) Builder {
 		"status":  http.StatusBadRequest,
 	}
 
-	pipe.app.Use("/ws/"+id, func(c *fiber.Ctx) error {
+	prefix := ""
+
+	if pipe.providerFiber {
+		prefix = "/pipe/" + pipe.id
+	}
+
+	pipe.app.Use(prefix+"/ws/"+id, func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			return c.Next()
 		}
 		return fiber.ErrUpgradeRequired
 	})
 
-	pipe.app.Get("/ws/"+id, websocket.New(func(c *websocket.Conn) {
+	pipe.app.Get(prefix+"/ws/"+id, websocket.New(func(c *websocket.Conn) {
 		payload := []Data{}
 
 		for {
@@ -382,8 +402,8 @@ func (pipe *Pipe) injectionCallback(ctx context.Context) func(logs ...*Log) {
 	}
 }
 
-// NewPipe is a function for creating a new Pipe. If logger or logStore are nil then
-// the accosiated feature will be disabled.
+// NewPipe is a function for creating a new Pipe. If logStore is nil then
+// the associated feature will be disabled.
 func NewPipe(id string, logger *logrus.Logger, store LogStore, config ...fiber.Config) *Pipe {
 	if logger == nil {
 		logger = defaultLogger
@@ -401,6 +421,36 @@ func NewPipe(id string, logger *logrus.Logger, store LogStore, config ...fiber.C
 	pipe.Use(recover.New())
 
 	pipe.app.Get("/health", func(c *fiber.Ctx) error {
+		return c.Status(http.StatusOK).JSON(map[string]interface{}{
+			"pipe_id":     pipe.id,
+			"health_info": pipe.healthInfo,
+		})
+	})
+
+	return pipe
+}
+
+// NewPipeWithFiber is a function for creating a new Pipe. If logStore is nil then
+// the associated feature will be disabled.
+//
+// if NewPipeWithFiber is used all pipe paths are prefixed
+// with /pipe/:pipe_id
+func NewPipeWithFiber(id string, logger *logrus.Logger, store LogStore, app *fiber.App) *Pipe {
+	if logger == nil {
+		logger = defaultLogger
+	}
+
+	pipe := &Pipe{
+		id:            id,
+		app:           app,
+		providerFiber: true,
+		streams:       map[string]Stream{},
+		healthInfo:    map[string]*HealthInfo{},
+		logStore:      store,
+		logger:        logger,
+	}
+
+	pipe.app.Get("/pipe/"+pipe.id+"/health", func(c *fiber.Ctx) error {
 		return c.Status(http.StatusOK).JSON(map[string]interface{}{
 			"pipe_id":     pipe.id,
 			"health_info": pipe.healthInfo,

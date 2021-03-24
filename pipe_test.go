@@ -169,21 +169,21 @@ func Test_Pipe_HTTP(b *testing.T) {
 	}()
 
 	bytez, _ := json.Marshal(deepCopy(testListBase))
-	resp, err := p.app.Test(request(bytez), -1)
+	resp, err := p.app.Test(request(bytez, ""), -1)
 
 	if resp.StatusCode != http.StatusAccepted || err != nil {
 		b.Error(resp.StatusCode, err)
 	}
 
 	bytez, _ = json.Marshal(testListBase[0])
-	resp, err = p.app.Test(request(bytez), -1)
+	resp, err = p.app.Test(request(bytez, ""), -1)
 
 	if resp.StatusCode != http.StatusAccepted || err != nil {
 		b.Error(resp.StatusCode, err)
 	}
 
 	bytez = []byte{}
-	resp, err = p.app.Test(request(bytez), -1)
+	resp, err = p.app.Test(request(bytez, ""), -1)
 
 	if resp.StatusCode == http.StatusAccepted || err != nil {
 		b.Error(resp.StatusCode, err)
@@ -197,6 +197,88 @@ func Test_Pipe_HTTP(b *testing.T) {
 	list = <-out
 	if len(list) != 1 {
 		b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+	}
+
+	cancel()
+	<-time.After(time.Second)
+}
+
+func Test_Pipe_HTTP_provided_fiber(b *testing.T) {
+	out := make(chan []Data)
+
+	t := &tester{}
+
+	app := fiber.New()
+
+	p := NewPipeWithFiber("pipe_id", nil, t, app)
+
+	p.StreamHTTP("http_id",
+		&Option{DeepCopy: boolP(true)},
+		&Option{FIFO: boolP(true)},
+		&Option{Injectable: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	).Publish("publish_id",
+		publishFN(func(d []Data) error {
+			out <- d
+			return nil
+		}),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := p.Run(ctx, ":5000", time.Second); err != nil {
+			b.Error(err)
+		} else if err := app.Listen(":5000"); err != nil {
+			b.Error(err)
+		}
+	}()
+
+	bytez, _ := json.Marshal(deepCopy(testListBase))
+	resp, err := p.app.Test(request(bytez, "/pipe/"+p.id), -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+	}
+
+	bytez, _ = json.Marshal(testListBase[0])
+	resp, err = p.app.Test(request(bytez, "/pipe/"+p.id), -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+	}
+
+	bytez = []byte{}
+	resp, err = p.app.Test(request(bytez, "/pipe/"+p.id), -1)
+
+	if resp.StatusCode == http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+	}
+
+	list := <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+	}
+
+	list = <-out
+	if len(list) != 1 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+	}
+
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:5000/pipe/"+p.id+"/health", bytes.NewReader([]byte{}))
+
+	if err != nil {
+		panic(err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = p.app.Test(req, -1)
+
+	if resp.StatusCode != http.StatusOK || err != nil {
+		b.Error(resp.StatusCode, err)
 	}
 
 	cancel()
@@ -449,8 +531,8 @@ func Test_Serialization(b *testing.T) {
 	}
 }
 
-func request(bytez []byte) *http.Request {
-	req, err := http.NewRequest(http.MethodPost, "http://localhost:5000/stream/http_id", bytes.NewReader(bytez))
+func request(bytez []byte, prefix string) *http.Request {
+	req, err := http.NewRequest(http.MethodPost, "http://localhost:5000"+prefix+"/stream/http_id", bytes.NewReader(bytez))
 
 	if err != nil {
 		panic(err)
