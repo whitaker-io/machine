@@ -30,6 +30,10 @@ Add the primary library to your project
 
 ------
 
+[Data](https://github.com/whitaker-io/data) is a library for getting and setting values in a `map`[`string`]`interface`{} 
+
+------
+
 ## [Documentation](#docs)
 
 <img alt="Gopher" align="right" height="250" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">
