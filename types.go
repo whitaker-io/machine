@@ -14,6 +14,8 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whitaker-io/data"
 )
 
 var (
@@ -65,7 +67,7 @@ var (
 // Data is a map[string]interface{} used to hold the data flowing into
 // the Stream it can be converted to a struct using the As method, though
 // this is temporary and can be costly.
-type Data map[string]interface{}
+type Data data.Data
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
