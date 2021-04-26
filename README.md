@@ -22,10 +22,6 @@ Add the primary library to your project
 
 ------
 
-[Foundry](https://github.com/whitaker-io/foundry) is a tool used to generate new projects quickly 
-
-------
-
 [Components](https://github.com/whitaker-io/components) is a repository of different vertex implementations 
 
 ------
