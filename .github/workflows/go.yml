@@ -47,6 +47,6 @@ jobs:
 
       - name: Bump version and push tag
         if: github.ref == 'refs/heads/master'
-        uses: mathieudutour/github-tag-action@v4.5
+        uses: mathieudutour/github-tag-action@v4.6
         with:
           github_token: ${{ secrets.token }}
