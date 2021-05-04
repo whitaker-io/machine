@@ -10,24 +10,35 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"io"
+	"net/http"
+	"time"
 
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
+	"github.com/whitaker-io/data"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
+// HTTPStream is a Stream that also provides a fiber.Handler for receiving data
+type HTTPStream interface {
+	Stream
+	Handler() fiber.Handler
+}
+
 // Stream is a representation of a data stream and its associated logic.
-// It may be used individually or hosted by a Pipe. Creating a new Stream
-// is handled by the appropriately named NewStream function.
+// Creating a new Stream is handled by the appropriately named NewStream function.
 //
 // The Builder method is the entrypoint into creating the data processing flow.
 // All branches of the Stream are required to end in either a Publish or
 // a Link in order to be considered valid.
 type Stream interface {
 	ID() string
-	Run(ctx context.Context, recorders ...recorder) error
-	Inject(ctx context.Context, events map[string][]*Packet)
+	Run(ctx context.Context, gracePeriod time.Duration, clusters ...Cluster) error
+	Inject(logs ...*Log)
 	Builder() Builder
 }
 
@@ -43,10 +54,15 @@ type Builder interface {
 
 type nexter func(*node) *node
 
+type httpStream struct {
+	Stream
+	handler fiber.Handler
+}
+
 type builder struct {
 	vertex
 	next      *node
-	recorder  recorder
+	clusters  []Cluster
 	vertacies map[string]*vertex
 }
 
@@ -67,14 +83,33 @@ func (m *builder) ID() string {
 // and an optional list of recorder functions. The recorder function has the signiture
 // func(vertexID, vertexType, state string, paylaod []*Packet) and is called at the
 // beginning of every vertex.
-func (m *builder) Run(ctx context.Context, recorders ...recorder) error {
+func (m *builder) Run(ctx context.Context, gracePeriod time.Duration, clusters ...Cluster) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated builder")
 	}
 
-	if len(recorders) > 0 {
-		m.recorder = mergeRecorders(recorders...)
+	for _, cluster := range clusters {
+		if err := cluster.Join(m.id, m.Inject); err != nil {
+			return err
+		}
+
+		go func(c Cluster) {
+		Loop:
+			for {
+				select {
+				case <-ctx.Done():
+					if err := c.Leave(m.id); err != nil {
+						logger.Error(err)
+					}
+					break Loop
+				default:
+					<-time.After(gracePeriod)
+				}
+			}
+		}(cluster)
 	}
+
+	m.clusters = clusters
 
 	return m.cascade(ctx, m, m.input)
 }
@@ -82,11 +117,13 @@ func (m *builder) Run(ctx context.Context, recorders ...recorder) error {
 // Inject is a method for restarting work that has been dropped by the Stream
 // typically in a distributed system setting. Though it can be used to side load
 // data into the Stream to be processed
-func (m *builder) Inject(ctx context.Context, events map[string][]*Packet) {
-	for node, payload := range events {
-		if v, ok := m.vertacies[node]; ok {
+func (m *builder) Inject(logs ...*Log) {
+	for _, log := range logs {
+		if v, ok := m.vertacies[log.VertexID]; ok {
+			payload := []*Packet{log.Packet}
+
 			if !*v.option.Injectable {
-				m.recorder(v.id, v.vertexType, "injection-denied", payload)
+				m.record(v.id, v.vertexType, "injection-denied", payload)
 				continue
 			}
 
@@ -100,6 +137,36 @@ func (m *builder) Builder() Builder {
 		m.next = n
 		return n
 	})
+}
+
+func (m *builder) record(vertexID, vertexType, state string, payload []*Packet) {
+	if len(m.clusters) > 0 {
+		out := []*Packet{}
+		buf := &bytes.Buffer{}
+		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+		_ = enc.Encode(payload)
+		_ = dec.Decode(&out)
+
+		go func() {
+			logs := make([]*Log, len(out))
+			now := time.Now()
+			for i, packet := range out {
+				logs[i] = &Log{
+					StreamID:   m.id,
+					VertexID:   vertexID,
+					VertexType: vertexType,
+					State:      state,
+					Packet:     packet,
+					When:       now,
+				}
+			}
+
+			for _, cluster := range m.clusters {
+				cluster.Write(logs...)
+			}
+		}()
+	}
 }
 
 // Map apply a mutation, options default to the set used when creating the Stream
@@ -327,12 +394,12 @@ func (n nexter) Publish(id string, x Publisher, options ...*Option) {
 			vertexType: "publish",
 			option:     opt,
 			handler: func(payload []*Packet) {
-				data := make([]Data, len(payload))
+				d := make([]data.Data, len(payload))
 				for i, packet := range payload {
-					data[i] = packet.Data
+					d[i] = packet.Data
 				}
 
-				if err := x.Send(data); err != nil {
+				if err := x.Send(d); err != nil {
 					for _, packet := range payload {
 						packet.handleError(id, err)
 					}
@@ -398,6 +465,10 @@ func (n nexter) Loop(id string, x Fork, options ...*Option) (loop, out Builder) 
 		})
 }
 
+func (hs *httpStream) Handler() fiber.Handler {
+	return hs.handler
+}
+
 // NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
 // and a list of Options that can override the defaults and set new defaults for the
 // subsequent vertices in the Stream.
@@ -424,7 +495,6 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 			},
 		},
 		vertacies: map[string]*vertex{},
-		recorder:  func(s1, s2, s3 string, p []*Packet) {},
 	}
 
 	x.connector = func(ctx context.Context, b *builder) error {
@@ -463,22 +533,116 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	return x
 }
 
-func mergeRecorders(recorders ...recorder) recorder {
-	return func(id, name string, state string, payload []*Packet) {
-		out := []*Packet{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+// NewHTTPStream a method that creates a Stream which takes in data
+// through a fiber.Handler
+func NewHTTPStream(id string, opts ...*Option) HTTPStream {
+	channel := make(chan []data.Data)
 
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&out)
+	return &httpStream{
+		handler: func(ctx *fiber.Ctx) error {
+			payload := []data.Data{}
+			packet := data.Data{}
 
-		for _, r := range recorders {
-			r(id, name, state, out)
-		}
+			if err := ctx.BodyParser(&packet); err == nil {
+				payload = []data.Data{packet}
+			} else if err := ctx.BodyParser(&payload); err != nil {
+				return ctx.SendStatus(http.StatusBadRequest)
+			}
+
+			channel <- deepCopy(payload)
+
+			return ctx.SendStatus(http.StatusAccepted)
+		},
+		Stream: NewStream(id,
+			func(ctx context.Context) chan []data.Data {
+				return channel
+			},
+			opts...,
+		),
 	}
+}
+
+// NewWebsocketStream a method that creates a Stream which takes in data
+// through a fiber.Handler that runs a websocket
+func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
+	channel := make(chan []data.Data)
+
+	acceptedMessage := map[string]interface{}{
+		"message": "OK",
+		"status":  http.StatusAccepted,
+	}
+
+	badMessage := map[string]interface{}{
+		"message": "error bad type",
+		"status":  http.StatusBadRequest,
+	}
+
+	wsHandler := websocket.New(func(c *websocket.Conn) {
+		payload := []data.Data{}
+
+		for {
+			var err error
+			for err = c.ReadJSON(&payload); err == io.ErrUnexpectedEOF; {
+				<-time.After(10 * time.Millisecond)
+			}
+
+			if err != nil {
+				if err := c.WriteJSON(badMessage); err != nil {
+					break
+				}
+			}
+
+			channel <- deepCopy(payload)
+
+			if err := c.WriteJSON(acceptedMessage); err != nil {
+				break
+			}
+		}
+	})
+
+	return &httpStream{
+		handler: func(c *fiber.Ctx) error {
+			if websocket.IsWebSocketUpgrade(c) {
+				return wsHandler(c)
+			}
+			return fiber.ErrUpgradeRequired
+		},
+		Stream: NewStream(id,
+			func(ctx context.Context) chan []data.Data {
+				return channel
+			},
+			opts...,
+		),
+	}
+}
+
+// NewSubscriptionStream creates a Stream from the provider Subscription and pulls data
+// continuously after an interval amount of time
+func NewSubscriptionStream(id string, sub Subscription, interval time.Duration, opts ...*Option) Stream {
+	channel := make(chan []data.Data)
+
+	return NewStream(id,
+		func(ctx context.Context) chan []data.Data {
+			go func() {
+			Loop:
+				for {
+					select {
+					case <-ctx.Done():
+						sub.Close()
+						break Loop
+					case <-time.After(interval):
+						channel <- sub.Read(ctx)
+					}
+				}
+			}()
+
+			return channel
+		},
+		opts...,
+	)
 }
 
 func init() {
 	gob.Register([]*Packet{})
-	gob.Register([]Data{})
+	gob.Register([]data.Data{})
 }

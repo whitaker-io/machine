@@ -78,49 +78,51 @@ func RegisterPluginProvider(name string, p PluginProvider) {
 }
 
 // Load method loads a stream based on the StreamSerialization
-func (pipe *Pipe) Load(streams []*StreamSerialization) error {
-	for _, stream := range streams {
-		switch stream.Type {
-		case httpConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("http stream missing retriever config")
-			}
-			if err := stream.VertexSerialization.load(pipe.StreamHTTP(stream.ID, stream.Options...)); err != nil {
-				return err
-			}
-		case websocketConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("websocket stream missing retriever config")
-			}
-			if err := stream.VertexSerialization.load(pipe.StreamWebsocket(stream.ID, stream.Options...)); err != nil {
-				return err
-			}
-		case subscriptionConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("non-terminated subscription")
-			}
-
-			if err := stream.VertexSerialization.load(
-				pipe.StreamSubscription(stream.ID, stream.VertexSerialization.subscription(), stream.Interval, stream.Options...),
-			); err != nil {
-				return err
-			}
-		case streamConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("non-terminated stream")
-			}
-
-			b := pipe.Stream(NewStream(stream.ID, stream.VertexSerialization.retriever(), stream.Options...))
-
-			if err := stream.VertexSerialization.load(b); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("invalid type")
+func Load(serialization *StreamSerialization) (Stream, error) {
+	var stream Stream
+	switch serialization.Type {
+	case httpConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("http stream missing retriever config")
 		}
+
+		stream = NewHTTPStream(serialization.ID, serialization.Options...)
+	case websocketConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("websocket stream missing retriever config")
+		}
+
+		stream = NewWebsocketStream(serialization.ID, serialization.Options...)
+	case subscriptionConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("non-terminated subscription")
+		}
+
+		stream = NewSubscriptionStream(
+			serialization.ID,
+			serialization.VertexSerialization.subscription(),
+			serialization.Interval,
+			serialization.Options...,
+		)
+	case streamConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("non-terminated stream")
+		}
+
+		stream = NewStream(
+			serialization.ID,
+			serialization.VertexSerialization.retriever(),
+			serialization.Options...,
+		)
+	default:
+		return nil, fmt.Errorf("invalid type")
 	}
 
-	return nil
+	if err := serialization.VertexSerialization.load(stream.Builder()); err != nil {
+		return nil, err
+	}
+
+	return stream, nil
 }
 
 func (vs *VertexSerialization) load(builder Builder) error {

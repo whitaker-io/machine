@@ -35,7 +35,6 @@ Add the primary library to your project
 <img alt="Gopher" align="right" height="250" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">
 
 [Docs](./docs)
-  * [Pipe](./docs/00_Pipe.md)
   * [Stream](./docs/01_Stream.md)
   * [Map](./docs/02_Map.md)
   * [Fork](./docs/03_Fork.md)

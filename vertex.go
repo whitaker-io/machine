@@ -37,7 +37,7 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	v.option = b.option.merge(v.option)
 	v.input = input
 
-	v.record(b.recorder)
+	v.record(b.record)
 	v.metrics(ctx)
 	v.span(ctx)
 	v.deepCopy()
@@ -155,7 +155,7 @@ func (v *vertex) recover() {
 					ids[i] = packet.ID
 				}
 
-				defaultLogger.Error(fmt.Sprintf("panic-recovery [id: %s type: %s error: %v packets: %v]", v.id, v.vertexType, err, ids))
+				logger.Error(fmt.Sprintf("panic-recovery [id: %s type: %s error: %v packets: %v]", v.id, v.vertexType, err, ids))
 			}
 		}()
 
