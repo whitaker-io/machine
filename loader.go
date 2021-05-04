@@ -155,7 +155,7 @@ func (vs *VertexSerialization) load(builder Builder) error {
 			return fmt.Errorf("missing inner side of loop %s", vs.ID)
 		} else if right, ok = next.next["out"]; !ok {
 			return fmt.Errorf("missing outer side of loop %s", vs.ID)
-		} else if err := left.loadLoop(leftBuilder); err != nil {
+		} else if err := left.load(leftBuilder); err != nil {
 			return err
 		}
 
@@ -163,52 +163,6 @@ func (vs *VertexSerialization) load(builder Builder) error {
 	} else if next, ok := vs.next["publish"]; ok {
 		builder.Publish(next.ID, next.publish(), next.Options...)
 		return nil
-	}
-
-	return fmt.Errorf("non-terminated vertex %s", vs.ID)
-}
-
-func (vs *VertexSerialization) loadLoop(builder LoopBuilder) error {
-	if next, ok := vs.next["map"]; ok {
-		return next.loadLoop(builder.Map(next.ID, next.applicative(), next.Options...))
-	} else if next, ok := vs.next["fold_left"]; ok {
-		return next.loadLoop(builder.FoldLeft(next.ID, next.fold(), next.Options...))
-	} else if next, ok := vs.next["fold_right"]; ok {
-		return next.loadLoop(builder.FoldRight(next.ID, next.fold(), next.Options...))
-	} else if next, ok := vs.next["fork"]; ok {
-		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork(), next.Options...)
-
-		var left, right *VertexSerialization
-		var ok bool
-
-		if left, ok = next.next["left"]; !ok {
-			return fmt.Errorf("missing left side of fork %s", vs.ID)
-		} else if right, ok = next.next["right"]; !ok {
-			return fmt.Errorf("missing right side of fork %s", vs.ID)
-		} else if err := left.loadLoop(leftBuilder); err != nil {
-			return err
-		}
-
-		return right.loadLoop(rightBuilder)
-	} else if next, ok := vs.next["loop"]; ok {
-		leftBuilder, rightBuilder := builder.Loop(next.ID, next.fork(), next.Options...)
-
-		var left, right *VertexSerialization
-		var ok bool
-
-		if left, ok = next.next["in"]; !ok {
-			return fmt.Errorf("missing inner side of loop %s", vs.ID)
-		} else if right, ok = next.next["out"]; !ok {
-			return fmt.Errorf("missing outer side of loop %s", vs.ID)
-		} else if err := left.loadLoop(leftBuilder); err != nil {
-			return err
-		}
-
-		return right.loadLoop(rightBuilder)
-	} else if next, ok := vs.next["publish"]; ok {
-		builder.Publish(next.ID, next.publish(), next.Options...)
-	} else {
-		builder.Done()
 	}
 
 	return nil

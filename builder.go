@@ -37,28 +37,11 @@ type Builder interface {
 	FoldLeft(id string, f Fold, options ...*Option) Builder
 	FoldRight(id string, f Fold, options ...*Option) Builder
 	Fork(id string, f Fork, options ...*Option) (Builder, Builder)
-	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder)
-	link(id, target string, options ...*Option)
+	Loop(id string, x Fork, options ...*Option) (loop, out Builder)
 	Publish(id string, s Publisher, options ...*Option)
-}
-
-// LoopBuilder is the interface provided for creating a data processing stream that loops.
-type LoopBuilder interface {
-	Map(id string, a Applicative, options ...*Option) LoopBuilder
-	FoldLeft(id string, f Fold, options ...*Option) LoopBuilder
-	FoldRight(id string, f Fold, options ...*Option) LoopBuilder
-	Fork(id string, f Fork, options ...*Option) (LoopBuilder, LoopBuilder)
-	Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out LoopBuilder)
-	Publish(id string, s Publisher, options ...*Option)
-	Done()
 }
 
 type nexter func(*node) *node
-
-type looper struct {
-	loopstart string
-	next      Builder
-}
 
 type builder struct {
 	vertex
@@ -69,6 +52,7 @@ type builder struct {
 
 type node struct {
 	vertex
+	loop  *node
 	next  *node
 	left  *node
 	right *node
@@ -143,6 +127,10 @@ func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
 			edge.channel <- payload
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			if next.loop != nil && next.next == nil {
+				next.next = next.loop
+			}
+
 			if next.next == nil {
 				return fmt.Errorf("non-terminated map")
 			}
@@ -153,6 +141,7 @@ func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
 	next = n(next)
 
 	return nexter(func(n *node) *node {
+		n.loop = next.loop
 		next.next = n
 		return n
 	})
@@ -193,6 +182,10 @@ func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
 			edge.channel <- []*Packet{fr(payload...)}
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			if next.loop != nil && next.next == nil {
+				next.next = next.loop
+			}
+
 			if next.next == nil {
 				return fmt.Errorf("non-terminated fold")
 			}
@@ -202,6 +195,7 @@ func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
 	next = n(next)
 
 	return nexter(func(n *node) *node {
+		n.loop = next.loop
 		next.next = n
 		return n
 	})
@@ -239,6 +233,10 @@ func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
 			edge.channel <- []*Packet{fr(payload...)}
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			if next.loop != nil && next.next == nil {
+				next.next = next.loop
+			}
+
 			if next.next == nil {
 				return fmt.Errorf("non-terminated node")
 			}
@@ -249,6 +247,7 @@ func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
 	next = n(next)
 
 	return nexter(func(n *node) *node {
+		n.loop = next.loop
 		next.next = n
 		return n
 	})
@@ -279,6 +278,14 @@ func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder
 			rightEdge.channel <- rpayload
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			if next.loop != nil && next.left == nil {
+				next.left = next.loop
+			}
+
+			if next.loop != nil && next.right == nil {
+				next.right = next.loop
+			}
+
 			if next.left == nil || next.right == nil {
 				return fmt.Errorf("non-terminated fork")
 			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
@@ -294,44 +301,14 @@ func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder
 	next = n(next)
 
 	return nexter(func(n *node) *node {
+			n.loop = next.loop
 			next.left = n
 			return n
 		}), nexter(func(n *node) *node {
+			n.loop = next.loop
 			next.right = n
 			return n
 		})
-}
-
-// Link the data to an existing operation creating a loop,
-// target must be an ancestor, options default to the set
-// used when creating the Stream
-func (n nexter) link(id, target string, options ...*Option) {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
-	edge := newEdge(opt.BufferSize)
-	n(&node{
-		vertex: vertex{
-			id:         id,
-			vertexType: "link",
-			handler:    func(payload []*Packet) { edge.channel <- payload },
-			option:     opt,
-			connector: func(ctx context.Context, b *builder) error {
-				v, ok := b.vertacies[target]
-
-				if !ok {
-					return fmt.Errorf("invalid target - not in list of ancestors")
-				}
-
-				return v.cascade(ctx, b, edge)
-			},
-		},
-	})
 }
 
 // Publish the data outside the system, options default to the set used when creating the Stream
@@ -368,71 +345,57 @@ func (n nexter) Publish(id string, x Publisher, options ...*Option) {
 
 // Loop the data combining a fork and link the first output is the Builder for the loop
 // and the second is the output of the loop
-func (n nexter) Loop(id string, x Fork, options ...*Option) (loop LoopBuilder, out Builder) {
-	left, right := n.Fork(id, x, options...)
+func (n nexter) Loop(id string, x Fork, options ...*Option) (loop, out Builder) {
+	opt := &Option{
+		BufferSize: intP(0),
+	}
 
-	return &looper{
-			loopstart: id,
-			next:      left,
+	if len(options) > 0 {
+		opt = opt.merge(options...)
+	}
+
+	next := &node{}
+
+	leftEdge := newEdge(opt.BufferSize)
+	rightEdge := newEdge(opt.BufferSize)
+
+	next.vertex = vertex{
+		id:         id,
+		vertexType: "loop",
+		option:     opt,
+		handler: func(payload []*Packet) {
+			lpayload, rpayload := x(payload)
+			leftEdge.channel <- lpayload
+			rightEdge.channel <- rpayload
 		},
-		right
-}
+		connector: func(ctx context.Context, b *builder) error {
+			if next.loop != nil && next.right == nil {
+				next.right = next.loop
+			}
 
-// Map apply a mutation, options default to the set used when creating the Stream
-func (n *looper) Map(id string, a Applicative, options ...*Option) LoopBuilder {
-	return &looper{
-		loopstart: n.loopstart,
-		next:      n.next.Map(id, a, options...),
+			if next.left == nil || next.right == nil {
+				return fmt.Errorf("non-terminated loop")
+			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
+				return err
+			} else if err := next.right.cascade(ctx, b, rightEdge); err != nil {
+				return err
+			}
+
+			return nil
+		},
 	}
-}
 
-// FoldLeft the data, options default to the set used when creating the Stream
-func (n *looper) FoldLeft(id string, f Fold, options ...*Option) LoopBuilder {
-	return &looper{
-		loopstart: n.loopstart,
-		next:      n.next.FoldLeft(id, f, options...),
-	}
-}
+	next = n(next)
 
-// FoldRight the data, options default to the set used when creating the Stream
-func (n *looper) FoldRight(id string, f Fold, options ...*Option) LoopBuilder {
-	return &looper{
-		loopstart: n.loopstart,
-		next:      n.next.FoldRight(id, f, options...),
-	}
-}
-
-// Fork the data, options default to the set used when creating the Stream
-func (n *looper) Fork(id string, f Fork, options ...*Option) (left, right LoopBuilder) {
-	x, y := n.next.Fork(id, f, options...)
-
-	return &looper{
-			loopstart: n.loopstart,
-			next:      x,
-		}, &looper{
-			loopstart: n.loopstart,
-			next:      y,
-		}
-}
-
-// Loop the data combining a fork and link the first output is the Builder for the loop
-// and the second is the output of the loop
-func (n *looper) Loop(id string, x Fork, options ...*Option) (loop, out LoopBuilder) {
-	inner, outer := n.next.Loop(id, x, options...)
-	return inner, &looper{
-		loopstart: n.loopstart,
-		next:      outer,
-	}
-}
-
-// Publish the data outside the system, options default to the set used when creating the Stream
-func (n *looper) Publish(id string, x Publisher, options ...*Option) {
-	n.next.Publish(id, x, options...)
-}
-
-// Done function for ending the loop and going back to the original Fork
-func (n *looper) Done() {
-	n.next.link(uuid.NewString(), n.loopstart)
+	return nexter(func(n *node) *node {
+			n.loop = next
+			next.left = n
+			return n
+		}), nexter(func(n *node) *node {
+			n.loop = next.loop
+			next.right = n
+			return n
+		})
 }
 
 // NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
