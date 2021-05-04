@@ -45,38 +45,3 @@ jobs:
           find plugin_providers/components -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
           git push
           git push --tags
-
-  update-foundry:
-    needs: update-components
-    runs-on: ubuntu-latest
-    steps:
-      - name: Get the version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v2
-        with:
-          go-version: ^1.16
-        id: go
-
-      - name: Checkout
-        uses: actions/checkout@v2
-        with:
-          repository: whitaker-io/foundry
-          token: ${{ secrets.token }}
-
-      - uses: fusion-engineering/setup-git-credentials@v2
-        with:
-          credentials: ${{ secrets.token }}
-
-      - name: Update version
-        run: |
-          find . -name 'go.mod' | grep -v vendor | xargs sed -i 's|github.com/whitaker-io/\(.*\) .*|github.com/whitaker-io/\1 ${{ steps.get_version.outputs.VERSION }}|g'
-          find . -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | xargs -I {} bash -c 'cd {}; go mod vendor'
-          git config user.name jonathan-whitaker
-          git config user.email github@whitaker.io
-          git commit -am '${{ steps.get_version.outputs.VERSION }}'
-          git tag ${{ steps.get_version.outputs.VERSION }}
-          git push
-          git push --tags
