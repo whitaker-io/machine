@@ -784,103 +784,7 @@ func Test_Inject_Cancel(b *testing.T) {
 	<-time.After(time.Second)
 }
 
-func Test_Link(t *testing.T) {
-	count := 10000
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
-		go func() {
-			for n := 0; n < count; n++ {
-				out := []Data{}
-				buf := &bytes.Buffer{}
-				enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-				_ = enc.Encode(testListBase)
-				_ = dec.Decode(&out)
-				channel <- out
-			}
-		}()
-		return channel
-	},
-		&Option{DeepCopy: boolP(true)},
-		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-		&Option{BufferSize: intP(0)},
-	)
-
-	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
-			if _, ok := m["name"]; !ok {
-				t.Errorf("packet missing name %v", m)
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-			}
-			return nil
-		}).
-		Fork("fork_id", ForkRule(func(d Data) bool {
-			if _, ok := d["loops"]; !ok {
-				d["loops"] = 0
-			}
-
-			val := d["loops"].(int)
-
-			if val > 5 {
-				return true
-			}
-
-			d["loops"] = val + 1
-
-			return false
-		}).Handler,
-			&Option{Injectable: boolP(false)},
-			&Option{BufferSize: intP(10)},
-		)
-
-	left.Publish("sender_id",
-		publishFN(func(d []Data) error {
-			out <- d
-			return nil
-		}),
-	)
-
-	right.link("link_id", "map_id")
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	if err := m.Run(ctx); err != nil {
-		t.Error(err)
-	}
-
-	for n := 0; n < count; n++ {
-		list := <-out
-
-		if len(list) != 10 || list[0]["loops"] != 6 {
-			t.Errorf("incorrect data have %v want %v", list, testListBase)
-		}
-	}
-
-	go func() {
-		for n := 0; n < count; n++ {
-			out := []*Packet{}
-			buf := &bytes.Buffer{}
-			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-			_ = enc.Encode(testPayloadBase)
-			_ = dec.Decode(&out)
-			m.Inject(context.Background(), map[string][]*Packet{
-				"map_id":  out,
-				"fork_id": out,
-			})
-		}
-	}()
-
-	<-time.After(time.Second)
-	cancel()
-	<-time.After(time.Second)
-}
-
-func Test_Link_not_ancestor(t *testing.T) {
+func Test_Loop(b *testing.T) {
 	count := 100000
 	out := make(chan []Data)
 	m := NewStream("machine_id", func(c context.Context) chan []Data {
@@ -902,34 +806,81 @@ func Test_Link_not_ancestor(t *testing.T) {
 	left, right := m.Builder().
 		Map("map_id", func(m Data) error {
 			if _, ok := m["name"]; !ok {
-				t.Errorf("packet missing name %v", m)
+				b.Errorf("packet missing name %v", m)
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
-		}).Fork("fork_id", ForkRule(
-		func(d Data) bool {
-			if _, ok := d["loops"]; !ok {
-				d["loops"] = 0
-			}
+		}).
+		Loop("loop_id",
+			func(list []*Packet) (a []*Packet, b []*Packet) {
+				a = []*Packet{}
+				b = []*Packet{}
 
-			val := d["loops"].(int)
+				for i, item := range list {
+					if i == 0 {
+						b = append(b, item)
+					} else {
+						a = append(a, item)
+					}
+				}
 
-			if val > 5 {
-				return true
-			}
+				return
+			},
+			&Option{FIFO: boolP(false)},
+			&Option{Injectable: boolP(true)},
+			&Option{Metrics: boolP(true)},
+			&Option{Span: boolP(true)},
+			&Option{BufferSize: intP(0)},
+		)
 
-			d["loops"] = val + 1
+	left2, _ := left.
+		Loop("loop2_id",
+			func(list []*Packet) (a []*Packet, b []*Packet) {
+				a = []*Packet{}
+				b = []*Packet{}
 
-			return true
-		}).Handler)
+				for i, item := range list {
+					if i == 0 {
+						b = append(b, item)
+					} else {
+						a = append(a, item)
+					}
+				}
 
-	left.link("link_id", "sender_id",
-		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(true)},
-		&Option{BufferSize: intP(0)},
+				return
+			},
+		)
+
+	left3, _ := left2.Fork("fork_id", ForkError)
+
+	_, right2 := left3.Fork("fork_id",
+		func(list []*Packet) (a []*Packet, b []*Packet) {
+			return []*Packet{}, list
+		},
 	)
+
+	left4, right3 := right2.Fork("fork_id",
+		func(list []*Packet) (a []*Packet, b []*Packet) {
+			return []*Packet{}, list
+		},
+	)
+
+	left5, right4 := left4.Fork("fork_id", ForkError)
+	left5.FoldLeft("fold_id1", func(d1, d2 Data) Data {
+		return d1
+	})
+
+	right4.FoldRight("fold_id1", func(d1, d2 Data) Data {
+		return d1
+	})
+
+	right3.Map("map_id2", func(m Data) error {
+		if _, ok := m["name"]; !ok {
+			b.Errorf("packet missing name %v", m)
+			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+		}
+		return nil
+	})
 
 	right.Publish("sender_id",
 		publishFN(func(d []Data) error {
@@ -938,7 +889,15 @@ func Test_Link_not_ancestor(t *testing.T) {
 		}),
 	)
 
-	if err := m.Run(context.Background()); err == nil {
-		t.Error("expecting error")
+	if err := m.Run(context.Background()); err != nil {
+		b.Error(err)
+	}
+
+	for n := 0; n < count; n++ {
+		list := <-out
+
+		if len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+		}
 	}
 }
