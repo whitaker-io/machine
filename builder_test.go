@@ -636,9 +636,9 @@ func Test_Inject(b *testing.T) {
 			&Option{Span: boolP(false)},
 			&Option{BufferSize: intP(0)},
 		).
-		FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
+		FoldLeft("fold_idx", func(d1, d2 data.Data) data.Data {
 			return d1
-		}).
+		}, &Option{Injectable: boolP(false)}).
 		FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
 			return d1
 		},
@@ -693,6 +693,13 @@ func Test_Inject(b *testing.T) {
 				StreamID:   "machine_id",
 				VertexID:   "map_id",
 				VertexType: "map",
+				State:      "start",
+				When:       time.Now(),
+				Packet:     deepCopyList(testPayloadBase)[0],
+			}, &Log{
+				StreamID:   "machine_id",
+				VertexID:   "fold_idx",
+				VertexType: "fold",
 				State:      "start",
 				When:       time.Now(),
 				Packet:     deepCopyList(testPayloadBase)[0],
@@ -934,7 +941,24 @@ func Test_Pipe_HTTP(b *testing.T) {
 	}
 
 	list := <-out
+
 	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+	}
+
+	bytez, _ = json.Marshal(deepCopy(testListBase)[0])
+	req, _ = http.NewRequest(http.MethodPost, "http://localhost:5000/test", bytes.NewReader(bytez))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = app.Test(req, -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+	}
+
+	list = <-out
+	
+	if len(list) != 1 {
 		b.Errorf("incorrect data have %v want %v", list, testListBase)
 	}
 
