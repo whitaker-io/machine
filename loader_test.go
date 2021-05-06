@@ -249,7 +249,7 @@ var streamDefinitions = `- type: subscription
                 payload: ""
           right:
             loop:
-              id: loop_id
+              id: loop_id1
               provider: 
                 type: test
                 symbol: Fork
@@ -288,7 +288,7 @@ var streamDefinitions = `- type: subscription
                               payload: ""
                         right:
                           loop:
-                            id: loop_id
+                            id: loop_id2
                             provider: 
                               type: test
                               symbol: Fork

@@ -83,13 +83,13 @@ func Load(serialization *StreamSerialization) (Stream, error) {
 	switch serialization.Type {
 	case httpConst:
 		if serialization.VertexSerialization == nil {
-			return nil, fmt.Errorf("http stream missing retriever config")
+			return nil, fmt.Errorf("http stream missing config")
 		}
 
 		stream = NewHTTPStream(serialization.ID, serialization.Options...)
 	case websocketConst:
 		if serialization.VertexSerialization == nil {
-			return nil, fmt.Errorf("websocket stream missing retriever config")
+			return nil, fmt.Errorf("websocket stream missing config")
 		}
 
 		stream = NewWebsocketStream(serialization.ID, serialization.Options...)
@@ -134,37 +134,32 @@ func (vs *VertexSerialization) load(builder Builder) error {
 		return next.load(builder.FoldRight(next.ID, next.fold(), next.Options...))
 	} else if next, ok := vs.next["fork"]; ok {
 		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork(), next.Options...)
+		left, right := next.next["left"], next.next["right"]
 
-		var left, right *VertexSerialization
-		var ok bool
-
-		if left, ok = next.next["left"]; !ok {
-			return fmt.Errorf("missing left side of fork %s", vs.ID)
-		} else if right, ok = next.next["right"]; !ok {
-			return fmt.Errorf("missing right side of fork %s", vs.ID)
-		} else if err := left.load(leftBuilder); err != nil {
-			return err
+		if left != nil {
+			if err := left.load(leftBuilder); err != nil {
+				return err
+			}
 		}
 
-		return right.load(rightBuilder)
+		if right != nil {
+			return right.load(rightBuilder)
+		}
 	} else if next, ok := vs.next["loop"]; ok {
 		leftBuilder, rightBuilder := builder.Loop(next.ID, next.fork(), next.Options...)
+		left, right := next.next["in"], next.next["out"]
 
-		var left, right *VertexSerialization
-		var ok bool
-
-		if left, ok = next.next["in"]; !ok {
-			return fmt.Errorf("missing inner side of loop %s", vs.ID)
-		} else if right, ok = next.next["out"]; !ok {
-			return fmt.Errorf("missing outer side of loop %s", vs.ID)
-		} else if err := left.load(leftBuilder); err != nil {
-			return err
+		if left != nil {
+			if err := left.load(leftBuilder); err != nil {
+				return err
+			}
 		}
 
-		return right.load(rightBuilder)
+		if right != nil {
+			return right.load(rightBuilder)
+		}
 	} else if next, ok := vs.next["publish"]; ok {
 		builder.Publish(next.ID, next.publish(), next.Options...)
-		return nil
 	}
 
 	return nil
