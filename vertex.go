@@ -61,7 +61,7 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 
 	v.record(b)
 	v.metrics(ctx)
-	v.span(ctx)
+	v.span()
 	v.deepCopy()
 	v.recover(b)
 	v.run(ctx)
@@ -69,45 +69,25 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	return nil
 }
 
-func (v *vertex) span(ctx context.Context) {
+func (v *vertex) span() {
 	h := v.handler
 
-	vertexAttributes := trace.WithAttributes(
-		attribute.String("vertex_id", v.id),
-		attribute.String("vertex_type", v.vertexType),
-	)
+	vType := trace.WithAttributes(attribute.String("vertex_type", v.vertexType))
 
-	v.handler = func(payload []*Packet) {
-		if *v.option.Span {
-			now := time.Now()
+	if *v.option.Span {
+		v.handler = func(payload []*Packet) {
+			spans := map[string]trace.Span{}
 
 			for _, packet := range payload {
-				if packet.span == nil {
-					packet.newSpan(ctx, tracer, "stream.inject", vertexAttributes)
-				}
-
-				packet.span.AddEvent("start", vertexAttributes, trace.WithTimestamp(now))
+				_, spans[packet.ID] = tracer.Start(packet.spanCtx, v.id, vType)
 			}
-		}
 
-		h(payload)
-
-		if *v.option.Span {
-			now := time.Now()
+			h(payload)
 
 			for _, packet := range payload {
 				if _, ok := packet.Errors[v.id]; ok {
-					packet.span.AddEvent("error", vertexAttributes, trace.WithTimestamp(now))
-				} else {
-					packet.span.AddEvent("end", vertexAttributes, trace.WithTimestamp(now))
-				}
-			}
-		}
-
-		if v.vertexType == "publish" {
-			for _, packet := range payload {
-				if packet.span != nil {
-					packet.span.End()
+					spans[packet.ID].AddEvent("error")
+					spans[packet.ID].End()
 				}
 			}
 		}

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/whitaker-io/data"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -123,10 +122,11 @@ type Publisher interface {
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
-	ID     string           `json:"id"`
-	Data   data.Data        `json:"data"`
-	Errors map[string]error `json:"errors"`
-	span   trace.Span
+	ID      string           `json:"id"`
+	Data    data.Data        `json:"data"`
+	Errors  map[string]error `json:"errors"`
+	span    trace.Span
+	spanCtx context.Context
 }
 
 // Option type for holding machine settings.
@@ -211,11 +211,6 @@ func (p *Packet) handleError(id string, err error) {
 	if err != nil {
 		p.Errors[id] = err
 	}
-}
-
-func (p *Packet) newSpan(ctx context.Context, tracer trace.Tracer, name string, vertexAttributes trace.LifeCycleOption) {
-	_, p.span = tracer.Start(ctx, p.ID, trace.WithAttributes(attribute.String("packet_id", p.ID)))
-	p.span.AddEvent(name, vertexAttributes)
 }
 
 func (o *Option) merge(options ...*Option) *Option {

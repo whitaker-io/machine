@@ -687,9 +687,11 @@ func Test_Inject(b *testing.T) {
 		b.Error(err)
 	}
 
+	cb := m.InjectionCallback(context.Background())
+
 	go func() {
 		for n := 0; n < count; n++ {
-			m.Inject(&Log{
+			cb(&Log{
 				StreamID:   "machine_id",
 				VertexID:   "map_id",
 				VertexType: "map",

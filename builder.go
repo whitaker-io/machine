@@ -18,7 +18,6 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
 	"github.com/whitaker-io/data"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -38,7 +37,7 @@ type HTTPStream interface {
 type Stream interface {
 	ID() string
 	Run(ctx context.Context, gracePeriod time.Duration, clusters ...Cluster) error
-	Inject(logs ...*Log)
+	InjectionCallback(ctx context.Context) func(logs ...*Log)
 	Builder() Builder
 	Errors() chan error
 }
@@ -91,7 +90,7 @@ func (m *builder) Run(ctx context.Context, gracePeriod time.Duration, clusters .
 	}
 
 	for _, cluster := range clusters {
-		if err := cluster.Join(m.id, m.Inject); err != nil {
+		if err := cluster.Join(m.id, m.InjectionCallback(ctx)); err != nil {
 			return err
 		}
 
@@ -119,17 +118,22 @@ func (m *builder) Run(ctx context.Context, gracePeriod time.Duration, clusters .
 // Inject is a method for restarting work that has been dropped by the Stream
 // typically in a distributed system setting. Though it can be used to side load
 // data into the Stream to be processed
-func (m *builder) Inject(logs ...*Log) {
-	for _, log := range logs {
-		if v, ok := m.vertacies[log.VertexID]; ok {
-			payload := []*Packet{log.Packet}
+func (m *builder) InjectionCallback(ctx context.Context) func(logs ...*Log) {
+	vType := trace.WithAttributes(attribute.String("vertex_type", "inject"))
 
-			if !*v.option.Injectable {
-				m.record(v.id, v.vertexType, "injection-denied", payload)
-				continue
+	return func(logs ...*Log) {
+		for _, log := range logs {
+			if v, ok := m.vertacies[log.VertexID]; ok {
+				payload := []*Packet{log.Packet}
+
+				if !*v.option.Injectable {
+					m.record(v.id, v.vertexType, "injection-denied", payload)
+					continue
+				}
+
+				log.Packet.spanCtx, log.Packet.span = tracer.Start(ctx, v.id, vType)
+				v.input.channel <- payload
 			}
-
-			v.input.channel <- payload
 		}
 	}
 }
@@ -416,6 +420,12 @@ func (n nexter) Publish(id string, x Publisher, options ...*Option) {
 				Time:       time.Now(),
 			})
 		}
+
+		for _, packet := range payload {
+			if packet.span != nil {
+				packet.span.End()
+			}
+		}
 	}
 
 	n(&node{vertex: v})
@@ -485,12 +495,7 @@ func (hs *httpStream) Handler() fiber.Handler {
 // subsequent vertices in the Stream.
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	opt := defaultOptions.merge(options...)
-
-	tracer := otel.GetTracerProvider().Tracer("stream" + "." + id)
-	vertexAttributes := trace.WithAttributes(
-		attribute.String("vertex_id", id),
-		attribute.String("vertex_type", "stream"),
-	)
+	vType := trace.WithAttributes(attribute.String("vertex_type", "stream"))
 
 	edge := newEdge(opt.BufferSize)
 	input := newEdge(opt.BufferSize)
@@ -529,9 +534,8 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 							ID:   uuid.NewString(),
 							Data: item,
 						}
-						if *x.option.Span {
-							packet.newSpan(ctx, tracer, "stream.begin", vertexAttributes)
-						}
+						packet.spanCtx, packet.span = tracer.Start(ctx, id, vType)
+
 						payload[i] = packet
 					}
 
