@@ -40,6 +40,7 @@ type Stream interface {
 	Run(ctx context.Context, gracePeriod time.Duration, clusters ...Cluster) error
 	Inject(logs ...*Log)
 	Builder() Builder
+	Errors() chan error
 }
 
 // Builder is the interface provided for creating a data processing stream.
@@ -60,6 +61,7 @@ type httpStream struct {
 }
 
 type builder struct {
+	errorChannel chan error
 	vertex
 	next      *node
 	clusters  []Cluster
@@ -99,7 +101,7 @@ func (m *builder) Run(ctx context.Context, gracePeriod time.Duration, clusters .
 				select {
 				case <-ctx.Done():
 					if err := c.Leave(m.id); err != nil {
-						logger.Error(err)
+						m.errorChannel <- err
 					}
 					break Loop
 				default:
@@ -137,6 +139,10 @@ func (m *builder) Builder() Builder {
 		m.next = n
 		return n
 	})
+}
+
+func (m *builder) Errors() chan error {
+	return m.errorChannel
 }
 
 func (m *builder) record(vertexID, vertexType, state string, payload []*Packet) {
@@ -388,26 +394,31 @@ func (n nexter) Publish(id string, x Publisher, options ...*Option) {
 		opt = opt.merge(options...)
 	}
 
-	n(&node{
-		vertex: vertex{
-			id:         id,
-			vertexType: "publish",
-			option:     opt,
-			handler: func(payload []*Packet) {
-				d := make([]data.Data, len(payload))
-				for i, packet := range payload {
-					d[i] = packet.Data
-				}
+	v := vertex{
+		id:         id,
+		vertexType: "publish",
+		option:     opt,
+		connector:  func(ctx context.Context, b *builder) error { return nil },
+	}
 
-				if err := x.Send(d); err != nil {
-					for _, packet := range payload {
-						packet.handleError(id, err)
-					}
-				}
-			},
-			connector: func(ctx context.Context, b *builder) error { return nil },
-		},
-	})
+	v.handler = func(payload []*Packet) {
+		d := make([]data.Data, len(payload))
+		for i, packet := range payload {
+			d[i] = packet.Data
+		}
+
+		if err := x.Send(d); err != nil {
+			v.errorHandler(&Error{
+				Err:        fmt.Errorf("publish %w", err),
+				VertexID:   id,
+				VertexType: "publish",
+				Packets:    payload,
+				Time:       time.Now(),
+			})
+		}
+	}
+
+	n(&node{vertex: v})
 }
 
 // Loop the data combining a fork and link the first output is the Builder for the loop
@@ -485,6 +496,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	input := newEdge(opt.BufferSize)
 
 	x := &builder{
+		errorChannel: make(chan error, 10000),
 		vertex: vertex{
 			id:         id,
 			vertexType: "stream",

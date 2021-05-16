@@ -9,24 +9,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/whitaker-io/data"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
 var (
-	logger = &logrus.Logger{
-		Out:       os.Stderr,
-		Formatter: new(logrus.TextFormatter),
-		Hooks:     make(logrus.LevelHooks),
-		Level:     logrus.WarnLevel,
-	}
-
 	// ForkDuplicate is a Fork that creates a deep copy of the
 	// payload and sends it down both branches.
 	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
@@ -52,7 +44,7 @@ var (
 		f = []*Packet{}
 
 		for _, packet := range payload {
-			if packet.Error != nil {
+			if len(packet.Errors) > 0 {
 				f = append(f, packet)
 			} else {
 				s = append(s, packet)
@@ -131,10 +123,10 @@ type Publisher interface {
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
-	ID    string    `json:"id"`
-	Data  data.Data `json:"data"`
-	Error error     `json:"error"`
-	span  trace.Span
+	ID     string           `json:"id"`
+	Data   data.Data        `json:"data"`
+	Errors map[string]error `json:"errors"`
+	span   trace.Span
 }
 
 // Option type for holding machine settings.
@@ -195,9 +187,17 @@ type Fork func(list []*Packet) (a, b []*Packet)
 // method allowing for Forking based on the contents of the data.
 type ForkRule func(d data.Data) bool
 
-type handler func(payload []*Packet)
+// Error type for wrapping errors coming from the Stream
+type Error struct {
+	Err        error
+	StreamID   string
+	VertexID   string
+	VertexType string
+	Packets    []*Packet
+	Time       time.Time
+}
 
-type recorder func(id, vertexType, operation string, payload []*Packet)
+type handler func(payload []*Packet)
 
 type edge struct {
 	channel chan []*Packet
@@ -209,7 +209,7 @@ func (p *Packet) apply(id string, a Applicative) {
 
 func (p *Packet) handleError(id string, err error) {
 	if err != nil {
-		p.Error = fmt.Errorf("%s %s %w", id, err.Error(), p.Error)
+		p.Errors[id] = err
 	}
 }
 
@@ -279,6 +279,32 @@ func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
 	}
 
 	return t, f
+}
+
+func (e *Error) Error() string {
+	bytez, err := json.Marshal(e.Packets)
+
+	if err != nil {
+		return fmt.Sprintf(
+			`{"error": "%s", "stream_id":"%s", "vertex_id": "%s", "vertex_type":"%s", "packets": "%s", "time":"%v"}`,
+			e.Err.Error(),
+			e.StreamID,
+			e.VertexID,
+			e.VertexType,
+			err.Error(),
+			e.Time,
+		)
+	}
+
+	return fmt.Sprintf(
+		`{"error": "%s", "stream_id":"%s", "vertex_id": "%s", "vertex_type":"%s", "packets": %s, "time":"%v"}`,
+		e.Err.Error(),
+		e.StreamID,
+		e.VertexID,
+		e.VertexType,
+		string(bytez),
+		e.Time,
+	)
 }
 
 func (out *edge) sendTo(ctx context.Context, in *edge) {

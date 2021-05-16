@@ -957,7 +957,7 @@ func Test_Pipe_HTTP(b *testing.T) {
 	}
 
 	list = <-out
-	
+
 	if len(list) != 1 {
 		b.Errorf("incorrect data have %v want %v", list, testListBase)
 	}
