@@ -87,7 +87,6 @@ func (v *vertex) span() {
 			for _, packet := range payload {
 				if _, ok := packet.Errors[v.id]; ok {
 					spans[packet.ID].AddEvent("error")
-					spans[packet.ID].End()
 				}
 			}
 		}

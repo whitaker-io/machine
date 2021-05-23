@@ -30,6 +30,7 @@ var (
 
 		for i, packet := range payload {
 			payload2[i].span = packet.span
+			payload2[i].spanCtx = packet.spanCtx
 		}
 
 		return payload, payload2
@@ -209,6 +210,9 @@ func (p *Packet) apply(id string, a Applicative) {
 
 func (p *Packet) handleError(id string, err error) {
 	if err != nil {
+		if p.Errors == nil {
+			p.Errors = map[string]error{}
+		}
 		p.Errors[id] = err
 	}
 }
