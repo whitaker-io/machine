@@ -17,9 +17,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
-	"github.com/whitaker-io/data"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whitaker-io/data"
 )
 
 // HTTPStream is a Stream that also provides a fiber.Handler for receiving data
@@ -44,12 +45,12 @@ type Stream interface {
 
 // Builder is the interface provided for creating a data processing stream.
 type Builder interface {
-	Map(id string, a Applicative, options ...*Option) Builder
-	FoldLeft(id string, f Fold, options ...*Option) Builder
-	FoldRight(id string, f Fold, options ...*Option) Builder
-	Fork(id string, f Fork, options ...*Option) (Builder, Builder)
-	Loop(id string, x Fork, options ...*Option) (loop, out Builder)
-	Publish(id string, s Publisher, options ...*Option)
+	Map(id string, a Applicative) Builder
+	FoldLeft(id string, f Fold) Builder
+	FoldRight(id string, f Fold) Builder
+	Fork(id string, f Fork) (Builder, Builder)
+	Loop(id string, x Fork) (loop, out Builder)
+	Publish(id string, s Publisher)
 }
 
 type nexter func(*node) *node
@@ -63,6 +64,7 @@ type builder struct {
 	errorChannel chan error
 	vertex
 	next      *node
+	option    *Option
 	clusters  []Cluster
 	vertacies map[string]*vertex
 }
@@ -126,7 +128,7 @@ func (m *builder) InjectionCallback(ctx context.Context) func(logs ...*Log) {
 			if v, ok := m.vertacies[log.VertexID]; ok {
 				payload := []*Packet{log.Packet}
 
-				if !*v.option.Injectable {
+				if !*m.option.Injectable {
 					m.record(v.id, v.vertexType, "injection-denied", payload)
 					continue
 				}
@@ -180,22 +182,13 @@ func (m *builder) record(vertexID, vertexType, state string, payload []*Packet) 
 }
 
 // Map apply a mutation, options default to the set used when creating the Stream
-func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
+func (n nexter) Map(id string, x Applicative) Builder {
 	next := &node{}
-	edge := newEdge(opt.BufferSize)
+	var edge *edge
 
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "map",
-		option:     opt,
 		handler: func(payload []*Packet) {
 			for _, packet := range payload {
 				packet.apply(id, x)
@@ -204,6 +197,8 @@ func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
 			edge.channel <- payload
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			edge = newEdge(b.option.BufferSize)
+
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
 			}
@@ -225,17 +220,9 @@ func (n nexter) Map(id string, x Applicative, options ...*Option) Builder {
 }
 
 // FoldLeft the data, options default to the set used when creating the Stream
-func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
+func (n nexter) FoldLeft(id string, x Fold) Builder {
 	next := &node{}
-	edge := newEdge(opt.BufferSize)
+	var edge *edge
 
 	fr := func(payload ...*Packet) *Packet {
 		if len(payload) == 1 {
@@ -254,11 +241,12 @@ func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fold",
-		option:     opt,
 		handler: func(payload []*Packet) {
 			edge.channel <- []*Packet{fr(payload...)}
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			edge = newEdge(b.option.BufferSize)
+
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
 			}
@@ -279,17 +267,9 @@ func (n nexter) FoldLeft(id string, x Fold, options ...*Option) Builder {
 }
 
 // FoldRight the data, options default to the set used when creating the Stream
-func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
+func (n nexter) FoldRight(id string, x Fold) Builder {
 	next := &node{}
-	edge := newEdge(opt.BufferSize)
+	var edge *edge
 
 	var fr func(...*Packet) *Packet
 	fr = func(payload ...*Packet) *Packet {
@@ -305,11 +285,12 @@ func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fold",
-		option:     opt,
 		handler: func(payload []*Packet) {
 			edge.channel <- []*Packet{fr(payload...)}
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			edge = newEdge(b.option.BufferSize)
+
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
 			}
@@ -331,30 +312,24 @@ func (n nexter) FoldRight(id string, x Fold, options ...*Option) Builder {
 }
 
 // Fork the data, options default to the set used when creating the Stream
-func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder) {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
+func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 	next := &node{}
 
-	leftEdge := newEdge(opt.BufferSize)
-	rightEdge := newEdge(opt.BufferSize)
+	var leftEdge *edge
+	var rightEdge *edge
 
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fork",
-		option:     opt,
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
 			leftEdge.channel <- lpayload
 			rightEdge.channel <- rpayload
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			leftEdge = newEdge(b.option.BufferSize)
+			rightEdge = newEdge(b.option.BufferSize)
+
 			if next.loop != nil && next.left == nil {
 				next.left = next.loop
 			}
@@ -389,19 +364,10 @@ func (n nexter) Fork(id string, x Fork, options ...*Option) (left, right Builder
 }
 
 // Publish the data outside the system, options default to the set used when creating the Stream
-func (n nexter) Publish(id string, x Publisher, options ...*Option) {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
+func (n nexter) Publish(id string, x Publisher) {
 	v := vertex{
 		id:         id,
 		vertexType: "publish",
-		option:     opt,
 		connector:  func(ctx context.Context, b *builder) error { return nil },
 	}
 
@@ -433,30 +399,24 @@ func (n nexter) Publish(id string, x Publisher, options ...*Option) {
 
 // Loop the data combining a fork and link the first output is the Builder for the loop
 // and the second is the output of the loop
-func (n nexter) Loop(id string, x Fork, options ...*Option) (loop, out Builder) {
-	opt := &Option{
-		BufferSize: intP(0),
-	}
-
-	if len(options) > 0 {
-		opt = opt.merge(options...)
-	}
-
+func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 	next := &node{}
 
-	leftEdge := newEdge(opt.BufferSize)
-	rightEdge := newEdge(opt.BufferSize)
+	var leftEdge *edge
+	var rightEdge *edge
 
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "loop",
-		option:     opt,
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
 			leftEdge.channel <- lpayload
 			rightEdge.channel <- rpayload
 		},
 		connector: func(ctx context.Context, b *builder) error {
+			leftEdge = newEdge(b.option.BufferSize)
+			rightEdge = newEdge(b.option.BufferSize)
+
 			if next.loop != nil && next.right == nil {
 				next.right = next.loop
 			}
@@ -502,11 +462,11 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 
 	x := &builder{
 		errorChannel: make(chan error, 10000),
+		option:       opt,
 		vertex: vertex{
 			id:         id,
 			vertexType: "stream",
 			input:      input,
-			option:     opt,
 			handler: func(p []*Packet) {
 				edge.channel <- p
 			},

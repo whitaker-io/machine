@@ -33,13 +33,14 @@ type vertex struct {
 	id         string
 	vertexType string
 	input      *edge
+	builder    *builder
 	handler
 	errorHandler func(*Error)
 	connector    func(ctx context.Context, b *builder) error
-	option       *Option
 }
 
 func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
+	v.builder = b
 	v.errorHandler = func(err *Error) {
 		err.StreamID = b.id
 		b.errorChannel <- err
@@ -50,8 +51,11 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 		return nil
 	}
 
-	v.option = b.option.merge(v.option)
 	v.input = input
+
+	if _, ok :=	b.vertacies[v.id]; ok {
+		return fmt.Errorf("duplicate vertex id %s", v.id)
+	}
 
 	b.vertacies[v.id] = v
 
@@ -74,7 +78,7 @@ func (v *vertex) span() {
 
 	vType := trace.WithAttributes(attribute.String("vertex_type", v.vertexType))
 
-	if *v.option.Span {
+	if *v.builder.option.Span {
 		v.handler = func(payload []*Packet) {
 			spans := map[string]trace.Span{}
 
@@ -94,7 +98,7 @@ func (v *vertex) span() {
 }
 
 func (v *vertex) metrics(ctx context.Context) {
-	if *v.option.Metrics {
+	if *v.builder.option.Metrics {
 		h := v.handler
 
 		id := attribute.String("vertex_id", v.id)
@@ -149,7 +153,7 @@ func (v *vertex) recover(b *builder) {
 }
 
 func (v *vertex) deepCopy() {
-	if *v.option.DeepCopy {
+	if *v.builder.option.DeepCopy {
 		h := v.handler
 
 		v.handler = func(payload []*Packet) {
@@ -191,7 +195,7 @@ func (v *vertex) run(ctx context.Context) {
 					continue
 				}
 
-				if *v.option.FIFO {
+				if *v.builder.option.FIFO {
 					v.handler(data)
 				} else {
 					go v.handler(data)

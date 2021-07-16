@@ -55,6 +55,8 @@ type StreamSerialization struct {
 	// Interval is the duration in nanoseconds between pulls in a 'subscription' Type. It is only read
 	// if the Type is 'subscription'.
 	Interval time.Duration `json:"interval,omitempty" mapstructure:"interval,omitempty"`
+	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
+	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
 
 	*VertexSerialization
 }
@@ -65,8 +67,6 @@ type VertexSerialization struct {
 	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
 	// Provider Plugin information to load
 	Provider *PluginDefinition `json:"provider,omitempty" mapstructure:"provider,omitempty"`
-	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
-	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
 
 	next map[string]*VertexSerialization
 }
@@ -127,13 +127,13 @@ func Load(serialization *StreamSerialization) (Stream, error) {
 
 func (vs *VertexSerialization) load(builder Builder) error {
 	if next, ok := vs.next["map"]; ok {
-		return next.load(builder.Map(next.ID, next.applicative(), next.Options...))
+		return next.load(builder.Map(next.ID, next.applicative()))
 	} else if next, ok := vs.next["fold_left"]; ok {
-		return next.load(builder.FoldLeft(next.ID, next.fold(), next.Options...))
+		return next.load(builder.FoldLeft(next.ID, next.fold()))
 	} else if next, ok := vs.next["fold_right"]; ok {
-		return next.load(builder.FoldRight(next.ID, next.fold(), next.Options...))
+		return next.load(builder.FoldRight(next.ID, next.fold()))
 	} else if next, ok := vs.next["fork"]; ok {
-		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork(), next.Options...)
+		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork())
 		left, right := next.next["left"], next.next["right"]
 
 		if left != nil {
@@ -146,7 +146,7 @@ func (vs *VertexSerialization) load(builder Builder) error {
 			return right.load(rightBuilder)
 		}
 	} else if next, ok := vs.next["loop"]; ok {
-		leftBuilder, rightBuilder := builder.Loop(next.ID, next.fork(), next.Options...)
+		leftBuilder, rightBuilder := builder.Loop(next.ID, next.fork())
 		left, right := next.next["in"], next.next["out"]
 
 		if left != nil {
@@ -159,7 +159,7 @@ func (vs *VertexSerialization) load(builder Builder) error {
 			return right.load(rightBuilder)
 		}
 	} else if next, ok := vs.next["publish"]; ok {
-		builder.Publish(next.ID, next.publish(), next.Options...)
+		builder.Publish(next.ID, next.publish())
 	}
 
 	return nil
@@ -323,6 +323,13 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 		}
 	}
 
+	if options, ok := m["options"]; ok {
+		s.Options = []*Option{}
+		if err := mapstructure.Decode(options, &s.Options); err != nil {
+			panic(err)
+		}
+	}
+
 	delete(m, "type")
 	delete(m, "interval")
 	delete(m, "provider")
@@ -338,9 +345,6 @@ func (vs *VertexSerialization) toMap(m map[string]interface{}) {
 	}
 	if vs.Provider != nil {
 		m["provider"] = vs.Provider
-	}
-	if vs.Options != nil || len(vs.Options) < 1 {
-		m["options"] = vs.Options
 	}
 
 	for k, v := range vs.next {
@@ -363,21 +367,11 @@ func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
 		delete(m, "provider")
 	}
 
-	if options, ok := m["options"]; ok {
-		vs.Options = []*Option{}
-		if err := mapstructure.Decode(options, &vs.Options); err != nil {
-			panic(err)
-		}
-		delete(m, "options")
-	}
-
 	vs.next = map[string]*VertexSerialization{}
 
 	for k, v := range m {
 		if x, ok := v.(map[string]interface{}); ok {
-			vs2 := &VertexSerialization{
-				Options: []*Option{},
-			}
+			vs2 := &VertexSerialization{}
 
 			vs2.fromMap(x)
 			vs.next[k] = vs2
