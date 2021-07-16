@@ -55,6 +55,8 @@ type StreamSerialization struct {
 	// Interval is the duration in nanoseconds between pulls in a 'subscription' Type. It is only read
 	// if the Type is 'subscription'.
 	Interval time.Duration `json:"interval,omitempty" mapstructure:"interval,omitempty"`
+	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
+	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
 
 	*VertexSerialization
 }
@@ -65,8 +67,6 @@ type VertexSerialization struct {
 	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
 	// Provider Plugin information to load
 	Provider *PluginDefinition `json:"provider,omitempty" mapstructure:"provider,omitempty"`
-	// Options are a slice of machine.Option https://godoc.org/github.com/whitaker-io/machine#Option
-	Options []*Option `json:"options,omitempty" mapstructure:"options,omitempty"`
 
 	next map[string]*VertexSerialization
 }
@@ -78,91 +78,88 @@ func RegisterPluginProvider(name string, p PluginProvider) {
 }
 
 // Load method loads a stream based on the StreamSerialization
-func (pipe *Pipe) Load(streams []*StreamSerialization) error {
-	for _, stream := range streams {
-		switch stream.Type {
-		case httpConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("http stream missing retriever config")
-			}
-			if err := stream.VertexSerialization.load(pipe.StreamHTTP(stream.ID, stream.Options...)); err != nil {
-				return err
-			}
-		case websocketConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("websocket stream missing retriever config")
-			}
-			if err := stream.VertexSerialization.load(pipe.StreamWebsocket(stream.ID, stream.Options...)); err != nil {
-				return err
-			}
-		case subscriptionConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("non-terminated subscription")
-			}
-
-			if err := stream.VertexSerialization.load(
-				pipe.StreamSubscription(stream.ID, stream.VertexSerialization.subscription(), stream.Interval, stream.Options...),
-			); err != nil {
-				return err
-			}
-		case streamConst:
-			if stream.VertexSerialization == nil {
-				return fmt.Errorf("non-terminated stream")
-			}
-
-			b := pipe.Stream(NewStream(stream.ID, stream.VertexSerialization.retriever(), stream.Options...))
-
-			if err := stream.VertexSerialization.load(b); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("invalid type")
+func Load(serialization *StreamSerialization) (Stream, error) {
+	var stream Stream
+	switch serialization.Type {
+	case httpConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("http stream missing config")
 		}
+
+		stream = NewHTTPStream(serialization.ID, serialization.Options...)
+	case websocketConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("websocket stream missing config")
+		}
+
+		stream = NewWebsocketStream(serialization.ID, serialization.Options...)
+	case subscriptionConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("non-terminated subscription")
+		}
+
+		stream = NewSubscriptionStream(
+			serialization.ID,
+			serialization.VertexSerialization.subscription(),
+			serialization.Interval,
+			serialization.Options...,
+		)
+	case streamConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("non-terminated stream")
+		}
+
+		stream = NewStream(
+			serialization.ID,
+			serialization.VertexSerialization.retriever(),
+			serialization.Options...,
+		)
+	default:
+		return nil, fmt.Errorf("invalid type")
 	}
 
-	return nil
+	if err := serialization.VertexSerialization.load(stream.Builder()); err != nil {
+		return nil, err
+	}
+
+	return stream, nil
 }
 
 func (vs *VertexSerialization) load(builder Builder) error {
 	if next, ok := vs.next["map"]; ok {
-		return next.load(builder.Map(next.ID, next.applicative(), next.Options...))
+		return next.load(builder.Map(next.ID, next.applicative()))
 	} else if next, ok := vs.next["fold_left"]; ok {
-		return next.load(builder.FoldLeft(next.ID, next.fold(), next.Options...))
+		return next.load(builder.FoldLeft(next.ID, next.fold()))
 	} else if next, ok := vs.next["fold_right"]; ok {
-		return next.load(builder.FoldRight(next.ID, next.fold(), next.Options...))
+		return next.load(builder.FoldRight(next.ID, next.fold()))
 	} else if next, ok := vs.next["fork"]; ok {
-		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork(), next.Options...)
+		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork())
+		left, right := next.next["left"], next.next["right"]
 
-		var left, right *VertexSerialization
-		var ok bool
-
-		if left, ok = next.next["left"]; !ok {
-			return fmt.Errorf("missing left side of fork %s", vs.ID)
-		} else if right, ok = next.next["right"]; !ok {
-			return fmt.Errorf("missing right side of fork %s", vs.ID)
-		} else if err := left.load(leftBuilder); err != nil {
-			return err
+		if left != nil {
+			if err := left.load(leftBuilder); err != nil {
+				return err
+			}
 		}
 
-		return right.load(rightBuilder)
+		if right != nil {
+			return right.load(rightBuilder)
+		}
 	} else if next, ok := vs.next["loop"]; ok {
-		leftBuilder, rightBuilder := builder.Loop(next.ID, next.fork(), next.Options...)
+		leftBuilder, rightBuilder := builder.Loop(next.ID, next.fork())
+		left, right := next.next["in"], next.next["out"]
 
-		var left, right *VertexSerialization
-		var ok bool
-
-		if left, ok = next.next["in"]; !ok {
-			return fmt.Errorf("missing inner side of loop %s", vs.ID)
-		} else if right, ok = next.next["out"]; !ok {
-			return fmt.Errorf("missing outer side of loop %s", vs.ID)
-		} else if err := left.load(leftBuilder); err != nil {
-			return err
+		if left != nil {
+			if err := left.load(leftBuilder); err != nil {
+				return err
+			}
 		}
 
-		return right.load(rightBuilder)
+		if right != nil {
+			return right.load(rightBuilder)
+		}
 	} else if next, ok := vs.next["publish"]; ok {
-		builder.Publish(next.ID, next.publish(), next.Options...)
-		return nil
+		builder.Publish(next.ID, next.publish())
 	}
 
 	return nil
@@ -326,6 +323,13 @@ func (s *StreamSerialization) fromMap(m map[string]interface{}) error {
 		}
 	}
 
+	if options, ok := m["options"]; ok {
+		s.Options = []*Option{}
+		if err := mapstructure.Decode(options, &s.Options); err != nil {
+			panic(err)
+		}
+	}
+
 	delete(m, "type")
 	delete(m, "interval")
 	delete(m, "provider")
@@ -341,9 +345,6 @@ func (vs *VertexSerialization) toMap(m map[string]interface{}) {
 	}
 	if vs.Provider != nil {
 		m["provider"] = vs.Provider
-	}
-	if vs.Options != nil || len(vs.Options) < 1 {
-		m["options"] = vs.Options
 	}
 
 	for k, v := range vs.next {
@@ -366,21 +367,11 @@ func (vs *VertexSerialization) fromMap(m map[string]interface{}) {
 		delete(m, "provider")
 	}
 
-	if options, ok := m["options"]; ok {
-		vs.Options = []*Option{}
-		if err := mapstructure.Decode(options, &vs.Options); err != nil {
-			panic(err)
-		}
-		delete(m, "options")
-	}
-
 	vs.next = map[string]*VertexSerialization{}
 
 	for k, v := range m {
 		if x, ok := v.(map[string]interface{}); ok {
-			vs2 := &VertexSerialization{
-				Options: []*Option{},
-			}
+			vs2 := &VertexSerialization{}
 
 			vs2.fromMap(x)
 			vs.next[k] = vs2

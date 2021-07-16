@@ -9,9 +9,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
+
+	"github.com/fasthttp/websocket"
+	"github.com/gofiber/fiber/v2"
+
+	"github.com/whitaker-io/data"
 )
 
 type testType struct {
@@ -19,7 +26,7 @@ type testType struct {
 	Value int    `mapstructure:"value"`
 }
 
-var testListBase = []Data{
+var testListBase = []data.Data{
 	{
 		"__traceID": "test_trace_id",
 		"name":      "data0",
@@ -66,70 +73,70 @@ var testListBase = []Data{
 var testPayloadBase = []*Packet{
 	{
 		ID: "ID_0",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data0",
 			"value": 0,
 		},
 	},
 	{
 		ID: "ID_1",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data1",
 			"value": 1,
 		},
 	},
 	{
 		ID: "ID_2",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data2",
 			"value": 2,
 		},
 	},
 	{
 		ID: "ID_3",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data3",
 			"value": 3,
 		},
 	},
 	{
 		ID: "ID_4",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data4",
 			"value": 4,
 		},
 	},
 	{
 		ID: "ID_5",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data5",
 			"value": 5,
 		},
 	},
 	{
 		ID: "ID_6",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data6",
 			"value": 6,
 		},
 	},
 	{
 		ID: "ID_7",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data7",
 			"value": 7,
 		},
 	},
 	{
 		ID: "ID_8",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data8",
 			"value": 8,
 		},
 	},
 	{
 		ID: "ID_9",
-		Data: Data{
+		Data: data.Data{
 			"name":  "data9",
 			"value": 9,
 		},
@@ -150,9 +157,9 @@ func deepCopyList(data []*Packet) []*Packet {
 }
 
 func Benchmark_Test_New(b *testing.B) {
-	out := make(chan []Data)
-	channel := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
+	out := make(chan []data.Data)
+	channel := make(chan []data.Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
@@ -163,42 +170,45 @@ func Benchmark_Test_New(b *testing.B) {
 	)
 
 	m.Builder().
-		Map("map_id", func(m Data) error {
+		Map("map_id", func(m data.Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
+				b.FailNow()
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
 		}).
 		Publish("sender_id",
-			publishFN(func(d []Data) error {
+			publishFN(func(d []data.Data) error {
 				out <- d
 				return nil
 			}),
 		)
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Run(context.Background(), time.Second); err != nil {
 		b.Error(err)
+		b.FailNow()
 	}
 
 	for n := 0; n < b.N; n++ {
 		go func() {
-			channel <- deepCopy(testListBase)
+			channel <- testListBase
 		}()
 
 		list := <-out
 
 		if len(list) != len(testListBase) {
 			b.Errorf("incorrect data have %v want %v", list, testListBase)
+			b.FailNow()
 		}
 	}
 }
 
 func Test_New(b *testing.T) {
-	count := 100000
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	count := 1000
+	out := make(chan []data.Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		go func() {
 			for n := 0; n < count; n++ {
 				channel <- deepCopy(testListBase)
@@ -214,40 +224,43 @@ func Test_New(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
+		Map("map_id", func(m data.Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
+				b.FailNow()
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
 		}).
-		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+		FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
-		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+		FoldLeft("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
-		FoldRight("fold_id2", func(d1, d2 Data) Data {
+		FoldRight("fold_id3", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
 		Fork("fork_id", ForkError)
 
 	left.Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			out <- d
 			return nil
 		}),
 	)
 
-	right.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	right.Publish("sender_id2",
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Run(context.Background(), time.Second); err != nil {
 		b.Error(err)
+		b.FailNow()
 	}
 
 	for n := 0; n < count; n++ {
@@ -255,30 +268,16 @@ func Test_New(b *testing.T) {
 
 		if len(list) != 1 {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+			b.FailNow()
 		}
-	}
-
-	p := Packet{}
-	buf := &bytes.Buffer{}
-	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-	_ = enc.Encode(testPayloadBase[0])
-	_ = dec.Decode(&p)
-
-	if err := p.As(&testType{}); err != nil {
-		b.Error(err)
-	}
-
-	if err := p.Data.As(&testType{}); err != nil {
-		b.Error(err)
 	}
 }
 
 func Test_New2(b *testing.T) {
 	count := 1000
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	out := make(chan []data.Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		go func() {
 			for n := 0; n < count; n++ {
 				channel <- deepCopy(testListBase)
@@ -294,60 +293,65 @@ func Test_New2(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
+		Map("map_id", func(m data.Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
+				b.FailNow()
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
 		}).
-		FoldRight("fold_id2", func(d1, d2 Data) Data {
+		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
 		Fork("fork_id", ForkDuplicate)
 
 	left.Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			out <- d
 			return nil
 		}),
 	)
 
-	l2, r2 := right.Fork("fork_id2", ForkRule(func(d Data) bool {
+	l2, r2 := right.Fork("fork_id1", ForkRule(func(d data.Data) bool {
 		return true
 	}).Handler)
 
-	l3, r3 := l2.Fork("fork_id3", ForkRule(func(d Data) bool {
+	l3, r3 := l2.Fork("fork_id2", ForkRule(func(d data.Data) bool {
 		return false
 	}).Handler)
 
-	r2.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	r2.Publish("sender_id2",
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	l3.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	l3.Publish("sender_id3",
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	r3.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	r3.Publish("sender_id4",
+		publishFN(func(d []data.Data) error {
 			out <- d
 			return fmt.Errorf("error")
 		}),
 	)
 
-	if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+	if err := m.Run(context.Background(), time.Second); err != nil {
 		b.Error(err)
+		b.FailNow()
 	}
 
 	if m.ID() != "machine_id" {
 		b.Errorf("incorrect id have %v want %v", m.ID(), "machine_id")
+		b.FailNow()
 	}
 
 	for n := 0; n < 2*count; n++ {
@@ -355,6 +359,7 @@ func Test_New2(b *testing.T) {
 
 		if len(list) != 1 {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[9])
+			b.FailNow()
 		}
 	}
 }
@@ -362,9 +367,9 @@ func Test_New2(b *testing.T) {
 func Test_Panic(b *testing.T) {
 	count := 1000
 	panicCount := 0
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	out := make(chan []data.Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		go func() {
 			for n := 0; n < count; n++ {
 				channel <- deepCopy(testListBase)
@@ -380,48 +385,50 @@ func Test_Panic(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
+		Map("map_id", func(m data.Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
 		}).
-		FoldRight("fold_id2", func(d1, d2 Data) Data {
+		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
 		Fork("fork_id", ForkDuplicate)
 
 	left.Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			out <- d
 			return nil
 		}),
 	)
 
-	l2, r2 := right.Fork("fork_id2", ForkRule(func(d Data) bool {
+	l2, r2 := right.Fork("fork_id1", ForkRule(func(d data.Data) bool {
 		return true
 	}).Handler)
 
-	l3, r3 := l2.Fork("fork_id3", ForkRule(func(d Data) bool {
+	l3, r3 := l2.Fork("fork_id2", ForkRule(func(d data.Data) bool {
 		return false
 	}).Handler)
 
-	r2.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	r2.Publish("sender_id2",
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	l3.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	l3.Publish("sender_id3",
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	r3.Publish("sender_id", publishFN(func(d []Data) error {
+	r3.Publish("sender_id4", publishFN(func(d []data.Data) error {
 		panicCount++
 
 		if panicCount%2 == 0 {
@@ -433,12 +440,14 @@ func Test_Panic(b *testing.T) {
 	}),
 	)
 
-	if err := m.Run(context.Background(), func(s1, s2, s3 string, p []*Packet) {}); err != nil {
+	if err := m.Run(context.Background(), time.Second); err != nil {
 		b.Error(err)
+		b.FailNow()
 	}
 
 	if m.ID() != "machine_id" {
 		b.Errorf("incorrect id have %v want %v", m.ID(), "machine_id")
+		b.FailNow()
 	}
 
 	for n := 0; n < count; n++ {
@@ -446,27 +455,29 @@ func Test_Panic(b *testing.T) {
 
 		if len(list) != 1 {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[9])
+			b.FailNow()
 		}
 	}
 }
 
 func Test_Missing_Leaves(b *testing.T) {
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	})
 
 	left, _ := m.Builder().Fork("fork_id", ForkDuplicate)
 
 	left.Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	m2 := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m2 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
@@ -478,8 +489,8 @@ func Test_Missing_Leaves(b *testing.T) {
 
 	m2.Builder().Fork("fork_id", ForkDuplicate)
 
-	m3 := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m3 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
@@ -489,8 +500,8 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option{BufferSize: intP(1000)},
 	)
 
-	m4 := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m4 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
@@ -500,16 +511,17 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option{BufferSize: intP(1000)},
 	)
 
-	m4.Builder().Map("map_id", func(m Data) error {
+	m4.Builder().Map("map_id", func(m data.Data) error {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
+			b.FailNow()
 			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
 		return nil
 	})
 
-	m5 := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m5 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
@@ -519,12 +531,12 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option{BufferSize: intP(1000)},
 	)
 
-	m5.Builder().FoldRight("fold_id2", func(d1, d2 Data) Data {
+	m5.Builder().FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 		return d1
 	})
 
-	m6 := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m6 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
@@ -536,24 +548,26 @@ func Test_Missing_Leaves(b *testing.T) {
 
 	l6, r6 := m6.Builder().Fork("fork_id", ForkDuplicate)
 
-	l6.Map("map_id", func(m Data) error {
+	l6.Map("map_id", func(m data.Data) error {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
+			b.FailNow()
 			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
 		return nil
 	})
 
-	r6.Map("map_id", func(m Data) error {
+	r6.Map("map_id", func(m data.Data) error {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
+			b.FailNow()
 			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
 		return nil
 	})
 
-	m7 := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	m7 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
@@ -565,57 +579,66 @@ func Test_Missing_Leaves(b *testing.T) {
 
 	l7, r7 := m7.Builder().Fork("fork_id", ForkDuplicate)
 
-	l7.Map("map_id", func(m Data) error {
+	l7.Map("map_id", func(m data.Data) error {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
+			b.FailNow()
 			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
 		return nil
 	}).Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
 		}),
 	)
 
-	r7.FoldLeft("fold_id2", func(d1, d2 Data) Data {
+	r7.FoldLeft("fold_id2", func(d1, d2 data.Data) data.Data {
 		return d1
 	})
 
-	if err := m.Run(context.Background()); err == nil {
+	if err := m.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m")
+		b.FailNow()
 	}
 
-	if err := m2.Run(context.Background()); err == nil {
+	if err := m2.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m2")
+		b.FailNow()
 	}
 
-	if err := m3.Run(context.Background()); err == nil {
+	if err := m3.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m3")
+		b.FailNow()
 	}
 
-	if err := m4.Run(context.Background()); err == nil {
+	if err := m4.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m4")
+		b.FailNow()
 	}
 
-	if err := m5.Run(context.Background()); err == nil {
+	if err := m5.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m5")
+		b.FailNow()
 	}
 
-	if err := m6.Run(context.Background()); err == nil {
+	if err := m6.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m6")
+		b.FailNow()
 	}
 
-	if err := m7.Run(context.Background()); err == nil {
+	if err := m7.Run(context.Background(), time.Second); err == nil {
 		b.Error("expected error m7")
+		b.FailNow()
 	}
 }
 
 func Test_Inject(b *testing.T) {
 	count := 1000
-	channel := make(chan []Data)
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
+	channel := make(chan []data.Data)
+	out := make(chan []data.Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
 		go func() {
 			for n := 0; n < count; n++ {
 				channel <- deepCopy(testListBase)
@@ -632,74 +655,55 @@ func Test_Inject(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
+		Map("map_id", func(m data.Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
+				b.FailNow()
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return fmt.Errorf("error")
-		},
-			&Option{FIFO: boolP(false)},
-			&Option{Injectable: boolP(true)},
-			&Option{Metrics: boolP(true)},
-			&Option{Span: boolP(false)},
-			&Option{BufferSize: intP(0)},
-		).
-		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+		}).
+		FoldLeft("fold_idx", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
-		FoldLeft("fold_id1", func(d1, d2 Data) Data {
+		FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
 			return d1
-		},
-			&Option{FIFO: boolP(false)},
-			&Option{Injectable: boolP(true)},
-			&Option{Metrics: boolP(true)},
-			&Option{Span: boolP(false)},
-			&Option{BufferSize: intP(0)}).
-		FoldRight("fold_id2", func(d1, d2 Data) Data {
+		}).
+		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
-		},
-			&Option{FIFO: boolP(false)},
-			&Option{Injectable: boolP(true)},
-			&Option{Metrics: boolP(true)},
-			&Option{Span: boolP(false)},
-			&Option{BufferSize: intP(0)},
-		).
-		Fork("fork_id", ForkError,
-			&Option{FIFO: boolP(false)},
-			&Option{Injectable: boolP(true)},
-			&Option{Metrics: boolP(true)},
-			&Option{Span: boolP(false)},
-			&Option{BufferSize: intP(0)},
-		)
+		}).
+		Fork("fork_id", ForkError)
 
 	left.Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
+			b.FailNow()
 			return nil
-		}),
-		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(false)},
-		&Option{BufferSize: intP(0)},
-	)
+		}))
 
-	right.Publish("sender_id",
-		publishFN(func(d []Data) error {
+	right.Publish("sender_id2",
+		publishFN(func(d []data.Data) error {
 			out <- d
 			return nil
 		}),
 	)
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Run(context.Background(), time.Second); err != nil {
 		b.Error(err)
+		b.FailNow()
 	}
+
+	cb := m.InjectionCallback(context.Background())
 
 	go func() {
 		for n := 0; n < count; n++ {
-			m.Inject(context.Background(), map[string][]*Packet{
-				"map_id": deepCopyList(testPayloadBase),
+			cb(&Log{
+				StreamID:   "machine_id",
+				VertexID:   "map_id",
+				VertexType: "map",
+				State:      "start",
+				When:       time.Now(),
+				Packet:     deepCopyList(testPayloadBase)[0],
 			})
 		}
 	}()
@@ -709,86 +713,16 @@ func Test_Inject(b *testing.T) {
 
 		if len(list) != 1 {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+			b.FailNow()
 		}
 	}
-}
-
-func Test_Inject_Cancel(b *testing.T) {
-	count := 1000
-	channel := make(chan []Data)
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		go func() {
-			for n := 0; n < count; n++ {
-				channel <- deepCopy(testListBase)
-				channel <- nil
-			}
-		}()
-		return channel
-	},
-		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
-		&Option{Metrics: boolP(true)},
-		&Option{Span: boolP(true)},
-		&Option{BufferSize: intP(0)},
-	)
-
-	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-			}
-			return fmt.Errorf("error")
-		}).
-		FoldLeft("fold_id1", func(d1, d2 Data) Data {
-			return d1
-		}).
-		FoldLeft("fold_id1", func(d1, d2 Data) Data {
-			return d1
-		}).
-		FoldRight("fold_id2", func(d1, d2 Data) Data {
-			return d1
-		}).
-		Fork("fork_id", ForkError)
-
-	left.Publish("sender_id", publishFN(func(d []Data) error {
-		b.Error("unexpected")
-		return nil
-	}),
-	)
-
-	right.Publish("sender_id",
-		publishFN(func(d []Data) error {
-			out <- d
-			return nil
-		}),
-	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	if err := m.Run(ctx); err != nil {
-		b.Error(err)
-	}
-
-	go func() {
-		for n := 0; n < count; n++ {
-			m.Inject(context.Background(), map[string][]*Packet{
-				"map_id": deepCopyList(testPayloadBase),
-			})
-		}
-	}()
-
-	<-time.After(time.Second)
-	cancel()
-	<-time.After(time.Second)
 }
 
 func Test_Loop(b *testing.T) {
 	count := 100000
-	out := make(chan []Data)
-	m := NewStream("machine_id", func(c context.Context) chan []Data {
-		channel := make(chan []Data)
+	out := make(chan []data.Data)
+	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
 		go func() {
 			for n := 0; n < count; n++ {
 				channel <- deepCopy(testListBase)
@@ -804,9 +738,10 @@ func Test_Loop(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m Data) error {
+		Map("map_id", func(m data.Data) error {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
+				b.FailNow()
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
@@ -825,16 +760,10 @@ func Test_Loop(b *testing.T) {
 				}
 
 				return
-			},
-			&Option{FIFO: boolP(false)},
-			&Option{Injectable: boolP(true)},
-			&Option{Metrics: boolP(true)},
-			&Option{Span: boolP(true)},
-			&Option{BufferSize: intP(0)},
-		)
+			})
 
 	left2, _ := left.
-		Loop("loop2_id",
+		Loop("loop_id2",
 			func(list []*Packet) (a []*Packet, b []*Packet) {
 				a = []*Packet{}
 				b = []*Packet{}
@@ -853,44 +782,46 @@ func Test_Loop(b *testing.T) {
 
 	left3, _ := left2.Fork("fork_id", ForkError)
 
-	_, right2 := left3.Fork("fork_id",
+	_, right2 := left3.Fork("fork_id2",
 		func(list []*Packet) (a []*Packet, b []*Packet) {
 			return []*Packet{}, list
 		},
 	)
 
-	left4, right3 := right2.Fork("fork_id",
+	left4, right3 := right2.Fork("fork_id3",
 		func(list []*Packet) (a []*Packet, b []*Packet) {
 			return []*Packet{}, list
 		},
 	)
 
-	left5, right4 := left4.Fork("fork_id", ForkError)
-	left5.FoldLeft("fold_id1", func(d1, d2 Data) Data {
+	left5, right4 := left4.Fork("fork_id4", ForkError)
+	left5.FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
 		return d1
 	})
 
-	right4.FoldRight("fold_id1", func(d1, d2 Data) Data {
+	right4.FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 		return d1
 	})
 
-	right3.Map("map_id2", func(m Data) error {
+	right3.Map("map_id2", func(m data.Data) error {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
+			b.FailNow()
 			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
 		return nil
 	})
 
 	right.Publish("sender_id",
-		publishFN(func(d []Data) error {
+		publishFN(func(d []data.Data) error {
 			out <- d
 			return nil
 		}),
 	)
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Run(context.Background(), time.Second); err != nil {
 		b.Error(err)
+		b.FailNow()
 	}
 
 	for n := 0; n < count; n++ {
@@ -900,4 +831,220 @@ func Test_Loop(b *testing.T) {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
 		}
 	}
+}
+
+func Test_Pipe_Sub(b *testing.T) {
+	count := 100
+	out := make(chan []data.Data)
+
+	t := &tester{}
+
+	s := NewSubscriptionStream("stream_id", t, 5*time.Millisecond,
+		&Option{DeepCopy: boolP(true)},
+		&Option{FIFO: boolP(false)},
+		&Option{Injectable: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
+
+	s.Builder().Publish("publish_id",
+		publishFN(func(d []data.Data) error {
+			out <- d
+			return nil
+		}),
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := s.Run(ctx, time.Second); err != nil {
+			b.Error(err)
+		}
+	}()
+
+	for n := 0; n < count; n++ {
+		list := <-out
+
+		if len(list) != 10 && len(list) != 1 {
+			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
+			b.FailNow()
+		}
+	}
+
+	o := []data.Data{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(&testListBase)
+	_ = dec.Decode(&o)
+
+	if len(o) != 10 {
+		b.Error("len of injection wrong")
+		b.FailNow()
+	}
+
+	cancel()
+	<-time.After(time.Second)
+}
+
+func Test_Pipe_HTTP(b *testing.T) {
+	out := make(chan []data.Data)
+
+	app := fiber.New()
+	defer app.Shutdown()
+
+	s := NewHTTPStream("http_id",
+		&Option{DeepCopy: boolP(true)},
+		&Option{FIFO: boolP(true)},
+		&Option{Injectable: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
+
+	s.Builder().
+		Map("map_id",
+			func(m data.Data) error {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
+				}
+				return nil
+			},
+		).Publish("publish_id",
+		publishFN(func(d []data.Data) error {
+			out <- d
+			return nil
+		}),
+	)
+
+	app.Post("/test", s.Handler())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := s.Run(ctx, time.Second, &tester{}); err != nil {
+			b.Error(err)
+		}
+
+		app.Listen("localhost:5000")
+	}()
+
+	bytez, _ := json.Marshal(deepCopy(testListBase))
+	req, _ := http.NewRequest(http.MethodPost, "http://localhost:5000/test", bytes.NewReader(bytez))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req, -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+		b.FailNow()
+	}
+
+	list := <-out
+
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	bytez, _ = json.Marshal(deepCopy(testListBase)[0])
+	req, _ = http.NewRequest(http.MethodPost, "http://localhost:5000/test", bytes.NewReader(bytez))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = app.Test(req, -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+		b.FailNow()
+	}
+
+	list = <-out
+
+	if len(list) != 1 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	cancel()
+	<-time.After(time.Second)
+}
+
+func Test_Pipe_Websocket(b *testing.T) {
+	out := make(chan []data.Data)
+
+	app := fiber.New()
+	defer app.Shutdown()
+
+	s := NewWebsocketStream("websocket_id",
+		&Option{DeepCopy: boolP(true)},
+		&Option{FIFO: boolP(true)},
+		&Option{Injectable: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(false)},
+		&Option{BufferSize: intP(0)},
+	)
+
+	s.Builder().Publish("publish_id",
+		publishFN(func(d []data.Data) error {
+			out <- d
+			return nil
+		}),
+	)
+
+	app.Get("/test", s.Handler())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		if err := s.Run(ctx, time.Second); err != nil {
+			b.Error(err)
+		}
+		app.Listen("localhost:5000")
+	}()
+
+	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:5000/test", http.Header{})
+	defer conn.Close()
+
+	if err != nil || resp.StatusCode != fiber.StatusSwitchingProtocols {
+		b.Error(err)
+		b.FailNow()
+	}
+
+	if err := conn.WriteJSON(deepCopy(testListBase)); err != nil {
+		b.Error(err)
+		b.FailNow()
+	}
+
+	if err := conn.WriteJSON(deepCopy(testListBase)); err != nil {
+		b.Error(err)
+		b.FailNow()
+	}
+
+	list := <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	list = <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	if err := conn.WriteJSON(deepCopy(testListBase)); err != nil {
+		b.Error(err)
+		b.FailNow()
+	}
+
+	list = <-out
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	cancel()
+	<-time.After(time.Second)
 }
