@@ -6,7 +6,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fasthttp/websocket v1.4.3
 	github.com/gofiber/fiber/v2 v2.15.0
-	github.com/gofiber/websocket/v2 v2.0.3
+	github.com/gofiber/websocket/v2 v2.0.7
 	github.com/google/uuid v1.2.0
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/whitaker-io/data v0.1.2
