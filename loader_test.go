@@ -81,7 +81,7 @@ func Test_Load(b *testing.T) {
 	for _, s := range streams {
 		if _, err := Load(s); err != nil {
 			b.Error(err)
-      b.FailNow()
+			b.FailNow()
 		}
 	}
 
@@ -103,7 +103,7 @@ func Test_Load(b *testing.T) {
 
 		if len(list) != 1 {
 			b.Errorf("incorrect data have %v want %v", list, testListBase[0])
-      b.FailNow()
+			b.FailNow()
 		}
 	}
 }

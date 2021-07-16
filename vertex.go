@@ -53,7 +53,7 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 
 	v.input = input
 
-	if _, ok :=	b.vertacies[v.id]; ok {
+	if _, ok := b.vertacies[v.id]; ok {
 		return fmt.Errorf("duplicate vertex id %s", v.id)
 	}
 

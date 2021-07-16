@@ -13,8 +13,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/whitaker-io/data"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/whitaker-io/data"
 )
 
 var (
