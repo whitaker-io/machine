@@ -81,18 +81,6 @@ func RegisterPluginProvider(name string, p PluginProvider) {
 func Load(serialization *StreamSerialization) (Stream, error) {
 	var stream Stream
 	switch serialization.Type {
-	case httpConst:
-		if serialization.VertexSerialization == nil {
-			return nil, fmt.Errorf("http stream missing config")
-		}
-
-		stream = NewHTTPStream(serialization.ID, serialization.Options...)
-	case websocketConst:
-		if serialization.VertexSerialization == nil {
-			return nil, fmt.Errorf("websocket stream missing config")
-		}
-
-		stream = NewWebsocketStream(serialization.ID, serialization.Options...)
 	case subscriptionConst:
 		if serialization.VertexSerialization == nil {
 			return nil, fmt.Errorf("non-terminated subscription")
@@ -114,6 +102,33 @@ func Load(serialization *StreamSerialization) (Stream, error) {
 			serialization.VertexSerialization.retriever(),
 			serialization.Options...,
 		)
+	default:
+		return nil, fmt.Errorf("invalid type")
+	}
+
+	if err := serialization.VertexSerialization.load(stream.Builder()); err != nil {
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+// LoadHTTP method loads an HTTPStream based on the StreamSerialization
+func LoadHTTP(serialization *StreamSerialization) (HTTPStream, error) {
+	var stream HTTPStream
+	switch serialization.Type {
+	case httpConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("http stream missing config")
+		}
+
+		stream = NewHTTPStream(serialization.ID, serialization.Options...)
+	case websocketConst:
+		if serialization.VertexSerialization == nil {
+			return nil, fmt.Errorf("websocket stream missing config")
+		}
+
+		stream = NewWebsocketStream(serialization.ID, serialization.Options...)
 	default:
 		return nil, fmt.Errorf("invalid type")
 	}
