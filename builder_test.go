@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,6 +232,12 @@ func Test_New(b *testing.T) {
 				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
 			return nil
+		}).
+		Sort("sort_id1", func(a, b data.Data) int {
+			return strings.Compare(a.MustString("name"), b.MustString("name"))
+		}).
+		Remove("remove_id1", func(index int, d data.Data) bool {
+			return false
 		}).
 		FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
 			return d1

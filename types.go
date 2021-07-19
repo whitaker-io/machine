@@ -189,6 +189,12 @@ type Fork func(list []*Packet) (a, b []*Packet)
 // method allowing for Forking based on the contents of the data.
 type ForkRule func(d data.Data) bool
 
+// Comparator is a function to compare 2 data.Data's
+type Comparator func(a data.Data, b data.Data) int
+
+// Remover func that is used to remove Data based on a true result
+type Remover func(index int, d data.Data) bool
+
 // Error type for wrapping errors coming from the Stream
 type Error struct {
 	Err        error
