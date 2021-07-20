@@ -79,7 +79,10 @@ func Test_Load(b *testing.T) {
   }
 
   for _, s := range streams {
-    if _, err := Load(s); err != nil {
+    if _, err := Load(s); err != nil && (s.Type == "subscription" || s.Type == "stream") {
+      b.Error(err)
+      b.FailNow()
+    } else if _, err := LoadHTTP(s); err != nil && (s.Type == "http" || s.Type == "websocket") {
       b.Error(err)
       b.FailNow()
     }
