@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -50,6 +51,8 @@ type Builder interface {
 	FoldRight(id string, f Fold) Builder
 	Fork(id string, f Fork) (Builder, Builder)
 	Loop(id string, x Fork) (loop, out Builder)
+	Sort(id string, x Comparator) Builder
+	Remove(id string, x Remover) Builder
 	Publish(id string, s Publisher)
 }
 
@@ -205,6 +208,86 @@ func (n nexter) Map(id string, x Applicative) Builder {
 
 			if next.next == nil {
 				return fmt.Errorf("non-terminated map")
+			}
+			return next.next.cascade(ctx, b, edge)
+		},
+	}
+
+	next = n(next)
+
+	return nexter(func(n *node) *node {
+		n.loop = next.loop
+		next.next = n
+		return n
+	})
+}
+
+// Sort modifies the order of the data.Data based on the Comparator
+func (n nexter) Sort(id string, x Comparator) Builder {
+	next := &node{}
+	var edge *edge
+
+	next.vertex = vertex{
+		id:         id,
+		vertexType: "sort",
+		handler: func(payload []*Packet) {
+			sort.Slice(payload, func(i, j int) bool {
+				return x(payload[i].Data, payload[j].Data) < 0
+			})
+
+			edge.channel <- payload
+		},
+		connector: func(ctx context.Context, b *builder) error {
+			edge = newEdge(b.option.BufferSize)
+
+			if next.loop != nil && next.next == nil {
+				next.next = next.loop
+			}
+
+			if next.next == nil {
+				return fmt.Errorf("non-terminated sort")
+			}
+			return next.next.cascade(ctx, b, edge)
+		},
+	}
+
+	next = n(next)
+
+	return nexter(func(n *node) *node {
+		n.loop = next.loop
+		next.next = n
+		return n
+	})
+}
+
+// Remove data from the payload based on the
+func (n nexter) Remove(id string, x Remover) Builder {
+	next := &node{}
+	var edge *edge
+
+	next.vertex = vertex{
+		id:         id,
+		vertexType: "sort",
+		handler: func(payload []*Packet) {
+			output := []*Packet{}
+
+			for i, v := range payload {
+				if !x(i, v.Data) {
+					output = append(output, v)
+				}
+			}
+
+			edge.channel <- output
+		},
+		connector: func(ctx context.Context, b *builder) error {
+			edge = newEdge(b.option.BufferSize)
+
+			if next.loop != nil && next.next == nil {
+				next.next = next.loop
+			}
+
+			if next.next == nil {
+				return fmt.Errorf("non-terminated sort")
 			}
 			return next.next.cascade(ctx, b, edge)
 		},

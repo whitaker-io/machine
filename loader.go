@@ -147,6 +147,10 @@ func (vs *VertexSerialization) load(builder Builder) error {
 		return next.load(builder.FoldLeft(next.ID, next.fold()))
 	} else if next, ok := vs.next["fold_right"]; ok {
 		return next.load(builder.FoldRight(next.ID, next.fold()))
+	} else if next, ok := vs.next["sort"]; ok {
+		return next.load(builder.Sort(next.ID, next.sort()))
+	} else if next, ok := vs.next["remove"]; ok {
+		return next.load(builder.Remove(next.ID, next.remove()))
 	} else if next, ok := vs.next["fork"]; ok {
 		leftBuilder, rightBuilder := builder.Fork(next.ID, next.fork())
 		left, right := next.next["left"], next.next["right"]
@@ -228,6 +232,26 @@ func (vs *VertexSerialization) fork() Fork {
 	}
 
 	panic(fmt.Errorf("invalid plugin type not fork"))
+}
+
+func (vs *VertexSerialization) sort() Comparator {
+	if sym, err := vs.Provider.load(); err != nil {
+		panic(err)
+	} else if x, ok := sym.(Comparator); ok {
+		return x
+	}
+
+	panic(fmt.Errorf("invalid plugin type not comparator"))
+}
+
+func (vs *VertexSerialization) remove() Remover {
+	if sym, err := vs.Provider.load(); err != nil {
+		panic(err)
+	} else if x, ok := sym.(Remover); ok {
+		return x
+	}
+
+	panic(fmt.Errorf("invalid plugin type not remover"))
 }
 
 func (vs *VertexSerialization) publish() Publisher {

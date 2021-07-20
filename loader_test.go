@@ -154,6 +154,10 @@ func (t *testPlugin) Load(pd *PluginDefinition) (interface{}, error) {
     return t.fork(pd.Attributes), nil
   } else if strings.Contains(pd.Symbol, "Fold") {
     return t.fold(pd.Attributes), nil
+  } else if strings.Contains(pd.Symbol, "Sort") {
+    return t.sort(pd.Attributes), nil
+  } else if strings.Contains(pd.Symbol, "Remove") {
+    return t.remove(pd.Attributes), nil
   } else if strings.Contains(pd.Symbol, "Publisher") {
     return t.publisher(pd.Attributes), nil
   }
@@ -202,6 +206,18 @@ func (t *testPlugin) fold(map[string]interface{}) Fold {
 func (t *testPlugin) fork(map[string]interface{}) Fork {
   return func(list []*Packet) (a []*Packet, b []*Packet) {
     return list, []*Packet{}
+  }
+}
+
+func (t *testPlugin) sort(map[string]interface{}) Comparator {
+  return func(a, b data.Data) int {
+    return strings.Compare(a.MustString("name"), b.MustString("name"))
+  }
+}
+
+func (t *testPlugin) remove(map[string]interface{}) Remover {
+  return func(index int, d data.Data) bool {
+    return false
   }
 }
 
@@ -294,6 +310,19 @@ var streamDefinitions = `- type: subscription
                               type: test
                               symbol: Applicative
                               payload: ""
+                            sort:
+                              id: sort_id1
+                              provider: 
+                                type: test
+                                symbol: Sort
+                                payload: ""
+                              remove:
+                                id: remove_id1
+                                provider: 
+                                  type: test
+                                  symbol: Remover
+                                  payload: ""
+
                         right:
                           loop2:
                             id: loop_id2
