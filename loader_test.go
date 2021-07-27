@@ -44,14 +44,6 @@ func (t *tester) Close() error {
 func (t *tester) Error(...interface{}) {}
 func (t *tester) Info(...interface{})  {}
 
-func (t *tester) Join(id string, callback InjectionCallback) error {
-  return t.join
-}
-
-func (t *tester) Write(logs ...*Log) {}
-
-func (t *tester) Leave(id string) error { return t.leave }
-
 func Test_Load(b *testing.T) {
   count := 100
   out := make(chan []data.Data)

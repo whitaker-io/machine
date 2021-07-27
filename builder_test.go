@@ -206,7 +206,7 @@ func Benchmark_Test_New(b *testing.B) {
 }
 
 func Test_New(b *testing.T) {
-	count := 1000
+	count := 1
 	out := make(chan []data.Data)
 	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
 		channel := make(chan []data.Data)
@@ -700,18 +700,9 @@ func Test_Inject(b *testing.T) {
 		b.FailNow()
 	}
 
-	cb := m.InjectionCallback(context.Background())
-
 	go func() {
 		for n := 0; n < count; n++ {
-			cb(&Log{
-				StreamID:   "machine_id",
-				VertexID:   "map_id",
-				VertexType: "map",
-				State:      "start",
-				When:       time.Now(),
-				Packet:     deepCopyList(testPayloadBase)[0],
-			})
+			m.Inject(context.Background(), "map_id", deepCopyList(testPayloadBase)[0])
 		}
 	}()
 
@@ -931,7 +922,7 @@ func Test_Pipe_HTTP(b *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		if err := s.Run(ctx, time.Second, &tester{}); err != nil {
+		if err := s.Run(ctx, time.Second); err != nil {
 			b.Error(err)
 		}
 

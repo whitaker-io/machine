@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/whitaker-io/data"
 )
 
@@ -28,11 +26,6 @@ var (
 
 		_ = enc.Encode(payload)
 		_ = dec.Decode(&payload2)
-
-		for i, packet := range payload {
-			payload2[i].span = packet.span
-			payload2[i].spanCtx = packet.spanCtx
-		}
 
 		return payload, payload2
 	}
@@ -62,46 +55,20 @@ var (
 		Metrics:    boolP(true),
 		Span:       boolP(true),
 		BufferSize: intP(0),
+		Provider:   &edgeProvider{},
 	}
 )
 
-// Cluster is an interface for allowing a distributed cluster of workers
-// It requires 3 methods Join, Write, and Leave.
-//
-// Join is called during the run method of the Stream and it is used for
-// accouncing membership to the cluster with an identifier and a callback
-// for injection
-//
-// Injection is how work can be restarted in the system and is the responsibility
-// of the implementation to decide when and how it is reinitiated.
-//
-// Write is called at the beginning of every vertex and provides the current
-// payload about to be run. The implementation is considered the owner of that
-// payload and may modify the data in special known circumstances if need be.
-//
-// Leave is called during a graceful termination and any errors
-// are logged.
-type Cluster interface {
-	Join(id string, callback InjectionCallback) error
-	Write(logs ...*Log)
-	Leave(id string) error
+// EdgeProvider is an interface that is used for providing new instances
+// of the Edge interface given the *Option set in the Stream
+type EdgeProvider interface {
+	New(id string, options *Option) Edge
 }
 
-// InjectionCallback is a function provided to the LogStore Join method so that
-// the cluster may restart work that has been dropped by one of the workers.
-// Injections will only be processed for vertices that have the Injectable option
-// set to true, which is the default.
-type InjectionCallback func(logs ...*Log)
-
-// Log type for holding the data that is recorded from the streams and sent to
-// the LogStore instance
-type Log struct {
-	StreamID   string    `json:"stream_id"`
-	VertexID   string    `json:"vertex_id"`
-	VertexType string    `json:"vertex_type"`
-	State      string    `json:"state"`
-	Packet     *Packet   `json:"packet"`
-	When       time.Time `json:"when"`
+// Edge is an inteface that is used for transferring data between verticies
+type Edge interface {
+	Send(ctx context.Context, channel chan []*Packet)
+	Next(payload ...*Packet)
 }
 
 // Subscription is an interface for creating a pull based stream.
@@ -124,11 +91,9 @@ type Publisher interface {
 
 // Packet type that holds information traveling through the machine.
 type Packet struct {
-	ID      string           `json:"id"`
-	Data    data.Data        `json:"data"`
-	Errors  map[string]error `json:"errors"`
-	span    trace.Span
-	spanCtx context.Context
+	ID     string           `json:"id"`
+	Data   data.Data        `json:"data"`
+	Errors map[string]error `json:"errors"`
 }
 
 // Option type for holding machine settings.
@@ -161,6 +126,8 @@ type Option struct {
 	// Packets processed by the system.
 	// Default: true
 	Metrics *bool
+
+	Provider EdgeProvider
 }
 
 // Retriever is a function that provides data to a generic Stream
@@ -207,7 +174,10 @@ type Error struct {
 
 type handler func(payload []*Packet)
 
+type edgeProvider struct{}
+
 type edge struct {
+	id      string
 	channel chan []*Packet
 }
 
@@ -242,6 +212,7 @@ func (o *Option) join(option *Option) *Option {
 		Injectable: o.Injectable,
 		Metrics:    o.Metrics,
 		Span:       o.Span,
+		Provider:   o.Provider,
 	}
 
 	if option.DeepCopy != nil {
@@ -266,6 +237,10 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.Span != nil {
 		out.Span = option.Span
+	}
+
+	if option.Provider != nil {
+		out.Provider = option.Provider
 	}
 
 	return out
@@ -313,7 +288,20 @@ func (e *Error) Error() string {
 	)
 }
 
-func (out *edge) sendTo(ctx context.Context, in *edge) {
+func (p *edgeProvider) New(id string, options *Option) Edge {
+	b := 0
+
+	if options.BufferSize != nil {
+		b = *options.BufferSize
+	}
+
+	return &edge{
+		id:      id,
+		channel: make(chan []*Packet, b),
+	}
+}
+
+func (out *edge) Send(ctx context.Context, channel chan []*Packet) {
 	go func() {
 	Loop:
 		for {
@@ -322,23 +310,15 @@ func (out *edge) sendTo(ctx context.Context, in *edge) {
 				break Loop
 			case list := <-out.channel:
 				if len(list) > 0 {
-					in.channel <- list
+					channel <- list
 				}
 			}
 		}
 	}()
 }
 
-func newEdge(bufferSize *int) *edge {
-	b := 0
-
-	if bufferSize != nil {
-		b = *bufferSize
-	}
-
-	return &edge{
-		make(chan []*Packet, b),
-	}
+func (out *edge) Next(payload ...*Packet) {
+	out.channel <- payload
 }
 
 func boolP(v bool) *bool {

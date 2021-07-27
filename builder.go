@@ -6,7 +6,6 @@
 package machine
 
 import (
-	"bytes"
 	"context"
 	"encoding/gob"
 	"fmt"
@@ -18,8 +17,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/whitaker-io/data"
 )
@@ -38,8 +35,8 @@ type HTTPStream interface {
 // a Link in order to be considered valid.
 type Stream interface {
 	ID() string
-	Run(ctx context.Context, gracePeriod time.Duration, clusters ...Cluster) error
-	InjectionCallback(ctx context.Context) func(logs ...*Log)
+	Run(ctx context.Context, gracePeriod time.Duration) error
+	Inject(ctx context.Context, id string, payload ...*Packet)
 	Builder() Builder
 	Errors() chan error
 }
@@ -64,12 +61,11 @@ type httpStream struct {
 }
 
 type builder struct {
-	errorChannel chan error
 	vertex
-	next      *node
-	option    *Option
-	clusters  []Cluster
-	vertacies map[string]*vertex
+	next         *node
+	option       *Option
+	vertacies    map[string]Edge
+	errorChannel chan error
 }
 
 type node struct {
@@ -89,58 +85,19 @@ func (m *builder) ID() string {
 // and an optional list of recorder functions. The recorder function has the signiture
 // func(vertexID, vertexType, state string, paylaod []*Packet) and is called at the
 // beginning of every vertex.
-func (m *builder) Run(ctx context.Context, gracePeriod time.Duration, clusters ...Cluster) error {
+func (m *builder) Run(ctx context.Context, gracePeriod time.Duration) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated builder")
 	}
 
-	for _, cluster := range clusters {
-		if err := cluster.Join(m.id, m.InjectionCallback(ctx)); err != nil {
-			return err
-		}
-
-		go func(c Cluster) {
-		Loop:
-			for {
-				select {
-				case <-ctx.Done():
-					if err := c.Leave(m.id); err != nil {
-						m.errorChannel <- err
-					}
-					break Loop
-				default:
-					<-time.After(gracePeriod)
-				}
-			}
-		}(cluster)
-	}
-
-	m.clusters = clusters
-
-	return m.cascade(ctx, m, m.input)
+	return m.cascade(ctx, m, &edge{})
 }
 
 // Inject is a method for restarting work that has been dropped by the Stream
 // typically in a distributed system setting. Though it can be used to side load
 // data into the Stream to be processed
-func (m *builder) InjectionCallback(ctx context.Context) func(logs ...*Log) {
-	vType := trace.WithAttributes(attribute.String("vertex_type", "inject"))
-
-	return func(logs ...*Log) {
-		for _, log := range logs {
-			if v, ok := m.vertacies[log.VertexID]; ok {
-				payload := []*Packet{log.Packet}
-
-				if !*m.option.Injectable {
-					m.record(v.id, v.vertexType, "injection-denied", payload)
-					continue
-				}
-
-				log.Packet.spanCtx, log.Packet.span = tracer.Start(ctx, v.id, vType)
-				v.input.channel <- payload
-			}
-		}
-	}
+func (m *builder) Inject(ctx context.Context, id string, payload ...*Packet) {
+	m.vertacies[id].Next(payload...)
 }
 
 func (m *builder) Builder() Builder {
@@ -154,40 +111,10 @@ func (m *builder) Errors() chan error {
 	return m.errorChannel
 }
 
-func (m *builder) record(vertexID, vertexType, state string, payload []*Packet) {
-	if len(m.clusters) > 0 {
-		out := []*Packet{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&out)
-
-		go func() {
-			logs := make([]*Log, len(out))
-			now := time.Now()
-			for i, packet := range out {
-				logs[i] = &Log{
-					StreamID:   m.id,
-					VertexID:   vertexID,
-					VertexType: vertexType,
-					State:      state,
-					Packet:     packet,
-					When:       now,
-				}
-			}
-
-			for _, cluster := range m.clusters {
-				cluster.Write(logs...)
-			}
-		}()
-	}
-}
-
 // Map apply a mutation, options default to the set used when creating the Stream
 func (n nexter) Map(id string, x Applicative) Builder {
 	next := &node{}
-	var edge *edge
+	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
@@ -197,10 +124,10 @@ func (n nexter) Map(id string, x Applicative) Builder {
 				packet.apply(id, x)
 			}
 
-			edge.channel <- payload
+			edge.Next(payload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = newEdge(b.option.BufferSize)
+			edge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -225,7 +152,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 // Sort modifies the order of the data.Data based on the Comparator
 func (n nexter) Sort(id string, x Comparator) Builder {
 	next := &node{}
-	var edge *edge
+	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
@@ -235,10 +162,10 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 				return x(payload[i].Data, payload[j].Data) < 0
 			})
 
-			edge.channel <- payload
+			edge.Next(payload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = newEdge(b.option.BufferSize)
+			edge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -263,7 +190,7 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 // Remove data from the payload based on the
 func (n nexter) Remove(id string, x Remover) Builder {
 	next := &node{}
-	var edge *edge
+	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
@@ -277,10 +204,10 @@ func (n nexter) Remove(id string, x Remover) Builder {
 				}
 			}
 
-			edge.channel <- output
+			edge.Next(output...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = newEdge(b.option.BufferSize)
+			edge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -305,7 +232,7 @@ func (n nexter) Remove(id string, x Remover) Builder {
 // FoldLeft the data, options default to the set used when creating the Stream
 func (n nexter) FoldLeft(id string, x Fold) Builder {
 	next := &node{}
-	var edge *edge
+	var edge Edge
 
 	fr := func(payload ...*Packet) *Packet {
 		if len(payload) == 1 {
@@ -325,10 +252,10 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 		id:         id,
 		vertexType: "fold",
 		handler: func(payload []*Packet) {
-			edge.channel <- []*Packet{fr(payload...)}
+			edge.Next(fr(payload...))
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = newEdge(b.option.BufferSize)
+			edge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -352,7 +279,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 // FoldRight the data, options default to the set used when creating the Stream
 func (n nexter) FoldRight(id string, x Fold) Builder {
 	next := &node{}
-	var edge *edge
+	var edge Edge
 
 	var fr func(...*Packet) *Packet
 	fr = func(payload ...*Packet) *Packet {
@@ -369,10 +296,10 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 		id:         id,
 		vertexType: "fold",
 		handler: func(payload []*Packet) {
-			edge.channel <- []*Packet{fr(payload...)}
+			edge.Next(fr(payload...))
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = newEdge(b.option.BufferSize)
+			edge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -398,20 +325,20 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 	next := &node{}
 
-	var leftEdge *edge
-	var rightEdge *edge
+	var leftEdge Edge
+	var rightEdge Edge
 
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "fork",
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
-			leftEdge.channel <- lpayload
-			rightEdge.channel <- rpayload
+			leftEdge.Next(lpayload...)
+			rightEdge.Next(rpayload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			leftEdge = newEdge(b.option.BufferSize)
-			rightEdge = newEdge(b.option.BufferSize)
+			leftEdge = b.option.Provider.New(id, b.option)
+			rightEdge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.left == nil {
 				next.left = next.loop
@@ -469,12 +396,6 @@ func (n nexter) Publish(id string, x Publisher) {
 				Time:       time.Now(),
 			})
 		}
-
-		for _, packet := range payload {
-			if packet.span != nil {
-				packet.span.End()
-			}
-		}
 	}
 
 	n(&node{vertex: v})
@@ -485,20 +406,20 @@ func (n nexter) Publish(id string, x Publisher) {
 func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 	next := &node{}
 
-	var leftEdge *edge
-	var rightEdge *edge
+	var leftEdge Edge
+	var rightEdge Edge
 
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "loop",
 		handler: func(payload []*Packet) {
 			lpayload, rpayload := x(payload)
-			leftEdge.channel <- lpayload
-			rightEdge.channel <- rpayload
+			leftEdge.Next(lpayload...)
+			rightEdge.Next(rpayload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			leftEdge = newEdge(b.option.BufferSize)
-			rightEdge = newEdge(b.option.BufferSize)
+			leftEdge = b.option.Provider.New(id, b.option)
+			rightEdge = b.option.Provider.New(id, b.option)
 
 			if next.loop != nil && next.right == nil {
 				next.right = next.loop
@@ -538,10 +459,8 @@ func (hs *httpStream) Handler() fiber.Handler {
 // subsequent vertices in the Stream.
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	opt := defaultOptions.merge(options...)
-	vType := trace.WithAttributes(attribute.String("vertex_type", "stream"))
 
-	edge := newEdge(opt.BufferSize)
-	input := newEdge(opt.BufferSize)
+	edge := opt.Provider.New(id, opt)
 
 	x := &builder{
 		errorChannel: make(chan error, 10000),
@@ -549,12 +468,11 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 		vertex: vertex{
 			id:         id,
 			vertexType: "stream",
-			input:      input,
 			handler: func(p []*Packet) {
-				edge.channel <- p
+				edge.Next(p...)
 			},
 		},
-		vertacies: map[string]*vertex{},
+		vertacies: map[string]Edge{},
 	}
 
 	x.connector = func(ctx context.Context, b *builder) error {
@@ -577,12 +495,11 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 							ID:   uuid.NewString(),
 							Data: item,
 						}
-						packet.spanCtx, packet.span = tracer.Start(ctx, id, vType)
 
 						payload[i] = packet
 					}
 
-					input.channel <- payload
+					x.input <- payload
 				}
 			}
 		}()
