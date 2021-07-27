@@ -32,40 +32,40 @@ var (
 type vertex struct {
 	id         string
 	vertexType string
-	input      *edge
+	input      chan []*Packet
 	builder    *builder
 	handler
 	errorHandler func(*Error)
 	connector    func(ctx context.Context, b *builder) error
 }
 
-func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
+func (v *vertex) cascade(ctx context.Context, b *builder, incoming Edge) error {
 	v.builder = b
 	v.errorHandler = func(err *Error) {
 		err.StreamID = b.id
 		b.errorChannel <- err
 	}
 
-	if v.input != nil && v.vertexType != "stream" {
-		input.sendTo(ctx, v.input)
+	if v.input != nil {
+		incoming.Send(ctx, v.input)
 		return nil
 	}
 
-	v.input = input
+	v.input = make(chan []*Packet, *b.option.BufferSize)
+	incoming.Send(ctx, v.input)
 
 	if _, ok := b.vertacies[v.id]; ok {
 		return fmt.Errorf("duplicate vertex id %s", v.id)
 	}
 
-	b.vertacies[v.id] = v
+	b.vertacies[v.id] = incoming
 
 	if err := v.connector(ctx, b); err != nil {
 		return err
 	}
 
-	v.record(b)
 	v.metrics(ctx)
-	v.span()
+	v.span(ctx)
 	v.deepCopy()
 	v.recover(b)
 	v.run(ctx)
@@ -73,7 +73,7 @@ func (v *vertex) cascade(ctx context.Context, b *builder, input *edge) error {
 	return nil
 }
 
-func (v *vertex) span() {
+func (v *vertex) span(ctx context.Context) {
 	h := v.handler
 
 	vType := trace.WithAttributes(attribute.String("vertex_type", v.vertexType))
@@ -83,7 +83,7 @@ func (v *vertex) span() {
 			spans := map[string]trace.Span{}
 
 			for _, packet := range payload {
-				_, spans[packet.ID] = tracer.Start(packet.spanCtx, v.id, vType)
+				_, spans[packet.ID] = tracer.Start(ctx, v.id, vType)
 			}
 
 			h(payload)
@@ -92,6 +92,7 @@ func (v *vertex) span() {
 				if _, ok := packet.Errors[v.id]; ok {
 					spans[packet.ID].AddEvent("error")
 				}
+				spans[packet.ID].End()
 			}
 		}
 	}
@@ -164,22 +165,8 @@ func (v *vertex) deepCopy() {
 			_ = enc.Encode(payload)
 			_ = dec.Decode(&out)
 
-			for i, val := range payload {
-				out[i].span = val.span
-			}
-
 			h(out)
 		}
-	}
-}
-
-func (v *vertex) record(b *builder) {
-	h := v.handler
-
-	v.handler = func(payload []*Packet) {
-		b.record(v.id, v.vertexType, "start", payload)
-		h(payload)
-		b.record(v.id, v.vertexType, "end", payload)
 	}
 }
 
@@ -190,7 +177,7 @@ func (v *vertex) run(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				break Loop
-			case data := <-v.input.channel:
+			case data := <-v.input:
 				if len(data) < 1 {
 					continue
 				}
