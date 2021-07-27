@@ -9,8 +9,8 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/whitaker-io/data v0.1.2
-	go.opentelemetry.io/otel v1.0.0-RC1
+	go.opentelemetry.io/otel v1.0.0-RC2
 	go.opentelemetry.io/otel/metric v0.22.0
-	go.opentelemetry.io/otel/trace v1.0.0-RC1
+	go.opentelemetry.io/otel/trace v1.0.0-RC2
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
 )
