@@ -88,7 +88,7 @@ func Test_Load(b *testing.T) {
   }
 
   go func() {
-    if err := stream.Run(context.Background(), time.Second); err != nil {
+    if err := stream.Run(context.Background()); err != nil {
       b.Error(err)
     }
   }()

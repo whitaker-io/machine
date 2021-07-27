@@ -62,7 +62,7 @@ var (
 // EdgeProvider is an interface that is used for providing new instances
 // of the Edge interface given the *Option set in the Stream
 type EdgeProvider interface {
-	New(id string, options *Option) Edge
+	New(options *Option) Edge
 }
 
 // Edge is an inteface that is used for transferring data between verticies
@@ -177,7 +177,6 @@ type handler func(payload []*Packet)
 type edgeProvider struct{}
 
 type edge struct {
-	id      string
 	channel chan []*Packet
 }
 
@@ -288,7 +287,7 @@ func (e *Error) Error() string {
 	)
 }
 
-func (p *edgeProvider) New(id string, options *Option) Edge {
+func (p *edgeProvider) New(options *Option) Edge {
 	b := 0
 
 	if options.BufferSize != nil {
@@ -296,7 +295,6 @@ func (p *edgeProvider) New(id string, options *Option) Edge {
 	}
 
 	return &edge{
-		id:      id,
 		channel: make(chan []*Packet, b),
 	}
 }

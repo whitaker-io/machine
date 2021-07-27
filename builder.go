@@ -35,8 +35,8 @@ type HTTPStream interface {
 // a Link in order to be considered valid.
 type Stream interface {
 	ID() string
-	Run(ctx context.Context, gracePeriod time.Duration) error
-	Inject(ctx context.Context, id string, payload ...*Packet)
+	Run(ctx context.Context) error
+	Inject(id string, payload ...*Packet)
 	Builder() Builder
 	Errors() chan error
 }
@@ -85,7 +85,7 @@ func (m *builder) ID() string {
 // and an optional list of recorder functions. The recorder function has the signiture
 // func(vertexID, vertexType, state string, paylaod []*Packet) and is called at the
 // beginning of every vertex.
-func (m *builder) Run(ctx context.Context, gracePeriod time.Duration) error {
+func (m *builder) Run(ctx context.Context) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated builder")
 	}
@@ -96,7 +96,7 @@ func (m *builder) Run(ctx context.Context, gracePeriod time.Duration) error {
 // Inject is a method for restarting work that has been dropped by the Stream
 // typically in a distributed system setting. Though it can be used to side load
 // data into the Stream to be processed
-func (m *builder) Inject(ctx context.Context, id string, payload ...*Packet) {
+func (m *builder) Inject(id string, payload ...*Packet) {
 	m.vertacies[id].Next(payload...)
 }
 
@@ -127,7 +127,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 			edge.Next(payload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -165,7 +165,7 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 			edge.Next(payload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -207,7 +207,7 @@ func (n nexter) Remove(id string, x Remover) Builder {
 			edge.Next(output...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -255,7 +255,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 			edge.Next(fr(payload...))
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -299,7 +299,7 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 			edge.Next(fr(payload...))
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -337,8 +337,8 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 			rightEdge.Next(rpayload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			leftEdge = b.option.Provider.New(id, b.option)
-			rightEdge = b.option.Provider.New(id, b.option)
+			leftEdge = b.option.Provider.New(b.option)
+			rightEdge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.left == nil {
 				next.left = next.loop
@@ -418,8 +418,8 @@ func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 			rightEdge.Next(rpayload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			leftEdge = b.option.Provider.New(id, b.option)
-			rightEdge = b.option.Provider.New(id, b.option)
+			leftEdge = b.option.Provider.New(b.option)
+			rightEdge = b.option.Provider.New(b.option)
 
 			if next.loop != nil && next.right == nil {
 				next.right = next.loop
@@ -460,7 +460,7 @@ func (hs *httpStream) Handler() fiber.Handler {
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	opt := defaultOptions.merge(options...)
 
-	edge := opt.Provider.New(id, opt)
+	edge := opt.Provider.New(opt)
 
 	x := &builder{
 		errorChannel: make(chan error, 10000),

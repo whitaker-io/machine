@@ -186,7 +186,7 @@ func Benchmark_Test_New(b *testing.B) {
 			}),
 		)
 
-	if err := m.Run(context.Background(), time.Second); err != nil {
+	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -265,7 +265,7 @@ func Test_New(b *testing.T) {
 		}),
 	)
 
-	if err := m.Run(context.Background(), time.Second); err != nil {
+	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -351,7 +351,7 @@ func Test_New2(b *testing.T) {
 		}),
 	)
 
-	if err := m.Run(context.Background(), time.Second); err != nil {
+	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -447,7 +447,7 @@ func Test_Panic(b *testing.T) {
 	}),
 	)
 
-	if err := m.Run(context.Background(), time.Second); err != nil {
+	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -605,37 +605,37 @@ func Test_Missing_Leaves(b *testing.T) {
 		return d1
 	})
 
-	if err := m.Run(context.Background(), time.Second); err == nil {
+	if err := m.Run(context.Background()); err == nil {
 		b.Error("expected error m")
 		b.FailNow()
 	}
 
-	if err := m2.Run(context.Background(), time.Second); err == nil {
+	if err := m2.Run(context.Background()); err == nil {
 		b.Error("expected error m2")
 		b.FailNow()
 	}
 
-	if err := m3.Run(context.Background(), time.Second); err == nil {
+	if err := m3.Run(context.Background()); err == nil {
 		b.Error("expected error m3")
 		b.FailNow()
 	}
 
-	if err := m4.Run(context.Background(), time.Second); err == nil {
+	if err := m4.Run(context.Background()); err == nil {
 		b.Error("expected error m4")
 		b.FailNow()
 	}
 
-	if err := m5.Run(context.Background(), time.Second); err == nil {
+	if err := m5.Run(context.Background()); err == nil {
 		b.Error("expected error m5")
 		b.FailNow()
 	}
 
-	if err := m6.Run(context.Background(), time.Second); err == nil {
+	if err := m6.Run(context.Background()); err == nil {
 		b.Error("expected error m6")
 		b.FailNow()
 	}
 
-	if err := m7.Run(context.Background(), time.Second); err == nil {
+	if err := m7.Run(context.Background()); err == nil {
 		b.Error("expected error m7")
 		b.FailNow()
 	}
@@ -695,14 +695,14 @@ func Test_Inject(b *testing.T) {
 		}),
 	)
 
-	if err := m.Run(context.Background(), time.Second); err != nil {
+	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 
 	go func() {
 		for n := 0; n < count; n++ {
-			m.Inject(context.Background(), "map_id", deepCopyList(testPayloadBase)[0])
+			m.Inject("map_id", deepCopyList(testPayloadBase)[0])
 		}
 	}()
 
@@ -817,7 +817,7 @@ func Test_Loop(b *testing.T) {
 		}),
 	)
 
-	if err := m.Run(context.Background(), time.Second); err != nil {
+	if err := m.Run(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -856,7 +856,7 @@ func Test_Pipe_Sub(b *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		if err := s.Run(ctx, time.Second); err != nil {
+		if err := s.Run(ctx); err != nil {
 			b.Error(err)
 		}
 	}()
@@ -922,7 +922,7 @@ func Test_Pipe_HTTP(b *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		if err := s.Run(ctx, time.Second); err != nil {
+		if err := s.Run(ctx); err != nil {
 			b.Error(err)
 		}
 
@@ -996,7 +996,7 @@ func Test_Pipe_Websocket(b *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		if err := s.Run(ctx, time.Second); err != nil {
+		if err := s.Run(ctx); err != nil {
 			b.Error(err)
 		}
 		app.Listen("localhost:5000")
