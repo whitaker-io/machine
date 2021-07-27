@@ -206,7 +206,7 @@ func Benchmark_Test_New(b *testing.B) {
 }
 
 func Test_New(b *testing.T) {
-	count := 1
+	count := 1000
 	out := make(chan []data.Data)
 	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
 		channel := make(chan []data.Data)
