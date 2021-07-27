@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/whitaker-io/data"
@@ -164,12 +163,12 @@ type Remover func(index int, d data.Data) bool
 
 // Error type for wrapping errors coming from the Stream
 type Error struct {
-	Err        error
-	StreamID   string
-	VertexID   string
-	VertexType string
-	Packets    []*Packet
-	Time       time.Time
+	Err        error     `json:"err"`
+	StreamID   string    `json:"stream_id"`
+	VertexID   string    `json:"vertex_id"`
+	VertexType string    `json:"vertex_type"`
+	Packets    []*Packet `json:"payload"`
+	Time       time.Time `json:"time"`
 }
 
 type handler func(payload []*Packet)
@@ -262,29 +261,13 @@ func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
 }
 
 func (e *Error) Error() string {
-	bytez, err := json.Marshal(e.Packets)
+	bytez, err := json.Marshal(e)
 
 	if err != nil {
-		return fmt.Sprintf(
-			`{"error": "%s", "stream_id":"%s", "vertex_id": "%s", "vertex_type":"%s", "packets": "%s", "time":"%v"}`,
-			e.Err.Error(),
-			e.StreamID,
-			e.VertexID,
-			e.VertexType,
-			err.Error(),
-			e.Time,
-		)
+		return e.Error()
 	}
 
-	return fmt.Sprintf(
-		`{"error": "%s", "stream_id":"%s", "vertex_id": "%s", "vertex_type":"%s", "packets": %s, "time":"%v"}`,
-		e.Err.Error(),
-		e.StreamID,
-		e.VertexID,
-		e.VertexType,
-		string(bytez),
-		e.Time,
-	)
+	return string(bytez)
 }
 
 func (p *edgeProvider) New(options *Option) Edge {
