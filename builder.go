@@ -25,6 +25,7 @@ import (
 type HTTPStream interface {
 	Stream
 	Handler() fiber.Handler
+	InjectionHandlers() map[string]fiber.Handler
 }
 
 // Stream is a representation of a data stream and its associated logic.
@@ -37,6 +38,7 @@ type Stream interface {
 	ID() string
 	Run(ctx context.Context) error
 	Inject(id string, payload ...*Packet)
+	VertexIDs() []string
 	Builder() Builder
 	Errors() chan error
 }
@@ -64,7 +66,7 @@ type builder struct {
 	vertex
 	next         *node
 	option       *Option
-	vertacies    map[string]Edge
+	edges        map[string]Edge
 	errorChannel chan error
 }
 
@@ -97,7 +99,17 @@ func (m *builder) Run(ctx context.Context) error {
 // typically in a distributed system setting. Though it can be used to side load
 // data into the Stream to be processed
 func (m *builder) Inject(id string, payload ...*Packet) {
-	m.vertacies[id].Next(payload...)
+	m.edges[id].Next(payload...)
+}
+
+func (m *builder) VertexIDs() []string {
+	ids := []string{}
+
+	for name := range m.edges {
+		ids = append(ids, name)
+	}
+
+	return ids
 }
 
 func (m *builder) Builder() Builder {
@@ -454,6 +466,30 @@ func (hs *httpStream) Handler() fiber.Handler {
 	return hs.handler
 }
 
+func (hs *httpStream) InjectionHandlers() map[string]fiber.Handler {
+	handlers := map[string]fiber.Handler{}
+
+	for _, val := range hs.VertexIDs() {
+		name := val
+		handlers[name] = func(ctx *fiber.Ctx) error {
+			payload := []*Packet{}
+			packet := &Packet{}
+
+			if err := ctx.BodyParser(&packet); err == nil {
+				payload = []*Packet{packet}
+			} else if err := ctx.BodyParser(&payload); err != nil {
+				return ctx.SendStatus(http.StatusBadRequest)
+			}
+
+			hs.Inject(name, deepCopyPayload(payload)...)
+
+			return ctx.SendStatus(http.StatusAccepted)
+		}
+	}
+
+	return handlers
+}
+
 // NewStream is a function for creating a new Stream. It takes an id, a Retriever function,
 // and a list of Options that can override the defaults and set new defaults for the
 // subsequent vertices in the Stream.
@@ -472,7 +508,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 				edge.Next(p...)
 			},
 		},
-		vertacies: map[string]Edge{},
+		edges: map[string]Edge{},
 	}
 
 	x.connector = func(ctx context.Context, b *builder) error {

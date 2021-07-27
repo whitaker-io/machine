@@ -64,7 +64,7 @@ type EdgeProvider interface {
 	New(options *Option) Edge
 }
 
-// Edge is an inteface that is used for transferring data between verticies
+// Edge is an inteface that is used for transferring data between vertices
 type Edge interface {
 	Send(ctx context.Context, channel chan []*Packet)
 	Next(payload ...*Packet)
@@ -312,6 +312,17 @@ func intP(v int) *int {
 
 func deepCopy(d []data.Data) []data.Data {
 	out := []data.Data{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(d)
+	_ = dec.Decode(&out)
+
+	return out
+}
+
+func deepCopyPayload(d []*Packet) []*Packet {
+	out := []*Packet{}
 	buf := &bytes.Buffer{}
 	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
 

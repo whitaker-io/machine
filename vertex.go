@@ -54,11 +54,11 @@ func (v *vertex) cascade(ctx context.Context, b *builder, incoming Edge) error {
 	v.input = make(chan []*Packet, *b.option.BufferSize)
 	incoming.Send(ctx, v.input)
 
-	if _, ok := b.vertacies[v.id]; ok {
+	if _, ok := b.edges[v.id]; ok {
 		return fmt.Errorf("duplicate vertex id %s", v.id)
 	}
 
-	b.vertacies[v.id] = incoming
+	b.edges[v.id] = incoming
 
 	if err := v.connector(ctx, b); err != nil {
 		return err

@@ -917,17 +917,19 @@ func Test_Pipe_HTTP(b *testing.T) {
 		}),
 	)
 
-	app.Post("/test", s.Handler())
-
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go func() {
-		if err := s.Run(ctx); err != nil {
-			b.Error(err)
-		}
+	if err := s.Run(ctx); err != nil {
+		b.Error(err)
+		b.FailNow()
+	}
 
+	go func() {
 		app.Listen("localhost:5000")
 	}()
+
+	app.Post("/test", s.Handler())
+	app.Post("/test/map_id", s.InjectionHandlers()["map_id"])
 
 	bytez, _ := json.Marshal(deepCopy(testListBase))
 	req, _ := http.NewRequest(http.MethodPost, "http://localhost:5000/test", bytes.NewReader(bytez))
@@ -949,6 +951,42 @@ func Test_Pipe_HTTP(b *testing.T) {
 
 	bytez, _ = json.Marshal(deepCopy(testListBase)[0])
 	req, _ = http.NewRequest(http.MethodPost, "http://localhost:5000/test", bytes.NewReader(bytez))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = app.Test(req, -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+		b.FailNow()
+	}
+
+	list = <-out
+
+	if len(list) != 1 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	bytez, _ = json.Marshal(deepCopyPayload(testPayloadBase))
+	req, _ = http.NewRequest(http.MethodPost, "http://localhost:5000/test/map_id", bytes.NewReader(bytez))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err = app.Test(req, -1)
+
+	if resp.StatusCode != http.StatusAccepted || err != nil {
+		b.Error(resp.StatusCode, err)
+		b.FailNow()
+	}
+
+	list = <-out
+
+	if len(list) != 10 {
+		b.Errorf("incorrect data have %v want %v", list, testListBase)
+		b.FailNow()
+	}
+
+	bytez, _ = json.Marshal(deepCopyPayload(testPayloadBase)[0])
+	req, _ = http.NewRequest(http.MethodPost, "http://localhost:5000/test/map_id", bytes.NewReader(bytez))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err = app.Test(req, -1)
