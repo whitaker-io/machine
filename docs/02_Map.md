@@ -35,7 +35,7 @@ Using the `Map` method is how you can apply element-wise transformations or test
 
   if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that 
-    // one of the paths is not terminated (i.e. missing a Transmit)
+    // one of the paths is not terminated (i.e. missing a Publish)
     panic(err)
   }
 ```
