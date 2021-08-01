@@ -1,16 +1,12 @@
 The `Loop` method allows the stream to create `while`/`for` loops with the fork provided being the check for the loop
 
-`Loop`s method signature is `Loop`(id `string`, x `Fork`, options ...*`Option`) (loop `LoopBuilder`, out `Builder`)
+`Loop`s method signature is `Loop`(id `string`, x `Fork`) (loop `Builder`, out `Builder`)
 
-It returns a `LoopBuilder` which is used for building the logic inside the loop and a `Builder` which is the logic after/outside the loop
+It returns 2 `Builder`s where the first is for the loop logic and the second is for leaving the loop
 
-Nested loops are supported and `LoopBuilder` supports all of the methods of `Builder` except for `Link`. This
-is so `goto` patterns which can be extremely difficult to debug are not implemented.
-
-`LoopBuilder` also has a `Done` method which is required to be called in order to close the loop
 
 ```golang  
-  m := NewStream("machine_id", 
+  stream := NewStream("machine_id", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -26,9 +22,9 @@ is so `goto` patterns which can be extremely difficult to debug are not implemen
     &Option{BufferSize: intP(0)},
   )
 
-  loop, out := m.Builder().
+  loop, out := stream.Builder().
     Loop("loop_id", 
-    ForkRule(func(d Data) bool {
+      ForkRule(func(d Data) bool {
         // example counting logic for looping
         if val := typed.Typed(d).IntOr("__loops", 0); val > 4 {
           return true
@@ -40,26 +36,26 @@ is so `goto` patterns which can be extremely difficult to debug are not implemen
       }).Handler,
     )
 
-    loop.Map("unique_id2", 
-      func(m Data) error {
-        var err error
+  loop.Map("unique_id2", 
+    func(m Data) error {
+      var err error
 
-        // ...do some processing
+      // ...do some processing
 
-        return err
-      },
-    ).Done()
-
-  out.Transmit("sender_id", 
-    func(d []Data) error {
-      out <- d
-      return nil
+      return err
     },
   )
 
+  out.Publish("publish_id", publishFN(func(d []data.Data) error {
+        // send the data somewhere
+
+        return nil
+      }),
+    )
+
   
 
-  if err := machineInstance.Run(context.Background()); err != nil {
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that
     // one of the paths is not terminated
     panic(err)

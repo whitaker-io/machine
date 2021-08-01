@@ -1,9 +1,13 @@
 Using the `Fork` method allows you to split data into multiple channels.
 
-`Machine` can duplicate the data and send it down multiple paths
+`Fork`s method signature is `Fork`(id `string`, x `Fork`)
+
+`Machine` has a number of built-in `Fork`'s
+
+ * ForkDuplicate to send it down multiple paths
 
 ```golang
-  m := NewStream("unique_id1", 
+  stream := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -17,35 +21,33 @@ Using the `Fork` method allows you to split data into multiple channels.
     &Option{Span: boolP(false)},
   )
 
-  left, right := m.Builder().Fork("unique_id2", ForkDuplicate)
+  left, right := stream.Builder().Fork("unique_id2", ForkDuplicate)
   
-  left.Transmit("unique_id3", 
-    func(d []Data) error {
-      // send a copy of the data somewhere
+  left.Publish("publish_left_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere
 
       return nil
-    },
+    }),
   )
 
-  right.Transmit("unique_id4", 
-    func(d []Data) error {
-      // send a copy of the data somewhere else
+  right.Publish("publish_right_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere else
 
       return nil
-    },
+    }),
   )
 
-  if err := m.Run(context.Background()); err != nil {
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that 
     // one of the paths is not terminated
     panic(err)
   }
 ```
 
-Incase of errors you can also route the errors down their own path with more complex flows having retry loops uning `Link`
+ * ForkError to filter out errors
 
 ```golang
-  m := NewStream("unique_id1", 
+  stream := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -59,36 +61,33 @@ Incase of errors you can also route the errors down their own path with more com
     &Option{Span: boolP(false)},
   )
 
-  left, right := m.Builder().Fork("unique_id2", ForkError)
+  left, right := stream.Builder().Fork("unique_id2", ForkError)
   
-  left.Transmit("unique_id3", 
-    func(d []Data) error {
-      // send a copy of the data somewhere
+  left.Publish("publish_left_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere
 
       return nil
-    },
-
-
-  right.Transmit("unique_id4", 
-    func(d []Data) error {
-      // send the error somewhere else
-
-      return nil
-    },
+    }),
   )
 
-  if err := m.Run(context.Background()); err != nil {
+  right.Publish("publish_right_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere else
+
+      return nil
+    }),
+  )
+
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that 
     // one of the paths is not terminated
     panic(err)
   }
 ```
 
-
-Routing based on filtering the data is also possible with ForkRule
+ * ForkRule to wrap a `func`(d `Data`) `bool` and handle the split
 
 ```golang  
-  m := NewStream("unique_id1", 
+  stream := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -102,7 +101,7 @@ Routing based on filtering the data is also possible with ForkRule
     &Option{Span: boolP(false)},
   )
 
-  left, right := right.Fork("unique_id2", 
+  left, right := stream.Builder().Fork("unique_id2", 
     ForkRule(func(d Data) bool {
       if val, ok := d["some_value"]; !ok {
         return false
@@ -111,24 +110,22 @@ Routing based on filtering the data is also possible with ForkRule
       return true
     }).Handler,
   )
-  
-  left.Transmit("unique_id3", 
-    func(d []Data) error {
-      // send a copy of the data somewhere
+
+  left.Publish("publish_left_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere
 
       return nil
-    },
+    }),
   )
 
-  right.Transmit("unique_id4", 
-    func(d []Data) error {
-      // send the error somewhere else
+  right.Publish("publish_right_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere else
 
       return nil
-    },
+    }),
   )
 
-  if err := machineInstance.Run(context.Background()); err != nil {
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that 
     // one of the paths is not terminated
     panic(err)

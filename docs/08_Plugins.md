@@ -1,7 +1,7 @@
 # Plugins
 
 ## Overview
-Plugins provide a way for vertex functions to be declared and run dynamically. This provides the Developer with flexibility in the systems that they run. This flexibility though useful comes with the drawback of a minor performance hit, so the Developer must take this into consideration when processing large amounts of data.
+Plugins provide a way for vertex functions to be declared and run dynamically. This provides the Developer with flexibility in the systems that they run. This flexibility though useful comes with the drawback of a performance hit, so the Developer must take this into consideration when processing large amounts of data.
 
 ### Types
 

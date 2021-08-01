@@ -1,5 +1,7 @@
 `Publish` is possibly the most important part of the `Stream` in that it is the outlet of data. It is important to note that `error`'s returned here are logged only.
 
+`Publish`s method signature is `Publish`(id `string`, x `Publisher`)
+
 ```golang
   m := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
@@ -24,8 +26,12 @@
 
         return err
       },
-    ).
-    Publish("unique_id3", publisher)
+    ).Publish("publish_id", publishFN(func(d []data.Data) error {
+        // send the data somewhere
+
+        return nil
+      }),
+    )
 
   if err := m.Run(context.Background()); err != nil {
     // Run will return an error in the case that 

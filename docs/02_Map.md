@@ -1,12 +1,10 @@
 Using the `Map` method is how you can apply element-wise transformations or test for certain properties and accumulate errors on an element.
 
-`Map` takes a unique ID (used for injection), a machine.Applicative (`func`(m machine.Data) error), and a variadic of override machine.Option settings
 
-Considering the basic example:
-
+`Map`s method signature is `Map`(id `string`, x `Applicative`)
 
 ```golang
-  m := NewStream("unique_id1", 
+  stream := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -20,8 +18,7 @@ Considering the basic example:
     &Option{Span: boolP(false)},
   )
 
-  m.Builder().
-    Map("unique_id2", 
+  stream.Builder().Map("unique_id2", 
       func(m Data) error {
         var err error
 
@@ -29,20 +26,16 @@ Considering the basic example:
 
         return err
       },
-    ).
-    Transmit("unique_id3", 
-      func(d []Data) error {
-        // send a copy of the data somewhere
+    ).Publish("publish_left_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere
 
-        return nil
-      },
-    )
+      return nil
+    }),
+  )
 
-  if err := m.Run(context.Background()); err != nil {
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that 
     // one of the paths is not terminated (i.e. missing a Transmit)
     panic(err)
   }
 ```
-
-You could contact other services to enrich the data, check to make sure the required information is required, or add new fields

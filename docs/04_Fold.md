@@ -3,8 +3,10 @@ The `Fold` methods are used for combining the elements of the payload based on a
 There are 2 Fold methods available; 
 
   * `FoldLeft` which is applies the accumulator from left to right 
+
+`FoldLeft`s method signature is `FoldLeft`(id `string`, x `Fold`)
 ```golang  
-  m := NewStream("unique_id1", 
+  stream := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -25,15 +27,14 @@ There are 2 Fold methods available;
 
       return aggragate
     },
-  ).Transmit("unique_id3", 
-    func(d []Data) error {
-      // send a copy of the data somewhere
+  ).Publish("publish_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere
 
       return nil
-    },
+    }),
   )
 
-  if err := machineInstance.Run(context.Background()); err != nil {
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that
     // one of the paths is not terminated
     panic(err)
@@ -42,8 +43,9 @@ There are 2 Fold methods available;
 
   * `FoldRight` which oppositely applies from right to left
 
+`FoldRight`s method signature is `FoldRight`(id `string`, x `Fold`)
 ```golang  
-  m := NewStream("unique_id1", 
+  stream := NewStream("unique_id1", 
     func(c context.Context) chan []Data {
       channel := make(chan []Data)
     
@@ -64,15 +66,14 @@ There are 2 Fold methods available;
 
       return aggragate
     },
-  ).Transmit("unique_id3", 
-    func(d []Data) error {
-      // send a copy of the data somewhere
+  ).Publish("publish_id", publishFN(func(d []data.Data) error {
+      // send the data somewhere
 
       return nil
-    },
+    }),
   )
 
-  if err := machineInstance.Run(context.Background()); err != nil {
+  if err := stream.Run(context.Background()); err != nil {
     // Run will return an error in the case that
     // one of the paths is not terminated
     panic(err)
