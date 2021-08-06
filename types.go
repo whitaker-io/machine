@@ -61,7 +61,7 @@ var (
 // EdgeProvider is an interface that is used for providing new instances
 // of the Edge interface given the *Option set in the Stream
 type EdgeProvider interface {
-	New(options *Option) Edge
+	New(id string, options *Option) Edge
 }
 
 // Edge is an inteface that is used for transferring data between vertices
@@ -270,7 +270,7 @@ func (e *Error) Error() string {
 	return string(bytez)
 }
 
-func (p *edgeProvider) New(options *Option) Edge {
+func (p *edgeProvider) New(id string, options *Option) Edge {
 	b := 0
 
 	if options.BufferSize != nil {
