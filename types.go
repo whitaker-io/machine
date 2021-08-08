@@ -1,8 +1,7 @@
-// Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
+// Package machine - Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
 //
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
-
 package machine
 
 import (
@@ -61,7 +60,7 @@ var (
 // EdgeProvider is an interface that is used for providing new instances
 // of the Edge interface given the *Option set in the Stream
 type EdgeProvider interface {
-	New(id string, options *Option) Edge
+	New(ctx context.Context, id string, options *Option) Edge
 }
 
 // Edge is an inteface that is used for transferring data between vertices
@@ -270,7 +269,7 @@ func (e *Error) Error() string {
 	return string(bytez)
 }
 
-func (p *edgeProvider) New(id string, options *Option) Edge {
+func (p *edgeProvider) New(ctx context.Context, id string, options *Option) Edge {
 	b := 0
 
 	if options.BufferSize != nil {
