@@ -1,8 +1,7 @@
-// Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
+// Package machine - Copyright © 2020 Jonathan Whitaker <github@whitaker.io>.
 //
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
-
 package machine
 
 import (
@@ -139,7 +138,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 			edge.Next(payload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -177,7 +176,7 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 			edge.Next(payload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -219,7 +218,7 @@ func (n nexter) Remove(id string, x Remover) Builder {
 			edge.Next(output...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -267,7 +266,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 			edge.Next(fr(payload...))
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -311,7 +310,7 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 			edge.Next(fr(payload...))
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(id, b.option)
+			edge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.next == nil {
 				next.next = next.loop
@@ -349,8 +348,8 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 			rightEdge.Next(rpayload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			leftEdge = b.option.Provider.New(id, b.option)
-			rightEdge = b.option.Provider.New(id, b.option)
+			leftEdge = b.option.Provider.New(ctx, id, b.option)
+			rightEdge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.left == nil {
 				next.left = next.loop
@@ -430,8 +429,8 @@ func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 			rightEdge.Next(rpayload...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
-			leftEdge = b.option.Provider.New(id, b.option)
-			rightEdge = b.option.Provider.New(id, b.option)
+			leftEdge = b.option.Provider.New(ctx, id, b.option)
+			rightEdge = b.option.Provider.New(ctx, id, b.option)
 
 			if next.loop != nil && next.right == nil {
 				next.right = next.loop
@@ -496,7 +495,7 @@ func (hs *httpStream) InjectionHandlers() map[string]fiber.Handler {
 func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	opt := defaultOptions.merge(options...)
 
-	edge := opt.Provider.New(id, opt)
+	var edge Edge
 
 	x := &builder{
 		errorChannel: make(chan error, 10000),
@@ -512,6 +511,8 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	}
 
 	x.connector = func(ctx context.Context, b *builder) error {
+		edge = opt.Provider.New(ctx, id, opt)
+
 		i := retriever(ctx)
 
 		go func() {
