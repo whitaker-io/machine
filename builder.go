@@ -536,6 +536,17 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 						payload[i] = packet
 					}
 
+					if errList := opt.validate(data...); len(errList) > 0 {
+						x.errorHandler(&Error{
+							Err:        fmt.Errorf("validation errors %v", errList),
+							VertexID:   id,
+							VertexType: "stream",
+							Packets:    payload,
+							Time:       time.Now(),
+						})
+						continue
+					}
+
 					x.input <- payload
 				}
 			}
@@ -549,6 +560,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 // NewHTTPStream a method that creates a Stream which takes in data
 // through a fiber.Handler
 func NewHTTPStream(id string, opts ...*Option) HTTPStream {
+	opt := defaultOptions.merge(opts...)
 	channel := make(chan []data.Data)
 
 	return &httpStream{
@@ -560,6 +572,11 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 				payload = []data.Data{packet}
 			} else if err := ctx.BodyParser(&payload); err != nil {
 				return ctx.SendStatus(http.StatusBadRequest)
+			} else if errList := opt.validate(payload...); len(errList) > 0 {
+				return ctx.Status(http.StatusBadRequest).JSON(map[string]interface{}{
+					"message": "validation failed",
+					"error":   errList,
+				})
 			}
 
 			channel <- deepCopy(payload)
@@ -578,6 +595,7 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 // NewWebsocketStream a method that creates a Stream which takes in data
 // through a fiber.Handler that runs a websocket
 func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
+	opt := defaultOptions.merge(opts...)
 	channel := make(chan []data.Data)
 
 	acceptedMessage := map[string]interface{}{
@@ -601,6 +619,15 @@ func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
 
 			if err != nil {
 				if err := c.WriteJSON(badMessage); err != nil {
+					break
+				}
+			}
+
+			if errList := opt.validate(payload...); len(errList) > 0 {
+				if err2 := c.WriteJSON(map[string]interface{}{
+					"message": "validation failed",
+					"errors":  errList,
+				}); err2 != nil {
 					break
 				}
 			}

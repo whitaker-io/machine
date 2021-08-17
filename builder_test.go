@@ -27,6 +27,13 @@ type testType struct {
 	Value int    `mapstructure:"value"`
 }
 
+var testListInvalidBase = []data.Data{
+	{
+		"__traceID": "test_trace_id",
+		"name":      "data0",
+	},
+}
+
 var testListBase = []data.Data{
 	{
 		"__traceID": "test_trace_id",
@@ -211,6 +218,7 @@ func Test_New(b *testing.T) {
 	m := NewStream("machine_id", func(c context.Context) chan []data.Data {
 		channel := make(chan []data.Data)
 		go func() {
+			channel <- deepCopy(testListInvalidBase)
 			for n := 0; n < count; n++ {
 				channel <- deepCopy(testListBase)
 			}
@@ -222,6 +230,19 @@ func Test_New(b *testing.T) {
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
+		&Option{Validators: map[string]ForkRule{
+			"name-test": func(d data.Data) bool {
+				if _, err := d.String("name"); err != nil {
+					return false
+				}
+
+				if _, err := d.Int("value"); err != nil {
+					return false
+				}
+
+				return true
+			},
+		}},
 	)
 
 	left, right := m.Builder().

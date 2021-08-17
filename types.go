@@ -124,8 +124,14 @@ type Option struct {
 	// Packets processed by the system.
 	// Default: true
 	Metrics *bool
-
+	// Provider determines the edge type to be used, logic for what type of edge
+	// for a given id is required if not using homogeneous edges
+	// Default: nil
 	Provider EdgeProvider
+	// Validators are are used to ensure the incoming Data is compliant
+	// they are run at the start of the stream before creation of Packets
+	// Default: nil
+	Validators map[string]ForkRule
 }
 
 // Retriever is a function that provides data to a generic Stream
@@ -210,6 +216,7 @@ func (o *Option) join(option *Option) *Option {
 		Metrics:    o.Metrics,
 		Span:       o.Span,
 		Provider:   o.Provider,
+		Validators: o.Validators,
 	}
 
 	if option.DeepCopy != nil {
@@ -238,6 +245,10 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.Provider != nil {
 		out.Provider = option.Provider
+	}
+
+	if option.Validators != nil {
+		out.Validators = option.Validators
 	}
 
 	return out
@@ -307,6 +318,30 @@ func boolP(v bool) *bool {
 
 func intP(v int) *int {
 	return &v
+}
+
+func (o *Option) validate(payload ...data.Data) [][]string {
+	list := make([][]string, len(payload))
+	failed := false
+	if o.Validators != nil {
+		for i, d := range payload {
+			for k, v := range o.Validators {
+				if !v(d) {
+					if len(list[i]) < 1 {
+						list[i] = []string{}
+					}
+					list[i] = append(list[i], k)
+					failed = true
+				}
+			}
+		}
+	}
+
+	if failed {
+		return list
+	}
+
+	return [][]string{}
 }
 
 func deepCopy(d []data.Data) []data.Data {
