@@ -536,6 +536,17 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 						payload[i] = packet
 					}
 
+					if err := opt.validate(data...); err != nil {
+						x.errorHandler(&Error{
+							Err:        err,
+							VertexID:   id,
+							VertexType: "stream",
+							Packets:    payload,
+							Time:       time.Now(),
+						})
+						continue
+					}
+
 					x.input <- payload
 				}
 			}
@@ -549,6 +560,7 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 // NewHTTPStream a method that creates a Stream which takes in data
 // through a fiber.Handler
 func NewHTTPStream(id string, opts ...*Option) HTTPStream {
+	opt := defaultOptions.merge(opts...)
 	channel := make(chan []data.Data)
 
 	return &httpStream{
@@ -560,6 +572,11 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 				payload = []data.Data{packet}
 			} else if err := ctx.BodyParser(&payload); err != nil {
 				return ctx.SendStatus(http.StatusBadRequest)
+			} else if err := opt.validate(payload...); err != nil {
+				return ctx.Status(http.StatusBadRequest).JSON(map[string]interface{}{
+					"message": "validation failed",
+					"error":   err.Error(),
+				})
 			}
 
 			channel <- deepCopy(payload)
@@ -578,6 +595,7 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 // NewWebsocketStream a method that creates a Stream which takes in data
 // through a fiber.Handler that runs a websocket
 func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
+	opt := defaultOptions.merge(opts...)
 	channel := make(chan []data.Data)
 
 	acceptedMessage := map[string]interface{}{
@@ -601,6 +619,15 @@ func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
 
 			if err != nil {
 				if err := c.WriteJSON(badMessage); err != nil {
+					break
+				}
+			}
+
+			if err := opt.validate(payload...); err != nil {
+				if err2 := c.WriteJSON(map[string]interface{}{
+					"message": "validation failed",
+					"error":   err.Error(),
+				}); err2 != nil {
 					break
 				}
 			}

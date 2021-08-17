@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/whitaker-io/data"
@@ -124,8 +125,14 @@ type Option struct {
 	// Packets processed by the system.
 	// Default: true
 	Metrics *bool
-
+	// Provider determines the edge type to be used, logic for what type of edge
+	// for a given id is required if not using homogeneous edges
+	// Default: nil
 	Provider EdgeProvider
+	// Validators are are used to ensure the incoming Data is compliant
+	// they are run at the start of the stream before creation of Packets
+	// Default: nil
+	Validators map[string]ForkRule
 }
 
 // Retriever is a function that provides data to a generic Stream
@@ -307,6 +314,20 @@ func boolP(v bool) *bool {
 
 func intP(v int) *int {
 	return &v
+}
+
+func (o *Option) validate(payload ...data.Data) error {
+	if o.Validators != nil {
+		for k, v := range o.Validators {
+			for _, d := range payload {
+				if !v(d) {
+					return fmt.Errorf("validator %s failed", k)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func deepCopy(d []data.Data) []data.Data {
