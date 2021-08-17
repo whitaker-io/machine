@@ -536,9 +536,9 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 						payload[i] = packet
 					}
 
-					if err := opt.validate(data...); err != nil {
+					if errList := opt.validate(data...); len(errList) > 0 {
 						x.errorHandler(&Error{
-							Err:        err,
+							Err:        fmt.Errorf("validation errors %v", errList),
 							VertexID:   id,
 							VertexType: "stream",
 							Packets:    payload,
@@ -572,10 +572,10 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 				payload = []data.Data{packet}
 			} else if err := ctx.BodyParser(&payload); err != nil {
 				return ctx.SendStatus(http.StatusBadRequest)
-			} else if err := opt.validate(payload...); err != nil {
+			} else if errList := opt.validate(payload...); len(errList) > 0 {
 				return ctx.Status(http.StatusBadRequest).JSON(map[string]interface{}{
 					"message": "validation failed",
-					"error":   err.Error(),
+					"error":   errList,
 				})
 			}
 
@@ -623,10 +623,10 @@ func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
 				}
 			}
 
-			if err := opt.validate(payload...); err != nil {
+			if errList := opt.validate(payload...); len(errList) > 0 {
 				if err2 := c.WriteJSON(map[string]interface{}{
 					"message": "validation failed",
-					"error":   err.Error(),
+					"errors":  errList,
 				}); err2 != nil {
 					break
 				}

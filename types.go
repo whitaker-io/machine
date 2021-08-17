@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/gob"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/whitaker-io/data"
@@ -217,6 +216,7 @@ func (o *Option) join(option *Option) *Option {
 		Metrics:    o.Metrics,
 		Span:       o.Span,
 		Provider:   o.Provider,
+		Validators: o.Validators,
 	}
 
 	if option.DeepCopy != nil {
@@ -245,6 +245,10 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.Provider != nil {
 		out.Provider = option.Provider
+	}
+
+	if option.Validators != nil {
+		out.Validators = option.Validators
 	}
 
 	return out
@@ -316,18 +320,28 @@ func intP(v int) *int {
 	return &v
 }
 
-func (o *Option) validate(payload ...data.Data) error {
+func (o *Option) validate(payload ...data.Data) [][]string {
+	list := make([][]string, len(payload))
+	failed := false
 	if o.Validators != nil {
-		for k, v := range o.Validators {
-			for _, d := range payload {
+		for i, d := range payload {
+			for k, v := range o.Validators {
 				if !v(d) {
-					return fmt.Errorf("validator %s failed", k)
+					if len(list[i]) < 1 {
+						list[i] = []string{}
+					}
+					list[i] = append(list[i], k)
+					failed = true
 				}
 			}
 		}
 	}
 
-	return nil
+	if failed {
+		return list
+	}
+
+	return [][]string{}
 }
 
 func deepCopy(d []data.Data) []data.Data {
