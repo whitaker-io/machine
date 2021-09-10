@@ -39,6 +39,7 @@ func (t *tester) Read(ctx context.Context) []data.Data {
 
   _ = enc.Encode(testListBase)
   _ = dec.Decode(&out)
+  
   return out
 }
 
