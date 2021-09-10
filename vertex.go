@@ -22,10 +22,10 @@ import (
 var (
 	meter         = global.Meter("machine")
 	tracer        = otel.GetTracerProvider().Tracer("machine")
-	inCounter     = metric.Must(meter).NewInt64ValueRecorder("incoming")
-	outCounter    = metric.Must(meter).NewInt64ValueRecorder("outgoing")
-	errorsCounter = metric.Must(meter).NewInt64ValueRecorder("errors")
-	batchDuration = metric.Must(meter).NewInt64ValueRecorder("duration")
+	inCounter     = metric.Must(meter).NewInt64Counter("incoming")
+	outCounter    = metric.Must(meter).NewInt64Counter("outgoing")
+	errorsCounter = metric.Must(meter).NewInt64Counter("errors")
+	batchDuration = metric.Must(meter).NewInt64Histogram("duration")
 )
 
 type vertex struct {
@@ -107,7 +107,7 @@ func (v *vertex) metrics(ctx context.Context) {
 		v.handler = func(payload []*Packet) {
 			runID := attribute.String("run_id", uuid.NewString())
 
-			inCounter.Record(ctx, int64(len(payload)), id, vType, runID)
+			inCounter.Add(ctx, int64(len(payload)), id, vType, runID)
 			start := time.Now()
 			h(payload)
 			duration := time.Since(start)
@@ -117,8 +117,8 @@ func (v *vertex) metrics(ctx context.Context) {
 					failures++
 				}
 			}
-			outCounter.Record(ctx, int64(len(payload)), id, vType, runID)
-			errorsCounter.Record(ctx, int64(failures), id, vType, runID)
+			outCounter.Add(ctx, int64(len(payload)), id, vType, runID)
+			errorsCounter.Add(ctx, int64(failures), id, vType, runID)
 			batchDuration.Record(ctx, int64(duration), id, vType, runID)
 		}
 	}
