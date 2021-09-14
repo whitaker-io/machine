@@ -171,20 +171,17 @@ func Benchmark_Test_New(b *testing.B) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
 	)
 
 	m.Builder().
-		Map("map_id", func(m data.Data) error {
+		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return nil
+			return m
 		}).
 		Publish("sender_id",
 			publishFN(func(d []data.Data) error {
@@ -226,7 +223,6 @@ func Test_New(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -246,13 +242,11 @@ func Test_New(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m data.Data) error {
+		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return nil
+			return m
 		}).
 		Sort("sort_id1", func(a, b data.Data) int {
 			return strings.Compare(a.MustString("name"), b.MustString("name"))
@@ -314,20 +308,17 @@ func Test_New2(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m data.Data) error {
+		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return nil
+			return m
 		}).
 		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
@@ -406,19 +397,17 @@ func Test_Panic(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m data.Data) error {
+		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return nil
+			return m
 		}).
 		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
@@ -443,7 +432,6 @@ func Test_Panic(b *testing.T) {
 	r2.Publish("sender_id2",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}),
 	)
@@ -451,7 +439,6 @@ func Test_Panic(b *testing.T) {
 	l3.Publish("sender_id3",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}),
 	)
@@ -499,7 +486,6 @@ func Test_Missing_Leaves(b *testing.T) {
 	left.Publish("sender_id",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}),
 	)
@@ -509,7 +495,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -522,7 +507,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -533,19 +517,16 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
 	)
 
-	m4.Builder().Map("map_id", func(m data.Data) error {
+	m4.Builder().Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
-			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
-		return nil
+		return m
 	})
 
 	m5 := NewStream("machine_id", func(c context.Context) chan []data.Data {
@@ -553,7 +534,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -568,7 +548,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -576,22 +555,18 @@ func Test_Missing_Leaves(b *testing.T) {
 
 	l6, r6 := m6.Builder().Fork("fork_id", ForkDuplicate)
 
-	l6.Map("map_id", func(m data.Data) error {
+	l6.Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
-			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
-		return nil
+		return m
 	})
 
-	r6.Map("map_id", func(m data.Data) error {
+	r6.Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
-			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
-		return nil
+		return m
 	})
 
 	m7 := NewStream("machine_id", func(c context.Context) chan []data.Data {
@@ -599,7 +574,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(1000)},
@@ -607,23 +581,63 @@ func Test_Missing_Leaves(b *testing.T) {
 
 	l7, r7 := m7.Builder().Fork("fork_id", ForkDuplicate)
 
-	l7.Map("map_id", func(m data.Data) error {
+	l7.Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
-			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
-		return nil
-	}).Publish("sender_id",
-		publishFN(func(d []data.Data) error {
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
-		}),
-	)
+		return m
+	}).
+		Publish("sender_id",
+			publishFN(func(d []data.Data) error {
+				b.Error("unexpected")
+				return nil
+			}),
+		)
 
 	r7.FoldLeft("fold_id2", func(d1, d2 data.Data) data.Data {
 		return d1
+	})
+
+	m8 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m8.Builder().Loop("loop_id", func(list []*Packet) (a []*Packet, b []*Packet) {
+		return []*Packet{}, list
+	})
+
+	m9 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m9.Builder().Sort("sort_id", func(a, b data.Data) int {
+		return 0
+	})
+
+	m10 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m10.Builder().Remove("remove_id", func(index int, d data.Data) bool {
+		return true
 	})
 
 	if err := m.Run(context.Background()); err == nil {
@@ -660,6 +674,21 @@ func Test_Missing_Leaves(b *testing.T) {
 		b.Error("expected error m7")
 		b.FailNow()
 	}
+
+	if err := m8.Run(context.Background()); err == nil {
+		b.Error("expected error m8")
+		b.FailNow()
+	}
+
+	if err := m9.Run(context.Background()); err == nil {
+		b.Error("expected error m9")
+		b.FailNow()
+	}
+
+	if err := m10.Run(context.Background()); err == nil {
+		b.Error("expected error m10")
+		b.FailNow()
+	}
 }
 
 func Test_Inject(b *testing.T) {
@@ -676,20 +705,17 @@ func Test_Inject(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(true)},
 		&Option{BufferSize: intP(0)},
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m data.Data) error {
+		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return fmt.Errorf("error")
+			return m
 		}).
 		FoldLeft("fold_idx", func(d1, d2 data.Data) data.Data {
 			return d1
@@ -700,12 +726,13 @@ func Test_Inject(b *testing.T) {
 		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
-		Fork("fork_id", ForkError)
+		Fork("fork_id", func(list []*Packet) (a []*Packet, b []*Packet) {
+			return []*Packet{}, list
+		})
 
 	left.Publish("sender_id",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}))
 
@@ -750,20 +777,18 @@ func Test_Loop(b *testing.T) {
 		return channel
 	},
 		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m data.Data) error {
+		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
 				b.FailNow()
-				return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 			}
-			return nil
+			return m
 		}).
 		Loop("loop_id",
 			func(list []*Packet) (a []*Packet, b []*Packet) {
@@ -781,54 +806,29 @@ func Test_Loop(b *testing.T) {
 				return
 			})
 
-	left2, _ := left.
-		Loop("loop_id2",
-			func(list []*Packet) (a []*Packet, b []*Packet) {
-				a = []*Packet{}
-				b = []*Packet{}
+	inside, _ := left.Loop("loop_id2",
+		func(list []*Packet) (a []*Packet, b []*Packet) {
+			a = []*Packet{}
+			b = []*Packet{}
 
-				for i, item := range list {
-					if i == 0 {
-						b = append(b, item)
-					} else {
-						a = append(a, item)
-					}
+			for i, item := range list {
+				if i == 0 {
+					b = append(b, item)
+				} else {
+					a = append(a, item)
 				}
+			}
 
-				return
-			},
-		)
-
-	left3, _ := left2.Fork("fork_id", ForkError)
-
-	_, right2 := left3.Fork("fork_id2",
-		func(list []*Packet) (a []*Packet, b []*Packet) {
-			return []*Packet{}, list
+			return
 		},
 	)
 
-	left4, right3 := right2.Fork("fork_id3",
-		func(list []*Packet) (a []*Packet, b []*Packet) {
-			return []*Packet{}, list
-		},
-	)
-
-	left5, right4 := left4.Fork("fork_id4", ForkError)
-	left5.FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
-		return d1
-	})
-
-	right4.FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
-		return d1
-	})
-
-	right3.Map("map_id2", func(m data.Data) error {
+	inside.Map("map_id2", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
 			b.FailNow()
-			return fmt.Errorf("incorrect data have %v want %v", m, "name field")
 		}
-		return nil
+		return m
 	})
 
 	right.Publish("sender_id",
@@ -861,7 +861,6 @@ func Test_Pipe_Sub(b *testing.T) {
 	s := NewSubscriptionStream("stream_id", t, 5*time.Millisecond,
 		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(false)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
@@ -916,27 +915,25 @@ func Test_Pipe_HTTP(b *testing.T) {
 	s := NewHTTPStream("http_id",
 		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
 	)
 
 	s.Builder().
-		Map("map_id",
-			func(m data.Data) error {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-					return fmt.Errorf("incorrect data have %v want %v", m, "name field")
-				}
+		Map("map_id", func(m data.Data) data.Data {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				b.FailNow()
+			}
+			return m
+		}).
+		Publish("publish_id",
+			publishFN(func(d []data.Data) error {
+				out <- d
 				return nil
-			},
-		).Publish("publish_id",
-		publishFN(func(d []data.Data) error {
-			out <- d
-			return nil
-		}),
-	)
+			}),
+		)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -1037,7 +1034,6 @@ func Test_Pipe_Websocket(b *testing.T) {
 	s := NewWebsocketStream("websocket_id",
 		&Option{DeepCopy: boolP(true)},
 		&Option{FIFO: boolP(true)},
-		&Option{Injectable: boolP(true)},
 		&Option{Metrics: boolP(true)},
 		&Option{Span: boolP(false)},
 		&Option{BufferSize: intP(0)},
