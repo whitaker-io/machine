@@ -49,7 +49,6 @@ var (
 	defaultOptions = &Option{
 		DeepCopy:   boolP(false),
 		FIFO:       boolP(false),
-		Injectable: boolP(true),
 		Metrics:    boolP(true),
 		Span:       boolP(true),
 		BufferSize: intP(0),
@@ -106,11 +105,6 @@ type Option struct {
 	// to be processed before starting the next.
 	// Default: false
 	FIFO *bool
-	// Injectable controls whether the vertex accepts injection calls
-	// if set to false the data will be logged and processing will not
-	// take place.
-	// Default: true
-	Injectable *bool
 	// BufferSize sets the buffer size on the edge channels between the
 	// vertices, this setting can be useful when processing large amounts
 	// of data with FIFO turned on.
@@ -128,7 +122,7 @@ type Option struct {
 	// for a given id is required if not using homogeneous edges
 	// Default: nil
 	Provider EdgeProvider
-	// Validators are are used to ensure the incoming Data is compliant
+	// Validators are used to ensure the incoming Data is compliant
 	// they are run at the start of the stream before creation of Packets
 	// Default: nil
 	Validators map[string]ForkRule
@@ -139,10 +133,9 @@ type Option struct {
 type Retriever func(ctx context.Context) chan []data.Data
 
 // Applicative is a function that is applied on an individual
-// basis for each Packet in the payload. The data may be modified
-// or checked for correctness. Any resulting error is combined
-// with current errors in the wrapping Packet.
-type Applicative func(d data.Data) error
+// basis for each Packet in the payload. The resulting data replaces
+// the old data
+type Applicative func(d data.Data) data.Data
 
 // Fold is a function used to combine a payload into a single Packet.
 // It may be used with either a Fold Left or Fold Right operation,
@@ -184,19 +177,6 @@ type edge struct {
 	channel chan []*Packet
 }
 
-func (p *Packet) apply(id string, a Applicative) {
-	p.handleError(id, a(p.Data))
-}
-
-func (p *Packet) handleError(id string, err error) {
-	if err != nil {
-		if p.Errors == nil {
-			p.Errors = map[string]error{}
-		}
-		p.Errors[id] = err
-	}
-}
-
 func (o *Option) merge(options ...*Option) *Option {
 	if len(options) < 1 {
 		return o
@@ -212,7 +192,6 @@ func (o *Option) join(option *Option) *Option {
 		DeepCopy:   o.DeepCopy,
 		FIFO:       o.FIFO,
 		BufferSize: o.BufferSize,
-		Injectable: o.Injectable,
 		Metrics:    o.Metrics,
 		Span:       o.Span,
 		Provider:   o.Provider,
@@ -229,10 +208,6 @@ func (o *Option) join(option *Option) *Option {
 
 	if option.BufferSize != nil {
 		out.BufferSize = option.BufferSize
-	}
-
-	if option.Injectable != nil {
-		out.Injectable = option.Injectable
 	}
 
 	if option.Metrics != nil {

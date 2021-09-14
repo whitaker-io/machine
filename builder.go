@@ -132,7 +132,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 		vertexType: "map",
 		handler: func(payload []*Packet) {
 			for _, packet := range payload {
-				packet.apply(id, x)
+				packet.Data = x(packet.Data)
 			}
 
 			edge.Next(payload...)

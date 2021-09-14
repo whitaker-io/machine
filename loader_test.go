@@ -39,7 +39,7 @@ func (t *tester) Read(ctx context.Context) []data.Data {
 
   _ = enc.Encode(testListBase)
   _ = dec.Decode(&out)
-  
+
   return out
 }
 
@@ -190,8 +190,8 @@ func (t *testPlugin) retriever(map[string]interface{}) Retriever {
 }
 
 func (t *testPlugin) applicative(map[string]interface{}) Applicative {
-  return func(data data.Data) error {
-    return nil
+  return func(data data.Data) data.Data {
+    return data
   }
 }
 
