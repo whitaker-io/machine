@@ -180,7 +180,6 @@ func Benchmark_Test_New(b *testing.B) {
 		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
 			}
 			return m
 		}).
@@ -246,7 +245,6 @@ func Test_New(b *testing.T) {
 		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
 			}
 			return m
 		}).
@@ -319,7 +317,6 @@ func Test_New2(b *testing.T) {
 		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
 			}
 			return m
 		}).
@@ -409,7 +406,6 @@ func Test_Panic(b *testing.T) {
 		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
 			}
 			return m
 		}).
@@ -436,7 +432,6 @@ func Test_Panic(b *testing.T) {
 	r2.Publish("sender_id2",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}),
 	)
@@ -444,7 +439,6 @@ func Test_Panic(b *testing.T) {
 	l3.Publish("sender_id3",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}),
 	)
@@ -492,7 +486,6 @@ func Test_Missing_Leaves(b *testing.T) {
 	left.Publish("sender_id",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}),
 	)
@@ -532,7 +525,6 @@ func Test_Missing_Leaves(b *testing.T) {
 	m4.Builder().Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
 		}
 		return m
 	})
@@ -566,7 +558,6 @@ func Test_Missing_Leaves(b *testing.T) {
 	l6.Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
 		}
 		return m
 	})
@@ -574,7 +565,6 @@ func Test_Missing_Leaves(b *testing.T) {
 	r6.Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
 		}
 		return m
 	})
@@ -594,20 +584,60 @@ func Test_Missing_Leaves(b *testing.T) {
 	l7.Map("map_id", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
-			b.FailNow()
 		}
 		return m
 	}).
 		Publish("sender_id",
 			publishFN(func(d []data.Data) error {
 				b.Error("unexpected")
-				b.FailNow()
 				return nil
 			}),
 		)
 
 	r7.FoldLeft("fold_id2", func(d1, d2 data.Data) data.Data {
 		return d1
+	})
+
+	m8 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m8.Builder().Loop("loop_id", func(list []*Packet) (a []*Packet, b []*Packet) {
+		return []*Packet{}, list
+	})
+
+	m9 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m9.Builder().Sort("sort_id", func(a, b data.Data) int {
+		return 0
+	})
+
+	m10 := NewStream("machine_id", func(c context.Context) chan []data.Data {
+		channel := make(chan []data.Data)
+		return channel
+	},
+		&Option{FIFO: boolP(true)},
+		&Option{Metrics: boolP(true)},
+		&Option{Span: boolP(true)},
+		&Option{BufferSize: intP(1000)},
+	)
+
+	m10.Builder().Remove("remove_id", func(index int, d data.Data) bool {
+		return true
 	})
 
 	if err := m.Run(context.Background()); err == nil {
@@ -644,6 +674,21 @@ func Test_Missing_Leaves(b *testing.T) {
 		b.Error("expected error m7")
 		b.FailNow()
 	}
+
+	if err := m8.Run(context.Background()); err == nil {
+		b.Error("expected error m8")
+		b.FailNow()
+	}
+
+	if err := m9.Run(context.Background()); err == nil {
+		b.Error("expected error m9")
+		b.FailNow()
+	}
+
+	if err := m10.Run(context.Background()); err == nil {
+		b.Error("expected error m10")
+		b.FailNow()
+	}
 }
 
 func Test_Inject(b *testing.T) {
@@ -669,7 +714,6 @@ func Test_Inject(b *testing.T) {
 		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
-				b.FailNow()
 			}
 			return m
 		}).
@@ -682,12 +726,13 @@ func Test_Inject(b *testing.T) {
 		FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
 			return d1
 		}).
-		Fork("fork_id", ForkError)
+		Fork("fork_id", func(list []*Packet) (a []*Packet, b []*Packet) {
+			return []*Packet{}, list
+		})
 
 	left.Publish("sender_id",
 		publishFN(func(d []data.Data) error {
 			b.Error("unexpected")
-			b.FailNow()
 			return nil
 		}))
 
@@ -761,48 +806,24 @@ func Test_Loop(b *testing.T) {
 				return
 			})
 
-	left2, _ := left.
-		Loop("loop_id2",
-			func(list []*Packet) (a []*Packet, b []*Packet) {
-				a = []*Packet{}
-				b = []*Packet{}
+	inside, _ := left.Loop("loop_id2",
+		func(list []*Packet) (a []*Packet, b []*Packet) {
+			a = []*Packet{}
+			b = []*Packet{}
 
-				for i, item := range list {
-					if i == 0 {
-						b = append(b, item)
-					} else {
-						a = append(a, item)
-					}
+			for i, item := range list {
+				if i == 0 {
+					b = append(b, item)
+				} else {
+					a = append(a, item)
 				}
+			}
 
-				return
-			},
-		)
-
-	left3, _ := left2.Fork("fork_id", ForkError)
-
-	_, right2 := left3.Fork("fork_id2",
-		func(list []*Packet) (a []*Packet, b []*Packet) {
-			return []*Packet{}, list
+			return
 		},
 	)
 
-	left4, right3 := right2.Fork("fork_id3",
-		func(list []*Packet) (a []*Packet, b []*Packet) {
-			return []*Packet{}, list
-		},
-	)
-
-	left5, right4 := left4.Fork("fork_id4", ForkError)
-	left5.FoldLeft("fold_id1", func(d1, d2 data.Data) data.Data {
-		return d1
-	})
-
-	right4.FoldRight("fold_id2", func(d1, d2 data.Data) data.Data {
-		return d1
-	})
-
-	right3.Map("map_id2", func(m data.Data) data.Data {
+	inside.Map("map_id2", func(m data.Data) data.Data {
 		if _, ok := m["name"]; !ok {
 			b.Errorf("packet missing name %v", m)
 			b.FailNow()

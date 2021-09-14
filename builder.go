@@ -122,6 +122,12 @@ func (m *builder) Errors() chan error {
 	return m.errorChannel
 }
 
+func (n *node) closeLoop() {
+	if n.loop != nil && n.next == nil {
+		n.next = n.loop
+	}
+}
+
 // Map apply a mutation, options default to the set used when creating the Stream
 func (n nexter) Map(id string, x Applicative) Builder {
 	next := &node{}
@@ -140,9 +146,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 		connector: func(ctx context.Context, b *builder) error {
 			edge = b.option.Provider.New(ctx, id, b.option)
 
-			if next.loop != nil && next.next == nil {
-				next.next = next.loop
-			}
+			next.closeLoop()
 
 			if next.next == nil {
 				return fmt.Errorf("non-terminated map")
@@ -178,9 +182,7 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 		connector: func(ctx context.Context, b *builder) error {
 			edge = b.option.Provider.New(ctx, id, b.option)
 
-			if next.loop != nil && next.next == nil {
-				next.next = next.loop
-			}
+			next.closeLoop()
 
 			if next.next == nil {
 				return fmt.Errorf("non-terminated sort")
@@ -220,12 +222,10 @@ func (n nexter) Remove(id string, x Remover) Builder {
 		connector: func(ctx context.Context, b *builder) error {
 			edge = b.option.Provider.New(ctx, id, b.option)
 
-			if next.loop != nil && next.next == nil {
-				next.next = next.loop
-			}
+			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated sort")
+				return fmt.Errorf("non-terminated remove")
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -268,9 +268,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 		connector: func(ctx context.Context, b *builder) error {
 			edge = b.option.Provider.New(ctx, id, b.option)
 
-			if next.loop != nil && next.next == nil {
-				next.next = next.loop
-			}
+			next.closeLoop()
 
 			if next.next == nil {
 				return fmt.Errorf("non-terminated fold")
@@ -312,9 +310,7 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 		connector: func(ctx context.Context, b *builder) error {
 			edge = b.option.Provider.New(ctx, id, b.option)
 
-			if next.loop != nil && next.next == nil {
-				next.next = next.loop
-			}
+			next.closeLoop()
 
 			if next.next == nil {
 				return fmt.Errorf("non-terminated node")
