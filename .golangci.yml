@@ -27,8 +27,6 @@ linters-settings:
       - ifElseChain
   gocyclo:
     min-complexity: 15
-  golint:
-    min-confidence: 0
   gomnd:
     settings:
       mnd:
@@ -65,19 +63,18 @@ linters:
     - gocyclo
     - gofmt
     - goimports
-    - golint
+    - revive
     - goprintffuncname
     - gosec
     - gosimple
     - govet
     - ineffassign
-    - interfacer
     - lll
     - misspell
     - nakedret
     - nolintlint
     - rowserrcheck
-    - scopelint
+    - exportloopref
     - staticcheck
     - structcheck
     - stylecheck
