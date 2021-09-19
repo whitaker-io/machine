@@ -4,9 +4,9 @@ on:
   push:
     branches: [master]
     paths:
-      - '**.go'
-      - '**.mod'
-      - '**.sum'
+      - "**.go"
+      - "**.mod"
+      - "**.sum"
   pull_request:
     branches: [master]
 
@@ -27,7 +27,7 @@ jobs:
 
       - name: Get dependencies
         run: go mod vendor
-        
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v2.5.2
         with:
@@ -41,12 +41,11 @@ jobs:
       - name: Coverage
         uses: brpaz/godacov-action@v1.1.1
         with:
-            reportPath: 'coverage.out'
-            codacyToken: ${{ secrets.CODACY_TOKEN }}
-            commitId: ${{ github.sha }}
-
-      - name: Bump version and push tag
-        if: github.ref == 'refs/heads/master'
-        uses: mathieudutour/github-tag-action@v5.6
-        with:
-          github_token: ${{ secrets.token }}
+          reportPath: "coverage.out"
+          codacyToken: ${{ secrets.CODACY_TOKEN }}
+          commitId: ${{ github.sha }}
+      # - name: Bump version and push tag
+      #   if: github.ref == 'refs/heads/master'
+      #   uses: mathieudutour/github-tag-action@v5.6
+      #   with:
+      #     github_token: ${{ secrets.token }}
