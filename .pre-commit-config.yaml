@@ -1,8 +1,4 @@
 repos:
--   repo: https://github.com/golangci/golangci-lint
-    rev: v1.42.1
-    hooks:
-    -   id: golangci-lint
 - repo: git://github.com/dnephin/pre-commit-golang
   rev: master
   hooks:
