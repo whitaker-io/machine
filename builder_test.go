@@ -22,11 +22,6 @@ import (
 	"github.com/whitaker-io/data"
 )
 
-type testType struct {
-	Name  string `mapstructure:"name"`
-	Value int    `mapstructure:"value"`
-}
-
 var testListInvalidBase = []data.Data{
 	{
 		"__traceID": "test_trace_id",
@@ -150,8 +145,6 @@ var testPayloadBase = []*Packet{
 		},
 	},
 }
-
-var bufferSize = 0
 
 func deepCopyList(data []*Packet) []*Packet {
 	out := []*Packet{}
@@ -1058,7 +1051,11 @@ func Test_Pipe_Websocket(b *testing.T) {
 	}()
 
 	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:5000/test", http.Header{})
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			fmt.Printf("error closing websocket - %v", err)
+		}
+	}()
 
 	if err != nil || resp.StatusCode != fiber.StatusSwitchingProtocols {
 		b.Error(err)

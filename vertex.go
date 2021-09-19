@@ -9,9 +9,9 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -21,11 +21,9 @@ import (
 
 var (
 	meter         = global.Meter("machine")
-	tracer        = otel.GetTracerProvider().Tracer("machine")
-	inCounter     = metric.Must(meter).NewInt64Counter("incoming")
-	outCounter    = metric.Must(meter).NewInt64Counter("outgoing")
-	errorsCounter = metric.Must(meter).NewInt64Counter("errors")
-	batchDuration = metric.Must(meter).NewInt64Histogram("duration")
+	inCounter     = metric.Must(meter).NewInt64Counter("/machine/vertex/count")
+	errorsCounter = metric.Must(meter).NewInt64Counter("/machine/vertex/errors")
+	batchDuration = metric.Must(meter).NewInt64Histogram("/machine/vertex/duration")
 )
 
 type vertex struct {
@@ -63,16 +61,17 @@ func (v *vertex) cascade(ctx context.Context, b *builder, incoming Edge) error {
 		return err
 	}
 
-	v.metrics(ctx)
-	v.span(ctx)
 	v.deepCopy()
 	v.recover(b)
+	v.metrics(ctx)
+	v.span(ctx)
 	v.run(ctx)
 
 	return nil
 }
 
 func (v *vertex) span(ctx context.Context) {
+	tracer := otel.GetTracerProvider().Tracer("machine")
 	h := v.handler
 
 	vType := trace.WithAttributes(attribute.String("vertex_type", v.vertexType))
@@ -89,7 +88,7 @@ func (v *vertex) span(ctx context.Context) {
 
 			for _, packet := range payload {
 				if _, ok := packet.Errors[v.id]; ok {
-					spans[packet.ID].AddEvent("error")
+					spans[packet.ID].RecordError(packet.Errors[v.id])
 				}
 				spans[packet.ID].End()
 			}
@@ -101,13 +100,20 @@ func (v *vertex) metrics(ctx context.Context) {
 	if *v.builder.option.Metrics {
 		h := v.handler
 
-		id := attribute.String("vertex_id", v.id)
-		vType := attribute.String("vertex_type", v.vertexType)
+		attributes := []attribute.KeyValue{
+			attribute.String("/machine/vertex/id", v.id),
+			attribute.String("/machine/vertex/type", v.vertexType),
+			attribute.String("g.co/r/k8s_container/project_id", os.Getenv("GOOGLE_CLOUD_PROJECT")),
+			attribute.String("g.co/r/k8s_container/cluster_name", os.Getenv("CLUSTER_NAME")),
+			attribute.String("g.co/r/k8s_container/namespace", os.Getenv("NAMESPACE")),
+			attribute.String("g.co/r/k8s_container/pod_name", os.Getenv("POD_NAME")),
+			attribute.String("g.co/r/k8s_container/container_name", os.Getenv("CONTAINER_NAME")),
+			attribute.String("service.name", os.Getenv("POD_NAME")),
+			attribute.String("http.host", os.Getenv("HOSTNAME")),
+		}
 
 		v.handler = func(payload []*Packet) {
-			runID := attribute.String("run_id", uuid.NewString())
-
-			inCounter.Add(ctx, int64(len(payload)), id, vType, runID)
+			inCounter.Add(ctx, int64(len(payload)), attributes...)
 			start := time.Now()
 			h(payload)
 			duration := time.Since(start)
@@ -117,9 +123,9 @@ func (v *vertex) metrics(ctx context.Context) {
 					failures++
 				}
 			}
-			outCounter.Add(ctx, int64(len(payload)), id, vType, runID)
-			errorsCounter.Add(ctx, int64(failures), id, vType, runID)
-			batchDuration.Record(ctx, int64(duration), id, vType, runID)
+
+			errorsCounter.Add(ctx, int64(failures), attributes...)
+			batchDuration.Record(ctx, int64(duration), attributes...)
 		}
 	}
 }

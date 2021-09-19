@@ -28,8 +28,6 @@ func (p publishFN) Send(payload []data.Data) error {
 
 type tester struct {
   close error
-  join  error
-  leave error
 }
 
 func (t *tester) Read(ctx context.Context) []data.Data {
