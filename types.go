@@ -137,8 +137,7 @@ type Retriever func(ctx context.Context) chan []data.Data
 // the old data
 type Applicative func(d data.Data) data.Data
 
-
-// Window is a function that is applied to the entire payload. 
+// Window is a function that is applied to the entire payload.
 // The resulting data replaces the old data
 type Window func(list ...*Packet) []*Packet
 
