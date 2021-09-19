@@ -25,9 +25,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get dependencies
-        run: go mod vendor
-
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v2.5.2
         with:
@@ -35,6 +32,9 @@ jobs:
           github-token: ${{ github.token }}
           only-new-issues: true
 
+      - name: Get dependencies
+        run: go mod vendor
+        
       - name: Go Test
         run: go test -timeout 120s -coverprofile=coverage.out
 
