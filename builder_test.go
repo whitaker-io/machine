@@ -1050,10 +1050,10 @@ func Test_Pipe_Websocket(b *testing.T) {
 		if err := s.Run(ctx); err != nil {
 			b.Error(err)
 		}
-		app.Listen("localhost:5001")
+		app.Listen("localhost:3000")
 	}()
 
-	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:5001/test", http.Header{})
+	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:3000/test", http.Header{})
 	defer func() {
 		if err := conn.Close(); err != nil {
 			fmt.Printf("error closing websocket - %v", err)
