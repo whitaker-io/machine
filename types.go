@@ -137,6 +137,10 @@ type Retriever func(ctx context.Context) chan []data.Data
 // the old data
 type Applicative func(d data.Data) data.Data
 
+// Window is a function that is applied to the entire payload.
+// The resulting data replaces the old data
+type Window func(list ...*Packet) []*Packet
+
 // Fold is a function used to combine a payload into a single Packet.
 // It may be used with either a Fold Left or Fold Right operation,
 // which starts at the corresponding side and moves through the payload.

@@ -235,6 +235,9 @@ func Test_New(b *testing.T) {
 	)
 
 	left, right := m.Builder().
+		Window("window_id", func(list ...*Packet) []*Packet {
+			return list
+		}).
 		Map("map_id", func(m data.Data) data.Data {
 			if _, ok := m["name"]; !ok {
 				b.Errorf("packet missing name %v", m)
@@ -1047,10 +1050,10 @@ func Test_Pipe_Websocket(b *testing.T) {
 		if err := s.Run(ctx); err != nil {
 			b.Error(err)
 		}
-		app.Listen("localhost:5000")
+		app.Listen("localhost:3000")
 	}()
 
-	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:5000/test", http.Header{})
+	conn, resp, err := websocket.DefaultDialer.Dial("ws://localhost:3000/test", http.Header{})
 	defer func() {
 		if err := conn.Close(); err != nil {
 			fmt.Printf("error closing websocket - %v", err)

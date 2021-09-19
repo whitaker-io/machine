@@ -147,6 +147,8 @@ func LoadHTTP(serialization *StreamSerialization) (HTTPStream, error) {
 func (vs *VertexSerialization) load(builder Builder) error {
 	if next, ok := vs.next["map"]; ok {
 		return next.load(builder.Map(next.ID, next.applicative()))
+	} else if next, ok := vs.next["window"]; ok {
+		return next.load(builder.Window(next.ID, next.window()))
 	} else if next, ok := vs.next["fold_left"]; ok {
 		return next.load(builder.FoldLeft(next.ID, next.fold()))
 	} else if next, ok := vs.next["fold_right"]; ok {
@@ -216,6 +218,16 @@ func (vs *VertexSerialization) applicative() Applicative {
 	}
 
 	panic(fmt.Errorf("invalid plugin type not applicative"))
+}
+
+func (vs *VertexSerialization) window() Window {
+	if sym, err := vs.Provider.load(); err != nil {
+		panic(err)
+	} else if x, ok := sym.(Window); ok {
+		return x
+	}
+
+	panic(fmt.Errorf("invalid plugin type not window"))
 }
 
 func (vs *VertexSerialization) fold() Fold {

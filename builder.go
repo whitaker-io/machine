@@ -45,6 +45,7 @@ type Stream interface {
 // Builder is the interface provided for creating a data processing stream.
 type Builder interface {
 	Map(id string, a Applicative) Builder
+	Window(id string, x Window) Builder
 	FoldLeft(id string, f Fold) Builder
 	FoldRight(id string, f Fold) Builder
 	Fork(id string, f Fork) (Builder, Builder)
@@ -142,6 +143,38 @@ func (n nexter) Map(id string, x Applicative) Builder {
 			}
 
 			edge.Next(payload...)
+		},
+		connector: func(ctx context.Context, b *builder) error {
+			edge = b.option.Provider.New(ctx, id, b.option)
+
+			next.closeLoop()
+
+			if next.next == nil {
+				return fmt.Errorf("non-terminated map")
+			}
+			return next.next.cascade(ctx, b, edge)
+		},
+	}
+
+	next = n(next)
+
+	return nexter(func(n *node) *node {
+		n.loop = next.loop
+		next.next = n
+		return n
+	})
+}
+
+// Window is a method to apply an operation to the entire incoming payload
+func (n nexter) Window(id string, x Window) Builder {
+	next := &node{}
+	var edge Edge
+
+	next.vertex = vertex{
+		id:         id,
+		vertexType: "map",
+		handler: func(payload []*Packet) {
+			edge.Next(x(payload...)...)
 		},
 		connector: func(ctx context.Context, b *builder) error {
 			edge = b.option.Provider.New(ctx, id, b.option)
