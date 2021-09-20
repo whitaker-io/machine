@@ -301,21 +301,43 @@ func (vs *VertexSerialization) fromMap(typeName string, m map[string]interface{}
 	return vs.handleNext(m)
 }
 
+var nextMap = map[string]bool{
+	"map":        true,
+	"window":     true,
+	"fold_left":  true,
+	"fold_right": true,
+	"sort":       true,
+	"remove":     true,
+	"publish":    true,
+	"fork":       true,
+	"loop":       true,
+}
+
+var leftMap = map[string]bool{
+	"left": true,
+	"in":   true,
+}
+
+var rightMap = map[string]bool{
+	"right": true,
+	"out":   true,
+}
+
 func (vs *VertexSerialization) handleNext(m map[string]interface{}) error {
 	var err error
 
 	for k, v := range m {
 		if x, ok := v.(map[string]interface{}); ok {
-			if k == "map" || k == "window" || k == "fold_left" || k == "fold_right" || k == "sort" || k == "remove" || k == "publish" || k == "fork" || k == "loop" {
+			if _, exists := nextMap[k]; exists {
 				vs.next, err = fromMap(k, x)
 				return err
-			} else if k == "left" || k == "in" {
+			} else if _, exists := leftMap[k]; exists {
 				vs.left, err = handleSplit(x)
 
 				if err != nil {
 					return err
 				}
-			} else if k == "right" || k == "out" {
+			} else if _, exists := rightMap[k]; exists {
 				vs.right, err = handleSplit(x)
 
 				if err != nil {
