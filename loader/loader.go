@@ -306,37 +306,16 @@ func (vs *VertexSerialization) handleNext(m map[string]interface{}) error {
 
 	for k, v := range m {
 		if x, ok := v.(map[string]interface{}); ok {
-			switch k {
-			case "map":
-				fallthrough
-			case "window":
-				fallthrough
-			case "fold_left":
-				fallthrough
-			case "fold_right":
-				fallthrough
-			case "sort":
-				fallthrough
-			case "remove":
-				fallthrough
-			case "publish":
-				fallthrough
-			case "fork":
-				fallthrough
-			case "loop":
+			if k == "map" || k == "window" || k == "fold_left" || k == "fold_right" || k == "sort" || k == "remove" || k == "publish" || k == "fork" || k == "loop" {
 				vs.next, err = fromMap(k, x)
 				return err
-			case "left":
-				fallthrough
-			case "in":
+			} else if k == "left" || k == "in" {
 				vs.left, err = handleSplit(x)
 
 				if err != nil {
 					return err
 				}
-			case "right":
-				fallthrough
-			case "out":
+			} else if k == "right" || k == "out" {
 				vs.right, err = handleSplit(x)
 
 				if err != nil {
