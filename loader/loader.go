@@ -292,33 +292,16 @@ func (vs *VertexSerialization) fromMap(typeName string, m map[string]interface{}
 		return fmt.Errorf("%v missing id", vs)
 	}
 
-	provider, exists := m["provider"]
+	var err error
 
-	if x, isMap := provider.(map[string]interface{}); exists && isMap {
-		l := &loader{}
-
-		var err error
-
-		if l.typeName, err = data.Data(x).String("type"); err != nil {
-			return err
-		} else if l.payload, err = data.Data(x).String("payload"); err != nil {
-			return err
-		} else if l.reference, err = data.Data(x).String("symbol"); err != nil {
-			return err
-		}
-		l.attributes = data.Data(x).MapStringInterfaceOr("attributes", map[string]interface{}{})
-
-		vs.loadable = toLoadable(typeName, l)
-	} else if typeName == "http" {
-		vs.loadable = &httpLoader{}
-	} else if typeName == "websocket" {
-		vs.loadable = &websocketLoader{}
-	} else {
-		return fmt.Errorf("%s missing provider", vs.ID)
+	if vs.loadable, err = providerFromMap(vs.ID, typeName, m); err != nil {
+		return err
 	}
 
-	delete(m, "provider")
+	return vs.handleNext(m)
+}
 
+func (vs *VertexSerialization) handleNext(m map[string]interface{}) error {
 	var err error
 
 	for k, v := range m {
@@ -346,13 +329,7 @@ func (vs *VertexSerialization) fromMap(typeName string, m map[string]interface{}
 			case "left":
 				fallthrough
 			case "in":
-				key, val, hErr := handleSplit(x)
-
-				if hErr != nil {
-					return err
-				}
-
-				vs.left, err = fromMap(key, val)
+				vs.left, err = handleSplit(x)
 
 				if err != nil {
 					return err
@@ -360,13 +337,7 @@ func (vs *VertexSerialization) fromMap(typeName string, m map[string]interface{}
 			case "right":
 				fallthrough
 			case "out":
-				key, val, hErr := handleSplit(x)
-
-				if hErr != nil {
-					return err
-				}
-
-				vs.right, err = fromMap(key, val)
+				vs.right, err = handleSplit(x)
 
 				if err != nil {
 					return err
@@ -375,7 +346,36 @@ func (vs *VertexSerialization) fromMap(typeName string, m map[string]interface{}
 		}
 	}
 
-	return err
+	return nil
+}
+
+func providerFromMap(id, typeName string, m map[string]interface{}) (loadable, error) {
+	provider, exists := m["provider"]
+
+	if x, isMap := provider.(map[string]interface{}); exists && isMap {
+		l := &loader{}
+
+		var err error
+
+		if l.typeName, err = data.Data(x).String("type"); err != nil {
+			return nil, err
+		} else if l.payload, err = data.Data(x).String("payload"); err != nil {
+			return nil, err
+		} else if l.reference, err = data.Data(x).String("symbol"); err != nil {
+			return nil, err
+		}
+		l.attributes = data.Data(x).MapStringInterfaceOr("attributes", map[string]interface{}{})
+
+		return toLoadable(typeName, l), nil
+	} else if typeName == "http" {
+		return &httpLoader{}, nil
+	} else if typeName == "websocket" {
+		return &websocketLoader{}, nil
+	}
+
+	delete(m, "provider")
+
+	return nil, fmt.Errorf("%s missing provider", id)
 }
 
 func fromMap(typeName string, m map[string]interface{}) (*VertexSerialization, error) {
@@ -425,12 +425,12 @@ func toLoadable(typeName string, l *loader) loadable {
 	return nil
 }
 
-func handleSplit(x map[string]interface{}) (string, map[string]interface{}, error) {
+func handleSplit(x map[string]interface{}) (*VertexSerialization, error) {
 	for k, v := range x {
 		if val, ok := v.(map[string]interface{}); ok {
-			return k, val, nil
+			return fromMap(k, val)
 		}
-		return "", nil, fmt.Errorf("invalid type")
+		return nil, fmt.Errorf("invalid type")
 	}
-	return "", nil, fmt.Errorf("missing type")
+	return nil, fmt.Errorf("missing type")
 }
