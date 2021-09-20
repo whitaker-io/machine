@@ -3,7 +3,6 @@ repos:
     rev: master
     hooks:
       - id: go-fmt
-      - id: go-vet
       - id: golangci-lint
       - id: go-unit-tests
       - id: go-build

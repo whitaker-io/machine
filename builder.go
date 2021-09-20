@@ -89,7 +89,7 @@ func (m *builder) ID() string {
 // beginning of every vertex.
 func (m *builder) Run(ctx context.Context) error {
 	if m.next == nil {
-		return fmt.Errorf("non-terminated builder")
+		return fmt.Errorf("non-terminated builder %s", m.id)
 	}
 
 	return m.cascade(ctx, m, &edge{})
@@ -150,7 +150,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated map")
+				return fmt.Errorf("non-terminated map %s", id)
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -182,7 +182,7 @@ func (n nexter) Window(id string, x Window) Builder {
 			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated map")
+				return fmt.Errorf("non-terminated window %s", id)
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -218,7 +218,7 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated sort")
+				return fmt.Errorf("non-terminated sort %s", id)
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -258,7 +258,7 @@ func (n nexter) Remove(id string, x Remover) Builder {
 			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated remove")
+				return fmt.Errorf("non-terminated remove %s", id)
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -304,7 +304,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated fold")
+				return fmt.Errorf("non-terminated fold left %s", id)
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -346,7 +346,7 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 			next.closeLoop()
 
 			if next.next == nil {
-				return fmt.Errorf("non-terminated node")
+				return fmt.Errorf("non-terminated fold right %s", id)
 			}
 			return next.next.cascade(ctx, b, edge)
 		},
@@ -389,7 +389,7 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 			}
 
 			if next.left == nil || next.right == nil {
-				return fmt.Errorf("non-terminated fork")
+				return fmt.Errorf("non-terminated fork %s", id)
 			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
 				return err
 			} else if err := next.right.cascade(ctx, b, rightEdge); err != nil {
@@ -466,7 +466,7 @@ func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 			}
 
 			if next.left == nil || next.right == nil {
-				return fmt.Errorf("non-terminated loop")
+				return fmt.Errorf("non-terminated loop %s", id)
 			} else if err := next.left.cascade(ctx, b, leftEdge); err != nil {
 				return err
 			} else if err := next.right.cascade(ctx, b, rightEdge); err != nil {
