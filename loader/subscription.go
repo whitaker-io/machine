@@ -6,7 +6,7 @@ type subscriptionLoader struct {
 	loader
 }
 
-func (l *subscriptionLoader) load(v *VertexSerialization, b machine.Builder) error {
+func (l *subscriptionLoader) load(*VertexSerialization, machine.Builder) error {
 	return nil
 }
 

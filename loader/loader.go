@@ -165,10 +165,10 @@ func (s *StreamSerialization) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implementation to unmarshal json
-func (s *StreamSerialization) UnmarshalJSON(data []byte) error {
+func (s *StreamSerialization) UnmarshalJSON(bytez []byte) error {
 	m := map[string]interface{}{}
 
-	if err := json.Unmarshal(data, &m); err != nil {
+	if err := json.Unmarshal(bytez, &m); err != nil {
 		return err
 	}
 

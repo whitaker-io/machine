@@ -6,7 +6,7 @@ type websocketLoader struct {
 	loader
 }
 
-func (l *websocketLoader) load(v *VertexSerialization, b machine.Builder) error {
+func (l *websocketLoader) load(*VertexSerialization, machine.Builder) error {
 	return nil
 }
 

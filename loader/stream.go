@@ -6,7 +6,7 @@ type retrieverLoader struct {
 	loader
 }
 
-func (l *retrieverLoader) load(v *VertexSerialization, b machine.Builder) error {
+func (l *retrieverLoader) load(*VertexSerialization, machine.Builder) error {
 	return nil
 }
 

@@ -6,7 +6,7 @@ type httpLoader struct {
 	loader
 }
 
-func (l *httpLoader) load(v *VertexSerialization, b machine.Builder) error {
+func (l *httpLoader) load(*VertexSerialization, machine.Builder) error {
 	return nil
 }
 
