@@ -18,14 +18,7 @@ var (
 	// ForkDuplicate is a Fork that creates a deep copy of the
 	// payload and sends it down both branches.
 	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
-		payload2 := []*Packet{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&payload2)
-
-		return payload, payload2
+		return payload, deepCopyPayload(payload)
 	}
 
 	// ForkError is a Fork that splits machine.Packets based on

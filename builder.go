@@ -522,30 +522,6 @@ func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 	return nextLeft(next), nextRight(next)
 }
 
-func nextBuilder(next *node) Builder {
-	return nexter(func(n *node) *node {
-		n.loop = next
-		next.next = n
-		return n
-	})
-}
-
-func nextLeft(next *node) Builder {
-	return nexter(func(n *node) *node {
-		n.loop = next
-		next.left = n
-		return n
-	})
-}
-
-func nextRight(next *node) Builder {
-	return nexter(func(n *node) *node {
-		n.loop = next
-		next.right = n
-		return n
-	})
-}
-
 // LoopPlugin the data combining a fork and link the first output is the Builder for the loop
 // and the second is the output of the loop
 func (n nexter) LoopPlugin(v *VertexSerialization) (loop, out Builder, err error) {
@@ -939,6 +915,30 @@ func NewSubscriptionStreamPlugin(v *VertexSerialization) (Stream, error) {
 	}
 
 	return stream, err
+}
+
+func nextBuilder(next *node) Builder {
+	return nexter(func(n *node) *node {
+		n.loop = next
+		next.next = n
+		return n
+	})
+}
+
+func nextLeft(next *node) Builder {
+	return nexter(func(n *node) *node {
+		n.loop = next
+		next.left = n
+		return n
+	})
+}
+
+func nextRight(next *node) Builder {
+	return nexter(func(n *node) *node {
+		n.loop = next
+		next.right = n
+		return n
+	})
 }
 
 func optionsFromMap(id string, m map[string]interface{}) ([]*Option, error) {
