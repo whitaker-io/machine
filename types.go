@@ -18,14 +18,7 @@ var (
 	// ForkDuplicate is a Fork that creates a deep copy of the
 	// payload and sends it down both branches.
 	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
-		payload2 := []*Packet{}
-		buf := &bytes.Buffer{}
-		enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-		_ = enc.Encode(payload)
-		_ = dec.Decode(&payload2)
-
-		return payload, payload2
+		return payload, deepCopyPayload(payload)
 	}
 
 	// ForkError is a Fork that splits machine.Packets based on
@@ -99,33 +92,33 @@ type Option struct {
 	// before the processing to ensure concurrent map exceptions cannot
 	// happen. Is fairly resource intensive so use with caution.
 	// Default: false
-	DeepCopy *bool
+	DeepCopy *bool `json:"deep_copy,omitempty" mapstructure:"deep_copy,omitempty"`
 	// FIFO controls the processing order of the payloads
 	// If set to true the system will wait for one payload
 	// to be processed before starting the next.
 	// Default: false
-	FIFO *bool
+	FIFO *bool `json:"fifo,omitempty" mapstructure:"fifo,omitempty"`
 	// BufferSize sets the buffer size on the edge channels between the
 	// vertices, this setting can be useful when processing large amounts
 	// of data with FIFO turned on.
 	// Default: 0
-	BufferSize *int
+	BufferSize *int `json:"buffer_size,omitempty" mapstructure:"buffer_size,omitempty"`
 	// Span controls whether opentelemetry spans are created for tracing
 	// Packets processed by the system.
 	// Default: true
-	Span *bool
+	Span *bool `json:"spans_enabled,omitempty" mapstructure:"spans_enabled,omitempty"`
 	// Metrics controls whether opentelemetry metrics are recorded for
 	// Packets processed by the system.
 	// Default: true
-	Metrics *bool
+	Metrics *bool `json:"metrics_enabled,omitempty" mapstructure:"metrics_enabled,omitempty"`
 	// Provider determines the edge type to be used, logic for what type of edge
 	// for a given id is required if not using homogeneous edges
 	// Default: nil
-	Provider EdgeProvider
+	Provider EdgeProvider `json:"-" mapstructure:"-"`
 	// Validators are used to ensure the incoming Data is compliant
 	// they are run at the start of the stream before creation of Packets
 	// Default: nil
-	Validators map[string]ForkRule
+	Validators map[string]ForkRule `json:"-" mapstructure:"-"`
 }
 
 // Retriever is a function that provides data to a generic Stream

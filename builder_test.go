@@ -146,6 +146,34 @@ var testPayloadBase = []*Packet{
 	},
 }
 
+type tester struct {
+	close error
+}
+
+func (t *tester) Read(ctx context.Context) []data.Data {
+	out := []data.Data{}
+	buf := &bytes.Buffer{}
+	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
+
+	_ = enc.Encode(testListBase)
+	_ = dec.Decode(&out)
+
+	return out
+}
+
+func (t *tester) Close() error {
+	return t.close
+}
+
+func (t *tester) Error(...interface{}) {}
+func (t *tester) Info(...interface{})  {}
+
+type publishFN func([]data.Data) error
+
+func (p publishFN) Send(payload []data.Data) error {
+	return p(payload)
+}
+
 func deepCopyList(data []*Packet) []*Packet {
 	out := []*Packet{}
 	buf := &bytes.Buffer{}
