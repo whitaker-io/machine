@@ -171,11 +171,7 @@ func (n nexter) Map(id string, x Applicative) Builder {
 
 	next = n(next)
 
-	return nexter(func(n *node) *node {
-		n.loop = next.loop
-		next.next = n
-		return n
-	})
+	return nextBuilder(next)
 }
 
 // MapPlugin apply a mutation, options default to the set used when creating the Stream
@@ -214,11 +210,7 @@ func (n nexter) Window(id string, x Window) Builder {
 
 	next = n(next)
 
-	return nexter(func(n *node) *node {
-		n.loop = next.loop
-		next.next = n
-		return n
-	})
+	return nextBuilder(next)
 }
 
 // WindowPlugin is a method to apply an operation to the entire incoming payload
@@ -261,11 +253,7 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 
 	next = n(next)
 
-	return nexter(func(n *node) *node {
-		n.loop = next.loop
-		next.next = n
-		return n
-	})
+	return nextBuilder(next)
 }
 
 // SortPlugin modifies the order of the data.Data based on the Comparator
@@ -312,11 +300,7 @@ func (n nexter) Remove(id string, x Remover) Builder {
 
 	next = n(next)
 
-	return nexter(func(n *node) *node {
-		n.loop = next.loop
-		next.next = n
-		return n
-	})
+	return nextBuilder(next)
 }
 
 // RemovePlugin data from the payload based on the Remover func
@@ -368,11 +352,7 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 	}
 	next = n(next)
 
-	return nexter(func(n *node) *node {
-		n.loop = next.loop
-		next.next = n
-		return n
-	})
+	return nextBuilder(next)
 }
 
 // FoldLeftPlugin the data, options default to the set used when creating the Stream
@@ -422,11 +402,7 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 
 	next = n(next)
 
-	return nexter(func(n *node) *node {
-		n.loop = next.loop
-		next.next = n
-		return n
-	})
+	return nextBuilder(next)
 }
 
 // FoldRightPlugin the data, options default to the set used when creating the Stream
@@ -543,15 +519,31 @@ func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 
 	next = n(next)
 
+	return nextLeft(next), nextRight(next)
+}
+
+func nextBuilder(next *node) Builder {
 	return nexter(func(n *node) *node {
-			n.loop = next
-			next.left = n
-			return n
-		}), nexter(func(n *node) *node {
-			n.loop = next.loop
-			next.right = n
-			return n
-		})
+		n.loop = next
+		next.next = n
+		return n
+	})
+}
+
+func nextLeft(next *node) Builder {
+	return nexter(func(n *node) *node {
+		n.loop = next
+		next.left = n
+		return n
+	})
+}
+
+func nextRight(next *node) Builder {
+	return nexter(func(n *node) *node {
+		n.loop = next
+		next.right = n
+		return n
+	})
 }
 
 // LoopPlugin the data combining a fork and link the first output is the Builder for the loop
