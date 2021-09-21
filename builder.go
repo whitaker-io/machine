@@ -727,11 +727,10 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 // and a list of Options that can override the defaults and set new defaults for the
 // subsequent vertices in the Stream.
 func NewStreamPlugin(v *VertexSerialization) (Stream, error) {
-	opts := []*Option{}
-	if i, ok := v.Attributes["options"]; ok {
-		if err := mapstructure.Decode(i, &opts); err != nil {
-			return nil, fmt.Errorf("%s invalid options config", v.ID)
-		}
+	opts, err := optionsFromMap(v.ID, v.Attributes)
+
+	if err != nil {
+		return nil, err
 	}
 
 	x, err := v.retriever()
@@ -787,16 +786,13 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 // NewHTTPStreamPlugin a method that creates a Stream which takes in data
 // through a fiber.Handler
 func NewHTTPStreamPlugin(v *VertexSerialization) (HTTPStream, error) {
-	opts := []*Option{}
-	if i, ok := v.Attributes["options"]; ok {
-		if err := mapstructure.Decode(i, &opts); err != nil {
-			return nil, fmt.Errorf("%s invalid options config", v.ID)
-		}
+	opts, err := optionsFromMap(v.ID, v.Attributes)
+
+	if err != nil {
+		return nil, err
 	}
 
 	stream := NewHTTPStream(v.ID, opts...)
-
-	var err error
 
 	if v.next != nil {
 		err = v.next.apply(stream.Builder())
@@ -872,16 +868,13 @@ func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
 // NewWebsocketStreamPlugin a method that creates a Stream which takes in data
 // through a fiber.Handler that runs a websocket
 func NewWebsocketStreamPlugin(v *VertexSerialization) (HTTPStream, error) {
-	opts := []*Option{}
-	if i, ok := v.Attributes["options"]; ok {
-		if err := mapstructure.Decode(i, &opts); err != nil {
-			return nil, fmt.Errorf("%s invalid options config", v.ID)
-		}
+	opts, err := optionsFromMap(v.ID, v.Attributes)
+
+	if err != nil {
+		return nil, err
 	}
 
 	stream := NewWebsocketStream(v.ID, opts...)
-
-	var err error
 
 	if v.next != nil {
 		err = v.next.apply(stream.Builder())
@@ -919,11 +912,10 @@ func NewSubscriptionStream(id string, sub Subscription, interval time.Duration, 
 // NewSubscriptionStreamPlugin creates a Stream from the provider Subscription and pulls data
 // continuously after an interval amount of time
 func NewSubscriptionStreamPlugin(v *VertexSerialization) (Stream, error) {
-	opts := []*Option{}
-	if i, ok := v.Attributes["options"]; ok {
-		if err := mapstructure.Decode(i, &opts); err != nil {
-			return nil, fmt.Errorf("%s invalid options config", v.ID)
-		}
+	opts, err := optionsFromMap(v.ID, v.Attributes)
+
+	if err != nil {
+		return nil, err
 	}
 
 	interval := time.Second
@@ -955,6 +947,18 @@ func NewSubscriptionStreamPlugin(v *VertexSerialization) (Stream, error) {
 	}
 
 	return stream, err
+}
+
+func optionsFromMap(id string, m map[string]interface{}) ([]*Option, error) {
+	opts := []*Option{}
+
+	if i, ok := m["options"]; ok {
+		if err := mapstructure.Decode(i, &opts); err != nil {
+			return nil, fmt.Errorf("%s invalid options config", id)
+		}
+	}
+
+	return opts, nil
 }
 
 func init() {
