@@ -348,5 +348,37 @@ func convertSplit(m map[string]interface{}) (*VertexSerialization, error) {
 func convertToMap(v *VertexSerialization) map[string]interface{} {
 	m := map[string]interface{}{}
 
+	x := map[string]interface{}{
+		"id":         v.ID,
+		"provider":   v.Provider,
+		"attributes": v.Attributes,
+	}
+
+	if v.next != nil {
+		x[v.next.typeName] = convertToMap(v.next)
+	}
+
+	if v.left != nil {
+		if _, ok := x[v.left.typeName]; !ok {
+			x[v.left.typeName] = map[string]map[string]interface{}{}
+		}
+
+		x[v.left.typeName] = map[string]interface{}{
+			"left": convertToMap(v.left),
+		}
+	}
+
+	if v.right != nil {
+		if _, ok := x[v.right.typeName]; !ok {
+			x[v.right.typeName] = map[string]map[string]interface{}{}
+		}
+
+		x[v.right.typeName] = map[string]interface{}{
+			"right": convertToMap(v.right),
+		}
+	}
+
+	m[v.typeName] = x
+
 	return m
 }
