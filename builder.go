@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"sort"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"github.com/google/uuid"
+	"github.com/mitchellh/mapstructure"
 
 	"github.com/whitaker-io/data"
 )
@@ -45,14 +47,25 @@ type Stream interface {
 // Builder is the interface provided for creating a data processing stream.
 type Builder interface {
 	Map(id string, a Applicative) Builder
+	MapPlugin(v *VertexSerialization) (Builder, error)
 	Window(id string, x Window) Builder
-	FoldLeft(id string, f Fold) Builder
-	FoldRight(id string, f Fold) Builder
-	Fork(id string, f Fork) (Builder, Builder)
-	Loop(id string, x Fork) (loop, out Builder)
+	WindowPlugin(v *VertexSerialization) (Builder, error)
 	Sort(id string, x Comparator) Builder
+	SortPlugin(v *VertexSerialization) (Builder, error)
 	Remove(id string, x Remover) Builder
+	RemovePlugin(v *VertexSerialization) (Builder, error)
+	FoldLeft(id string, f Fold) Builder
+	FoldLeftPlugin(v *VertexSerialization) (Builder, error)
+	FoldRight(id string, f Fold) Builder
+	FoldRightPlugin(v *VertexSerialization) (Builder, error)
+	Fork(id string, f Fork) (Builder, Builder)
+	ForkPlugin(v *VertexSerialization) (left, right Builder, err error)
+	Loop(id string, x Fork) (loop, out Builder)
+	LoopPlugin(v *VertexSerialization) (loop, out Builder, err error)
 	Publish(id string, s Publisher)
+	PublishPlugin(v *VertexSerialization) error
+	singles() map[string]func(v *VertexSerialization) (Builder, error)
+	splits() map[string]func(v *VertexSerialization) (Builder, Builder, error)
 }
 
 type nexter func(*node) *node
@@ -165,6 +178,17 @@ func (n nexter) Map(id string, x Applicative) Builder {
 	})
 }
 
+// MapPlugin apply a mutation, options default to the set used when creating the Stream
+func (n nexter) MapPlugin(v *VertexSerialization) (Builder, error) {
+	x, err := v.applicative()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return n.Map(v.ID, x), nil
+}
+
 // Window is a method to apply an operation to the entire incoming payload
 func (n nexter) Window(id string, x Window) Builder {
 	next := &node{}
@@ -195,6 +219,17 @@ func (n nexter) Window(id string, x Window) Builder {
 		next.next = n
 		return n
 	})
+}
+
+// WindowPlugin is a method to apply an operation to the entire incoming payload
+func (n nexter) WindowPlugin(v *VertexSerialization) (Builder, error) {
+	x, err := v.window()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return n.Window(v.ID, x), nil
 }
 
 // Sort modifies the order of the data.Data based on the Comparator
@@ -233,7 +268,18 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 	})
 }
 
-// Remove data from the payload based on the
+// SortPlugin modifies the order of the data.Data based on the Comparator
+func (n nexter) SortPlugin(v *VertexSerialization) (Builder, error) {
+	x, err := v.comparator()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return n.Sort(v.ID, x), nil
+}
+
+// Remove data from the payload based on the Remover func
 func (n nexter) Remove(id string, x Remover) Builder {
 	next := &node{}
 	var edge Edge
@@ -271,6 +317,17 @@ func (n nexter) Remove(id string, x Remover) Builder {
 		next.next = n
 		return n
 	})
+}
+
+// RemovePlugin data from the payload based on the Remover func
+func (n nexter) RemovePlugin(v *VertexSerialization) (Builder, error) {
+	x, err := v.remover()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return n.Remove(v.ID, x), nil
 }
 
 // FoldLeft the data, options default to the set used when creating the Stream
@@ -318,6 +375,17 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 	})
 }
 
+// FoldLeftPlugin the data, options default to the set used when creating the Stream
+func (n nexter) FoldLeftPlugin(v *VertexSerialization) (Builder, error) {
+	x, err := v.fold()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return n.FoldLeft(v.ID, x), nil
+}
+
 // FoldRight the data, options default to the set used when creating the Stream
 func (n nexter) FoldRight(id string, x Fold) Builder {
 	next := &node{}
@@ -359,6 +427,17 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 		next.next = n
 		return n
 	})
+}
+
+// FoldRightPlugin the data, options default to the set used when creating the Stream
+func (n nexter) FoldRightPlugin(v *VertexSerialization) (Builder, error) {
+	x, err := v.fold()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return n.FoldRight(v.ID, x), nil
 }
 
 // Fork the data, options default to the set used when creating the Stream
@@ -413,32 +492,17 @@ func (n nexter) Fork(id string, x Fork) (left, right Builder) {
 		})
 }
 
-// Publish the data outside the system, options default to the set used when creating the Stream
-func (n nexter) Publish(id string, x Publisher) {
-	v := vertex{
-		id:         id,
-		vertexType: "publish",
-		connector:  func(ctx context.Context, b *builder) error { return nil },
+// ForkPlugin the data, options default to the set used when creating the Stream
+func (n nexter) ForkPlugin(v *VertexSerialization) (left, right Builder, err error) {
+	x, err := v.fork()
+
+	if err != nil {
+		return nil, nil, err
 	}
 
-	v.handler = func(payload []*Packet) {
-		d := make([]data.Data, len(payload))
-		for i, packet := range payload {
-			d[i] = packet.Data
-		}
+	l, r := n.Fork(v.ID, x)
 
-		if err := x.Send(d); err != nil {
-			v.errorHandler(&Error{
-				Err:        fmt.Errorf("publish %w", err),
-				VertexID:   id,
-				VertexType: "publish",
-				Packets:    payload,
-				Time:       time.Now(),
-			})
-		}
-	}
-
-	n(&node{vertex: v})
+	return l, r, nil
 }
 
 // Loop the data combining a fork and link the first output is the Builder for the loop
@@ -488,6 +552,79 @@ func (n nexter) Loop(id string, x Fork) (loop, out Builder) {
 			next.right = n
 			return n
 		})
+}
+
+// LoopPlugin the data combining a fork and link the first output is the Builder for the loop
+// and the second is the output of the loop
+func (n nexter) LoopPlugin(v *VertexSerialization) (loop, out Builder, err error) {
+	x, err := v.fork()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	l, r := n.Loop(v.ID, x)
+
+	return l, r, nil
+}
+
+// Publish the data outside the system, options default to the set used when creating the Stream
+func (n nexter) Publish(id string, x Publisher) {
+	v := vertex{
+		id:         id,
+		vertexType: "publish",
+		connector:  func(ctx context.Context, b *builder) error { return nil },
+	}
+
+	v.handler = func(payload []*Packet) {
+		d := make([]data.Data, len(payload))
+		for i, packet := range payload {
+			d[i] = packet.Data
+		}
+
+		if err := x.Send(d); err != nil {
+			v.errorHandler(&Error{
+				Err:        fmt.Errorf("publish %w", err),
+				VertexID:   id,
+				VertexType: "publish",
+				Packets:    payload,
+				Time:       time.Now(),
+			})
+		}
+	}
+
+	n(&node{vertex: v})
+}
+
+// PublishPlugin the data outside the system, options default to the set used when creating the Stream
+func (n nexter) PublishPlugin(v *VertexSerialization) error {
+	x, err := v.publisher()
+
+	if err != nil {
+		return err
+	}
+
+	n.Publish(v.ID, x)
+
+	return nil
+}
+
+func (n nexter) singles() map[string]func(v *VertexSerialization) (Builder, error) {
+	return map[string]func(v *VertexSerialization) (Builder, error){
+		"map":        n.MapPlugin,
+		"window":     n.WindowPlugin,
+		"sort":       n.SortPlugin,
+		"remove":     n.RemovePlugin,
+		"fold_left":  n.FoldLeftPlugin,
+		"fold_right": n.FoldRightPlugin,
+	}
+}
+
+func (n nexter) splits() map[string]func(v *VertexSerialization) (Builder, Builder, error) {
+	return map[string]func(v *VertexSerialization) (Builder, Builder, error){
+		"fork": n.ForkPlugin,
+		"loop": n.LoopPlugin,
+	}
 }
 
 func (hs *httpStream) Handler() fiber.Handler {
@@ -586,6 +723,32 @@ func NewStream(id string, retriever Retriever, options ...*Option) Stream {
 	return x
 }
 
+// NewStreamPlugin is a function for creating a new Stream. It takes an id, a Retriever function,
+// and a list of Options that can override the defaults and set new defaults for the
+// subsequent vertices in the Stream.
+func NewStreamPlugin(v *VertexSerialization) (Stream, error) {
+	opts := []*Option{}
+	if i, ok := v.Attributes["options"]; ok {
+		if err := mapstructure.Decode(i, &opts); err != nil {
+			return nil, fmt.Errorf("%s invalid options config", v.ID)
+		}
+	}
+
+	x, err := v.retriever()
+
+	if err != nil {
+		return nil, err
+	}
+
+	stream := NewStream(v.ID, x, opts...)
+
+	if v.next != nil {
+		err = v.next.apply(stream.Builder())
+	}
+
+	return stream, err
+}
+
 // NewHTTPStream a method that creates a Stream which takes in data
 // through a fiber.Handler
 func NewHTTPStream(id string, opts ...*Option) HTTPStream {
@@ -619,6 +782,27 @@ func NewHTTPStream(id string, opts ...*Option) HTTPStream {
 			opts...,
 		),
 	}
+}
+
+// NewHTTPStreamPlugin a method that creates a Stream which takes in data
+// through a fiber.Handler
+func NewHTTPStreamPlugin(v *VertexSerialization) (HTTPStream, error) {
+	opts := []*Option{}
+	if i, ok := v.Attributes["options"]; ok {
+		if err := mapstructure.Decode(i, &opts); err != nil {
+			return nil, fmt.Errorf("%s invalid options config", v.ID)
+		}
+	}
+
+	stream := NewHTTPStream(v.ID, opts...)
+
+	var err error
+
+	if v.next != nil {
+		err = v.next.apply(stream.Builder())
+	}
+
+	return stream, err
 }
 
 // NewWebsocketStream a method that creates a Stream which takes in data
@@ -685,6 +869,27 @@ func NewWebsocketStream(id string, opts ...*Option) HTTPStream {
 	}
 }
 
+// NewWebsocketStreamPlugin a method that creates a Stream which takes in data
+// through a fiber.Handler that runs a websocket
+func NewWebsocketStreamPlugin(v *VertexSerialization) (HTTPStream, error) {
+	opts := []*Option{}
+	if i, ok := v.Attributes["options"]; ok {
+		if err := mapstructure.Decode(i, &opts); err != nil {
+			return nil, fmt.Errorf("%s invalid options config", v.ID)
+		}
+	}
+
+	stream := NewWebsocketStream(v.ID, opts...)
+
+	var err error
+
+	if v.next != nil {
+		err = v.next.apply(stream.Builder())
+	}
+
+	return stream, err
+}
+
 // NewSubscriptionStream creates a Stream from the provider Subscription and pulls data
 // continuously after an interval amount of time
 func NewSubscriptionStream(id string, sub Subscription, interval time.Duration, opts ...*Option) Stream {
@@ -709,6 +914,47 @@ func NewSubscriptionStream(id string, sub Subscription, interval time.Duration, 
 		},
 		opts...,
 	)
+}
+
+// NewSubscriptionStreamPlugin creates a Stream from the provider Subscription and pulls data
+// continuously after an interval amount of time
+func NewSubscriptionStreamPlugin(v *VertexSerialization) (Stream, error) {
+	opts := []*Option{}
+	if i, ok := v.Attributes["options"]; ok {
+		if err := mapstructure.Decode(i, &opts); err != nil {
+			return nil, fmt.Errorf("%s invalid options config", v.ID)
+		}
+	}
+
+	interval := time.Second
+
+	if i, ok := v.Attributes["interval"]; ok {
+		switch val := i.(type) {
+		case int64:
+			interval = time.Duration(val)
+		case int:
+			interval = time.Duration(val)
+		case float64:
+			interval = time.Duration(val)
+		case string:
+		default:
+			return nil, fmt.Errorf("invalid interval type expecting int or int64 for %s found %v", v.ID, reflect.TypeOf(val))
+		}
+	}
+
+	subscription, err := v.subscription()
+
+	if err != nil {
+		return nil, err
+	}
+
+	stream := NewSubscriptionStream(v.ID, subscription, interval, opts...)
+
+	if v.next != nil {
+		err = v.next.apply(stream.Builder())
+	}
+
+	return stream, err
 }
 
 func init() {
