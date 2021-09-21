@@ -85,6 +85,7 @@ type builder struct {
 
 type node struct {
 	vertex
+	edge  Edge
 	loop  *node
 	next  *node
 	left  *node
@@ -145,7 +146,6 @@ func (n *node) closeLoop() {
 // Map apply a mutation, options default to the set used when creating the Stream
 func (n nexter) Map(id string, x Applicative) Builder {
 	next := &node{}
-	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
@@ -155,18 +155,9 @@ func (n nexter) Map(id string, x Applicative) Builder {
 				packet.Data = x(packet.Data)
 			}
 
-			edge.Next(payload...)
+			next.edge.Next(payload...)
 		},
-		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(ctx, id, b.option)
-
-			next.closeLoop()
-
-			if next.next == nil {
-				return fmt.Errorf("non-terminated map %s", id)
-			}
-			return next.next.cascade(ctx, b, edge)
-		},
+		connector: newConnector(id, next),
 	}
 
 	next = n(next)
@@ -188,24 +179,14 @@ func (n nexter) MapPlugin(v *VertexSerialization) (Builder, error) {
 // Window is a method to apply an operation to the entire incoming payload
 func (n nexter) Window(id string, x Window) Builder {
 	next := &node{}
-	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
 		vertexType: "map",
 		handler: func(payload []*Packet) {
-			edge.Next(x(payload...)...)
+			next.edge.Next(x(payload...)...)
 		},
-		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(ctx, id, b.option)
-
-			next.closeLoop()
-
-			if next.next == nil {
-				return fmt.Errorf("non-terminated window %s", id)
-			}
-			return next.next.cascade(ctx, b, edge)
-		},
+		connector: newConnector(id, next),
 	}
 
 	next = n(next)
@@ -227,7 +208,6 @@ func (n nexter) WindowPlugin(v *VertexSerialization) (Builder, error) {
 // Sort modifies the order of the data.Data based on the Comparator
 func (n nexter) Sort(id string, x Comparator) Builder {
 	next := &node{}
-	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
@@ -237,18 +217,9 @@ func (n nexter) Sort(id string, x Comparator) Builder {
 				return x(payload[i].Data, payload[j].Data) < 0
 			})
 
-			edge.Next(payload...)
+			next.edge.Next(payload...)
 		},
-		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(ctx, id, b.option)
-
-			next.closeLoop()
-
-			if next.next == nil {
-				return fmt.Errorf("non-terminated sort %s", id)
-			}
-			return next.next.cascade(ctx, b, edge)
-		},
+		connector: newConnector(id, next),
 	}
 
 	next = n(next)
@@ -270,7 +241,6 @@ func (n nexter) SortPlugin(v *VertexSerialization) (Builder, error) {
 // Remove data from the payload based on the Remover func
 func (n nexter) Remove(id string, x Remover) Builder {
 	next := &node{}
-	var edge Edge
 
 	next.vertex = vertex{
 		id:         id,
@@ -284,18 +254,9 @@ func (n nexter) Remove(id string, x Remover) Builder {
 				}
 			}
 
-			edge.Next(output...)
+			next.edge.Next(output...)
 		},
-		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(ctx, id, b.option)
-
-			next.closeLoop()
-
-			if next.next == nil {
-				return fmt.Errorf("non-terminated remove %s", id)
-			}
-			return next.next.cascade(ctx, b, edge)
-		},
+		connector: newConnector(id, next),
 	}
 
 	next = n(next)
@@ -317,7 +278,6 @@ func (n nexter) RemovePlugin(v *VertexSerialization) (Builder, error) {
 // FoldLeft the data, options default to the set used when creating the Stream
 func (n nexter) FoldLeft(id string, x Fold) Builder {
 	next := &node{}
-	var edge Edge
 
 	fr := func(payload ...*Packet) *Packet {
 		if len(payload) == 1 {
@@ -337,18 +297,9 @@ func (n nexter) FoldLeft(id string, x Fold) Builder {
 		id:         id,
 		vertexType: "fold",
 		handler: func(payload []*Packet) {
-			edge.Next(fr(payload...))
+			next.edge.Next(fr(payload...))
 		},
-		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(ctx, id, b.option)
-
-			next.closeLoop()
-
-			if next.next == nil {
-				return fmt.Errorf("non-terminated fold left %s", id)
-			}
-			return next.next.cascade(ctx, b, edge)
-		},
+		connector: newConnector(id, next),
 	}
 	next = n(next)
 
@@ -369,7 +320,6 @@ func (n nexter) FoldLeftPlugin(v *VertexSerialization) (Builder, error) {
 // FoldRight the data, options default to the set used when creating the Stream
 func (n nexter) FoldRight(id string, x Fold) Builder {
 	next := &node{}
-	var edge Edge
 
 	var fr func(...*Packet) *Packet
 	fr = func(payload ...*Packet) *Packet {
@@ -386,18 +336,9 @@ func (n nexter) FoldRight(id string, x Fold) Builder {
 		id:         id,
 		vertexType: "fold",
 		handler: func(payload []*Packet) {
-			edge.Next(fr(payload...))
+			next.edge.Next(fr(payload...))
 		},
-		connector: func(ctx context.Context, b *builder) error {
-			edge = b.option.Provider.New(ctx, id, b.option)
-
-			next.closeLoop()
-
-			if next.next == nil {
-				return fmt.Errorf("non-terminated fold right %s", id)
-			}
-			return next.next.cascade(ctx, b, edge)
-		},
+		connector: newConnector(id, next),
 	}
 
 	next = n(next)
@@ -915,6 +856,19 @@ func NewSubscriptionStreamPlugin(v *VertexSerialization) (Stream, error) {
 	}
 
 	return stream, err
+}
+
+func newConnector(id string, next *node) func(ctx context.Context, b *builder) error {
+	return func(ctx context.Context, b *builder) error {
+		next.edge = b.option.Provider.New(ctx, id, b.option)
+
+		next.closeLoop()
+
+		if next.next == nil {
+			return fmt.Errorf("non-terminated vertex %s", id)
+		}
+		return next.next.cascade(ctx, b, next.edge)
+	}
 }
 
 func nextBuilder(next *node) Builder {
