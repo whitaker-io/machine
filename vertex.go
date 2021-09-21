@@ -5,9 +5,7 @@
 package machine
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
 	"fmt"
 	"os"
 	"time"
@@ -163,14 +161,7 @@ func (v *vertex) deepCopy() {
 		h := v.handler
 
 		v.handler = func(payload []*Packet) {
-			out := []*Packet{}
-			buf := &bytes.Buffer{}
-			enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-			_ = enc.Encode(payload)
-			_ = dec.Decode(&out)
-
-			h(out)
+			h(deepCopyPayload(payload))
 		}
 	}
 }
