@@ -33,7 +33,7 @@ var (
 	}
 )
 
-// PluginProvider interface for providing a way of loading plugins
+// PluginProvider is a function loading plugins
 // must return one of the following types:
 //
 //  Subscription
@@ -44,9 +44,7 @@ var (
 //  Fold
 //  Fork
 //  Publisher
-type PluginProvider interface {
-	Load(attributes map[string]interface{}) (interface{}, error)
-}
+type PluginProvider func(attributes map[string]interface{}) (interface{}, error)
 
 // VertexSerialization config based definition for a stream vertex
 type VertexSerialization struct {
@@ -54,10 +52,10 @@ type VertexSerialization struct {
 	ID string `json:"id,omitempty" mapstructure:"id,omitempty"`
 
 	// Type is the name of the PluginProvider to use.
-	Provider string `json:"provider" mapstructure:"provider"`
+	Provider string `json:"provider,omitempty" mapstructure:"provider,omitempty"`
 
 	// Attributes are a map[string]interface{} of properties to be used with the PluginProvider.
-	Attributes map[string]interface{} `json:"attributes" mapstructure:"attributes"`
+	Attributes map[string]interface{} `json:"attributes,omitempty" mapstructure:"attributes,omitempty"`
 
 	typeName string
 	next     *VertexSerialization
@@ -73,7 +71,7 @@ func RegisterPluginProvider(name string, p PluginProvider) {
 
 func (v *VertexSerialization) load() (interface{}, error) {
 	if provider, ok := pluginProviders[v.Provider]; ok {
-		return provider.Load(v.Attributes)
+		return provider(v.Attributes)
 	}
 	return nil, fmt.Errorf("missing PluginProvider %s", v.Provider)
 }
@@ -184,6 +182,8 @@ func (v *VertexSerialization) apply(b Builder) error {
 		} else if v.next != nil {
 			return v.next.apply(next)
 		}
+
+		return nil
 	} else if f, ok := b.splits()[v.typeName]; ok {
 		left, right, err := f(v)
 		if err != nil {
@@ -199,6 +199,8 @@ func (v *VertexSerialization) apply(b Builder) error {
 		if v.right != nil {
 			return v.right.apply(right)
 		}
+
+		return nil
 	} else if v.typeName == "publish" {
 		return b.PublishPlugin(v)
 	}
@@ -273,19 +275,17 @@ func (v *VertexSerialization) convertChildren(m map[string]interface{}) error {
 				)
 				return err
 			} else if isLeft {
-				v.left, err = convertSplit(
-					map[string]interface{}{
-						key: x,
-					},
-				)
-				return err
+				v.left, err = convertSplit(x)
+
+				if err != nil {
+					return err
+				}
 			} else if isRight {
-				v.right, err = convertSplit(
-					map[string]interface{}{
-						key: x,
-					},
-				)
-				return err
+				v.right, err = convertSplit(x)
+
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -311,15 +311,16 @@ func convert(m map[string]interface{}) (*VertexSerialization, error) {
 			return nil, err
 		}
 
-		if v.Provider, err = data.Data(x).String("provider"); err != nil {
+		if v.Provider, err = data.Data(x).String("provider"); err != nil && v.typeName != "http" && v.typeName != "websocket" {
 			return nil, err
 		}
 
-		if v.Attributes, err = data.Data(x).MapStringInterface("attributes"); err != nil {
+		_, exists := x["attributes"]
+		if v.Attributes, err = data.Data(x).MapStringInterface("attributes"); exists && err != nil {
 			return nil, err
 		}
 
-		if err := v.convertChildren(m); err != nil {
+		if err := v.convertChildren(x); err != nil {
 			return nil, err
 		}
 	}
@@ -330,7 +331,11 @@ func convert(m map[string]interface{}) (*VertexSerialization, error) {
 func convertSplit(m map[string]interface{}) (*VertexSerialization, error) {
 	for key, val := range m {
 		if x, ok := val.(map[string]interface{}); ok {
-			v, err := convert(x)
+			v, err := convert(
+				map[string]interface{}{
+					key: x,
+				},
+			)
 
 			if err != nil {
 				return nil, err
@@ -346,39 +351,35 @@ func convertSplit(m map[string]interface{}) (*VertexSerialization, error) {
 }
 
 func convertToMap(v *VertexSerialization) map[string]interface{} {
-	m := map[string]interface{}{}
-
 	x := map[string]interface{}{
-		"id":         v.ID,
-		"provider":   v.Provider,
-		"attributes": v.Attributes,
+		"id": v.ID,
+	}
+
+	if v.Provider != "" {
+		x["provider"] = v.Provider
+	}
+
+	if v.Attributes != nil {
+		x["attributes"] = v.Attributes
 	}
 
 	if v.next != nil {
-		x[v.next.typeName] = convertToMap(v.next)
+		m := convertToMap(v.next)
+
+		for key, val := range m {
+			x[key] = val
+		}
 	}
 
 	if v.left != nil {
-		if _, ok := x[v.left.typeName]; !ok {
-			x[v.left.typeName] = map[string]map[string]interface{}{}
-		}
-
-		x[v.left.typeName] = map[string]interface{}{
-			"left": convertToMap(v.left),
-		}
+		x["left"] = convertToMap(v.left)
 	}
 
 	if v.right != nil {
-		if _, ok := x[v.right.typeName]; !ok {
-			x[v.right.typeName] = map[string]map[string]interface{}{}
-		}
-
-		x[v.right.typeName] = map[string]interface{}{
-			"right": convertToMap(v.right),
-		}
+		x["right"] = convertToMap(v.right)
 	}
 
-	m[v.typeName] = x
-
-	return m
+	return map[string]interface{}{
+		v.typeName: x,
+	}
 }
