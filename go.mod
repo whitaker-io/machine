@@ -10,7 +10,7 @@ require (
 	github.com/mitchellh/mapstructure v1.4.2
 	github.com/whitaker-io/data v0.1.2
 	go.opentelemetry.io/otel v1.0.0
-	go.opentelemetry.io/otel/metric v0.23.0
+	go.opentelemetry.io/otel/metric v1.1.0
 	go.opentelemetry.io/otel/trace v1.0.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
