@@ -9,9 +9,9 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/mitchellh/mapstructure v1.4.2
 	github.com/whitaker-io/data v0.1.2
-	go.opentelemetry.io/otel v1.0.0
-	go.opentelemetry.io/otel/metric v0.23.0
-	go.opentelemetry.io/otel/trace v1.0.0
+	go.opentelemetry.io/otel v1.0.1
+	go.opentelemetry.io/otel/metric v0.24.0
+	go.opentelemetry.io/otel/trace v1.0.1
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
@@ -22,6 +22,6 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.29.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
-	go.opentelemetry.io/otel/internal/metric v0.23.0 // indirect
+	go.opentelemetry.io/otel/internal/metric v0.24.0 // indirect
 	golang.org/x/sys v0.0.0-20210514084401-e8d321eab015 // indirect
 )
