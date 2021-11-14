@@ -45,7 +45,7 @@ jobs:
           find plugin_providers/components -name 'go.mod' | grep -v vendor | sed 's|/go.mod||g' | sed 's|\./||g' | xargs -I {} bash -c 'git tag {}/${{ steps.get_version.outputs.VERSION }}'
           git push
           git push --tags
-  update-foundry:
+  update-service:
     runs-on: ubuntu-latest
     steps:
       - name: Get the version
@@ -61,7 +61,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
-          repository: whitaker-io/foundry
+          repository: whitaker-io/service
           token: ${{ secrets.token }}
 
       - uses: fusion-engineering/setup-git-credentials@v2
