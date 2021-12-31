@@ -21,6 +21,7 @@ var (
 	meter         = global.Meter("machine")
 	inCounter     = metric.Must(meter).NewInt64Counter("/machine/vertex/count")
 	batchDuration = metric.Must(meter).NewInt64Histogram("/machine/vertex/duration")
+	panicCounter  = metric.Must(meter).NewInt64Counter("/machine/vertex/panics")
 )
 
 type vertex[T Identifiable] struct {
@@ -55,80 +56,60 @@ func (v *vertex[T]) cascade(ctx context.Context, b *builder[T], incoming Edge[T]
 		return err
 	}
 
-	v.recover(b)
+	v.wrap(ctx, b)
 	v.deepCopy()
-	v.metrics(ctx, b)
-	v.span(ctx, b)
 	v.run(ctx)
 
 	return nil
 }
 
-func (v *vertex[T]) recover(b *builder[T]) {
+func (v *vertex[T]) wrap(ctx context.Context, b *builder[T]) {
 	h := v.handler
+	tracer := otel.GetTracerProvider().Tracer("machine")
+	attributes := []attribute.KeyValue{
+		attribute.String("/machine/stream/id", b.id),
+		attribute.String("/machine/vertex/id", v.id),
+		attribute.String("/machine/vertex/type", v.vertexType),
+		attribute.String("g.co/r/k8s_container/project_id", os.Getenv("GOOGLE_CLOUD_PROJECT")),
+		attribute.String("g.co/r/k8s_container/cluster_name", os.Getenv("CLUSTER_NAME")),
+		attribute.String("g.co/r/k8s_container/namespace", os.Getenv("NAMESPACE")),
+		attribute.String("g.co/r/k8s_container/pod_name", os.Getenv("POD_NAME")),
+		attribute.String("g.co/r/k8s_container/container_name", os.Getenv("CONTAINER_NAME")),
+		attribute.String("service.name", os.Getenv("POD_NAME")),
+		attribute.String("http.host", os.Getenv("HOSTNAME")),
+	}
 
 	v.handler = func(payload []T) {
+		ids := make([]string, len(payload))
+		for i, packet := range payload {
+			ids[i] = packet.ID()
+		}
+		_, span := tracer.Start(ctx, v.id,
+			trace.WithAttributes(
+				append(attributes,
+					attribute.StringSlice("ids", ids),
+				)...,
+			),
+		)
+
 		defer func() {
 			if r := recover(); r != nil {
 				if err, ok := r.(error); !ok {
+					panicCounter.Add(ctx, 1, attributes...)
+					span.RecordError(err)
 					b.option.PanicHandler(b.ID(), v.id, err, payload...)
 				}
 			}
+			span.End()
 		}()
 
+		inCounter.Add(ctx, int64(len(payload)), attributes...)
+		start := time.Now()
+
 		h(payload)
-	}
-}
 
-func (v *vertex[T]) span(ctx context.Context, b *builder[T]) {
-	tracer := otel.GetTracerProvider().Tracer("machine")
-	h := v.handler
-
-	if *v.builder.option.Span {
-		v.handler = func(payload []T) {
-			ids := make([]string, len(payload))
-			for i, packet := range payload {
-				ids[i] = packet.ID()
-			}
-			_, span := tracer.Start(ctx, v.id,
-				trace.WithAttributes(
-					attribute.String("stream", b.id),
-					attribute.String("type", v.vertexType),
-					attribute.StringSlice("ids", ids),
-				),
-			)
-
-			h(payload)
-
-			span.End()
-		}
-	}
-}
-
-func (v *vertex[T]) metrics(ctx context.Context, b *builder[T]) {
-	if *v.builder.option.Metrics {
-		h := v.handler
-
-		attributes := []attribute.KeyValue{
-			attribute.String("/machine/stream/id", b.id),
-			attribute.String("/machine/vertex/id", v.id),
-			attribute.String("/machine/vertex/type", v.vertexType),
-			attribute.String("g.co/r/k8s_container/project_id", os.Getenv("GOOGLE_CLOUD_PROJECT")),
-			attribute.String("g.co/r/k8s_container/cluster_name", os.Getenv("CLUSTER_NAME")),
-			attribute.String("g.co/r/k8s_container/namespace", os.Getenv("NAMESPACE")),
-			attribute.String("g.co/r/k8s_container/pod_name", os.Getenv("POD_NAME")),
-			attribute.String("g.co/r/k8s_container/container_name", os.Getenv("CONTAINER_NAME")),
-			attribute.String("service.name", os.Getenv("POD_NAME")),
-			attribute.String("http.host", os.Getenv("HOSTNAME")),
-		}
-
-		v.handler = func(payload []T) {
-			inCounter.Add(ctx, int64(len(payload)), attributes...)
-			start := time.Now()
-			h(payload)
-			duration := time.Since(start)
-			batchDuration.Record(ctx, int64(duration), attributes...)
-		}
+		duration := time.Since(start)
+		batchDuration.Record(ctx, int64(duration), attributes...)
 	}
 }
 
