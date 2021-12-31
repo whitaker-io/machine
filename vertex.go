@@ -20,85 +20,97 @@ import (
 var (
 	meter         = global.Meter("machine")
 	inCounter     = metric.Must(meter).NewInt64Counter("/machine/vertex/count")
-	errorsCounter = metric.Must(meter).NewInt64Counter("/machine/vertex/errors")
 	batchDuration = metric.Must(meter).NewInt64Histogram("/machine/vertex/duration")
 )
 
-type vertex struct {
+type vertex[T Identifiable] struct {
 	id         string
 	vertexType string
-	input      chan []*Packet
-	builder    *builder
-	handler
-	errorHandler func(*Error)
-	connector    func(ctx context.Context, b *builder) error
+	input      chan []T
+	builder    *builder[T]
+	handler[T]
+	connector func(ctx context.Context, b *builder[T]) error
 }
 
-func (v *vertex) cascade(ctx context.Context, b *builder, incoming Edge) error {
+func (v *vertex[T]) cascade(ctx context.Context, b *builder[T], incoming Edge[T]) error {
 	v.builder = b
-	v.errorHandler = func(err *Error) {
-		err.StreamID = b.id
-		b.errorChannel <- err
-	}
 
 	if v.input != nil {
-		incoming.Send(ctx, v.input)
+		incoming.SetOutput(ctx, v.input)
 		return nil
 	}
 
-	v.input = make(chan []*Packet, *b.option.BufferSize)
-	incoming.Send(ctx, v.input)
+	v.input = make(chan []T, *b.option.BufferSize)
+	incoming.SetOutput(ctx, v.input)
 
-	if _, ok := b.edges[v.id]; ok {
+	if _, ok := b.edges[v.id]; ok && v.id != "__channel" {
 		return fmt.Errorf("duplicate vertex id %s", v.id)
 	}
 
-	b.edges[v.id] = incoming
+	if v.id != "__channel__" {
+		b.edges[v.id] = incoming
+	}
 
 	if err := v.connector(ctx, b); err != nil {
 		return err
 	}
 
-	v.deepCopy()
 	v.recover(b)
-	v.metrics(ctx)
-	v.span(ctx)
+	v.deepCopy()
+	v.metrics(ctx, b)
+	v.span(ctx, b)
 	v.run(ctx)
 
 	return nil
 }
 
-func (v *vertex) span(ctx context.Context) {
+func (v *vertex[T]) recover(b *builder[T]) {
+	h := v.handler
+
+	v.handler = func(payload []T) {
+		defer func() {
+			if r := recover(); r != nil {
+				if err, ok := r.(error); !ok {
+					b.option.PanicHandler(b.ID(), v.id, err, payload...)
+				}
+			}
+		}()
+
+		h(payload)
+	}
+}
+
+func (v *vertex[T]) span(ctx context.Context, b *builder[T]) {
 	tracer := otel.GetTracerProvider().Tracer("machine")
 	h := v.handler
 
-	vType := trace.WithAttributes(attribute.String("vertex_type", v.vertexType))
-
 	if *v.builder.option.Span {
-		v.handler = func(payload []*Packet) {
-			spans := map[string]trace.Span{}
-
-			for _, packet := range payload {
-				_, spans[packet.ID] = tracer.Start(ctx, v.id, vType)
+		v.handler = func(payload []T) {
+			ids := make([]string, len(payload))
+			for i, packet := range payload {
+				ids[i] = packet.ID()
 			}
+			_, span := tracer.Start(ctx, v.id,
+				trace.WithAttributes(
+					attribute.String("stream", b.id),
+					attribute.String("type", v.vertexType),
+					attribute.StringSlice("ids", ids),
+				),
+			)
 
 			h(payload)
 
-			for _, packet := range payload {
-				if _, ok := packet.Errors[v.id]; ok {
-					spans[packet.ID].RecordError(packet.Errors[v.id])
-				}
-				spans[packet.ID].End()
-			}
+			span.End()
 		}
 	}
 }
 
-func (v *vertex) metrics(ctx context.Context) {
+func (v *vertex[T]) metrics(ctx context.Context, b *builder[T]) {
 	if *v.builder.option.Metrics {
 		h := v.handler
 
 		attributes := []attribute.KeyValue{
+			attribute.String("/machine/stream/id", b.id),
 			attribute.String("/machine/vertex/id", v.id),
 			attribute.String("/machine/vertex/type", v.vertexType),
 			attribute.String("g.co/r/k8s_container/project_id", os.Getenv("GOOGLE_CLOUD_PROJECT")),
@@ -110,63 +122,27 @@ func (v *vertex) metrics(ctx context.Context) {
 			attribute.String("http.host", os.Getenv("HOSTNAME")),
 		}
 
-		v.handler = func(payload []*Packet) {
+		v.handler = func(payload []T) {
 			inCounter.Add(ctx, int64(len(payload)), attributes...)
 			start := time.Now()
 			h(payload)
 			duration := time.Since(start)
-			failures := 0
-			for _, packet := range payload {
-				if _, ok := packet.Errors[v.id]; ok {
-					failures++
-				}
-			}
-
-			errorsCounter.Add(ctx, int64(failures), attributes...)
 			batchDuration.Record(ctx, int64(duration), attributes...)
 		}
 	}
 }
 
-func (v *vertex) recover(b *builder) {
-	h := v.handler
-
-	v.handler = func(payload []*Packet) {
-		defer func() {
-			if r := recover(); r != nil {
-				var err error
-				var ok bool
-
-				if err, ok = r.(error); !ok {
-					err = fmt.Errorf("%v", r)
-				}
-
-				b.errorChannel <- &Error{
-					Err:        fmt.Errorf("panic recovery %w", err),
-					StreamID:   b.id,
-					VertexID:   v.id,
-					VertexType: v.vertexType,
-					Packets:    payload,
-					Time:       time.Now(),
-				}
-			}
-		}()
-
-		h(payload)
-	}
-}
-
-func (v *vertex) deepCopy() {
+func (v *vertex[T]) deepCopy() {
 	if *v.builder.option.DeepCopy {
 		h := v.handler
 
-		v.handler = func(payload []*Packet) {
-			h(deepCopyPayload(payload))
+		v.handler = func(payload []T) {
+			h(deepcopy(payload))
 		}
 	}
 }
 
-func (v *vertex) run(ctx context.Context) {
+func (v *vertex[T]) run(ctx context.Context) {
 	go func() {
 	Loop:
 		for {
