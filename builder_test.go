@@ -102,8 +102,6 @@ func Benchmark_Test_New(b *testing.B) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
-			Metrics:    boolP(true),
-			Span:       boolP(false),
 			BufferSize: intP(0),
 		},
 	)
@@ -150,8 +148,6 @@ func Test_New(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
-			Metrics:    boolP(true),
-			Span:       boolP(false),
 			BufferSize: intP(0),
 		},
 	)
@@ -162,7 +158,9 @@ func Test_New(b *testing.T) {
 				b.Errorf("packet missing name %v", m)
 			}
 			return m
-		}).
+		}).Window("window_id1", func(payload []idMap) []idMap {
+		return payload
+	}).
 		Sort("sort_id1", func(a, b idMap) int {
 			return strings.Compare(a["name"].(string), b["name"].(string))
 		}).
@@ -219,8 +217,6 @@ func Test_New2(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -308,8 +304,6 @@ func Test_Panic(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -354,8 +348,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -369,8 +361,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -382,8 +372,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -402,8 +390,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -419,8 +405,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -448,8 +432,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -480,8 +462,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -497,8 +477,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(1000),
 		},
 	)
@@ -514,8 +492,6 @@ func Test_Missing_Leaves(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(0),
 		},
 	)
@@ -590,8 +566,6 @@ func Test_Inject(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
-			Metrics:    boolP(true),
-			Span:       boolP(true),
 			BufferSize: intP(0),
 		},
 	)
@@ -661,8 +635,6 @@ func Test_Loop(b *testing.T) {
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
-			Metrics:    boolP(true),
-			Span:       boolP(false),
 			BufferSize: intP(0),
 		},
 	)

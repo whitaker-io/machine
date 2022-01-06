@@ -27,6 +27,7 @@ type Stream[T Identifiable] interface {
 // Builder is the interface provided for creating a data processing stream.
 type Builder[T Identifiable] interface {
 	Map(id string, a Applicative[T]) Builder[T]
+	Window(id string, x Window[T]) Builder[T]
 	Sort(id string, x Comparator[T]) Builder[T]
 	Remove(id string, x Remover[T]) Builder[T]
 	FoldLeft(id string, f Fold[T]) Builder[T]
@@ -38,9 +39,9 @@ type Builder[T Identifiable] interface {
 	Finally(id string, a Applicative[T]) chan []T
 }
 
-type nexter[T Identifiable] func(*node[T]) *node[T]
+type builder[T Identifiable] func(*node[T]) *node[T]
 
-type builder[T Identifiable] struct {
+type stream[T Identifiable] struct {
 	vertex[T]
 	next   *node[T]
 	option *Option[T]
@@ -57,7 +58,7 @@ type node[T Identifiable] struct {
 }
 
 // ID is a method used to return the ID for the Stream
-func (m *builder[T]) ID() string {
+func (m *stream[T]) ID() string {
 	return m.id
 }
 
@@ -65,7 +66,7 @@ func (m *builder[T]) ID() string {
 // and an optional list of recorder functions. The recorder function has the signiture
 // func(vertexID, vertexType, state string, paylaod []*Packet) and is called at the
 // beginning of every vertex.
-func (m *builder[T]) Run(ctx context.Context) error {
+func (m *stream[T]) Run(ctx context.Context) error {
 	if m.next == nil {
 		return fmt.Errorf("non-terminated builder %s", m.id)
 	}
@@ -76,11 +77,11 @@ func (m *builder[T]) Run(ctx context.Context) error {
 // Inject is a method for restarting work that has been dropped by the Stream
 // typically in a distributed system setting. Though it can be used to side load
 // data into the Stream to be processed
-func (m *builder[T]) Inject(id string, payload ...T) {
+func (m *stream[T]) Inject(id string, payload ...T) {
 	m.edges[id].Input(payload...)
 }
 
-func (m *builder[T]) VertexIDs() []string {
+func (m *stream[T]) VertexIDs() []string {
 	ids := []string{}
 
 	for name := range m.edges {
@@ -92,21 +93,15 @@ func (m *builder[T]) VertexIDs() []string {
 	return ids
 }
 
-func (m *builder[T]) Builder() Builder[T] {
-	return nexter[T](func(n *node[T]) *node[T] {
+func (m *stream[T]) Builder() Builder[T] {
+	return builder[T](func(n *node[T]) *node[T] {
 		m.next = n
 		return n
 	})
 }
 
-func (n *node[T]) closeLoop() {
-	if n.loop != nil && n.next == nil {
-		n.next = n.loop
-	}
-}
-
 // Map apply a mutation
-func (n nexter[T]) Map(id string, x Applicative[T]) Builder[T] {
+func (n builder[T]) Map(id string, x Applicative[T]) Builder[T] {
 	next := &node[T]{}
 
 	next.vertex = vertex[T]{
@@ -127,8 +122,26 @@ func (n nexter[T]) Map(id string, x Applicative[T]) Builder[T] {
 	return nextBuilder(next)
 }
 
+// Map apply a mutation on the entire payload
+func (n builder[T]) Window(id string, x Window[T]) Builder[T] {
+	next := &node[T]{}
+
+	next.vertex = vertex[T]{
+		id:         id,
+		vertexType: "window",
+		handler: func(payload []T) {
+			next.edge.Input(x(payload)...)
+		},
+		connector: newConnector(id, next),
+	}
+
+	next = n(next)
+
+	return nextBuilder(next)
+}
+
 // Sort modifies the order of the T based on the Comparator
-func (n nexter[T]) Sort(id string, x Comparator[T]) Builder[T] {
+func (n builder[T]) Sort(id string, x Comparator[T]) Builder[T] {
 	next := &node[T]{}
 
 	next.vertex = vertex[T]{
@@ -150,7 +163,7 @@ func (n nexter[T]) Sort(id string, x Comparator[T]) Builder[T] {
 }
 
 // Remove data from the payload based on the Remover func
-func (n nexter[T]) Remove(id string, x Remover[T]) Builder[T] {
+func (n builder[T]) Remove(id string, x Remover[T]) Builder[T] {
 	next := &node[T]{}
 
 	next.vertex = vertex[T]{
@@ -176,7 +189,7 @@ func (n nexter[T]) Remove(id string, x Remover[T]) Builder[T] {
 }
 
 // FoldLeft the data
-func (n nexter[T]) FoldLeft(id string, x Fold[T]) Builder[T] {
+func (n builder[T]) FoldLeft(id string, x Fold[T]) Builder[T] {
 	next := &node[T]{}
 
 	fr := func(payload ...T) T {
@@ -207,7 +220,7 @@ func (n nexter[T]) FoldLeft(id string, x Fold[T]) Builder[T] {
 }
 
 // FoldRight the data
-func (n nexter[T]) FoldRight(id string, x Fold[T]) Builder[T] {
+func (n builder[T]) FoldRight(id string, x Fold[T]) Builder[T] {
 	next := &node[T]{}
 
 	fr := func(payload ...T) T {
@@ -240,14 +253,14 @@ func (n nexter[T]) FoldRight(id string, x Fold[T]) Builder[T] {
 
 // ForkDuplicate is a Fork that creates a deep copy of the
 // payload and sends it down both branches.
-func (n nexter[T]) Duplicate(id string) (left, right Builder[T]) {
+func (n builder[T]) Duplicate(id string) (left, right Builder[T]) {
 	return n.fork(id, func(payload []T) (l, r []T) {
 		return payload, deepcopy(payload)
 	})
 }
 
 // Filter the data
-func (n nexter[T]) Filter(id string, x Filter[T]) (left, right Builder[T]) {
+func (n builder[T]) Filter(id string, x Filter[T]) (left, right Builder[T]) {
 	return n.fork(id, func(payload []T) (l, r []T) {
 		l = []T{}
 		r = []T{}
@@ -265,7 +278,7 @@ func (n nexter[T]) Filter(id string, x Filter[T]) (left, right Builder[T]) {
 }
 
 // Filter the data
-func (n nexter[T]) fork(id string, x func([]T) (l, r []T)) (left, right Builder[T]) {
+func (n builder[T]) fork(id string, x func([]T) (l, r []T)) (left, right Builder[T]) {
 	next := &node[T]{}
 
 	var leftEdge, rightEdge Edge[T]
@@ -279,7 +292,7 @@ func (n nexter[T]) fork(id string, x func([]T) (l, r []T)) (left, right Builder[
 			leftEdge.Input(s...)
 			rightEdge.Input(f...)
 		},
-		connector: func(ctx context.Context, b *builder[T]) error {
+		connector: func(ctx context.Context, b *stream[T]) error {
 			leftEdge = b.option.Provider.New(ctx, id, b.option)
 			rightEdge = b.option.Provider.New(ctx, id, b.option)
 
@@ -310,7 +323,7 @@ func (n nexter[T]) fork(id string, x func([]T) (l, r []T)) (left, right Builder[
 
 // Loop the data combining a fork and link the first output is the Builder for the loop
 // and the second is the output of the loop
-func (n nexter[T]) Loop(id string, x Filter[T]) (loop, out Builder[T]) {
+func (n builder[T]) Loop(id string, x Filter[T]) (loop, out Builder[T]) {
 	next := &node[T]{}
 
 	var leftEdge, rightEdge Edge[T]
@@ -332,7 +345,7 @@ func (n nexter[T]) Loop(id string, x Filter[T]) (loop, out Builder[T]) {
 			leftEdge.Input(l...)
 			rightEdge.Input(r...)
 		},
-		connector: func(ctx context.Context, b *builder[T]) error {
+		connector: func(ctx context.Context, b *stream[T]) error {
 			leftEdge = b.option.Provider.New(ctx, id, b.option)
 			rightEdge = b.option.Provider.New(ctx, id, b.option)
 
@@ -358,12 +371,12 @@ func (n nexter[T]) Loop(id string, x Filter[T]) (loop, out Builder[T]) {
 }
 
 // Publish the data outside the system
-func (n nexter[T]) Channel() chan []T {
+func (n builder[T]) Channel() chan []T {
 	channel := make(chan []T)
 	v := vertex[T]{
 		id:         "__channel__",
 		vertexType: "channel",
-		connector:  func(ctx context.Context, b *builder[T]) error { return nil },
+		connector:  func(ctx context.Context, b *stream[T]) error { return nil },
 		handler: func(payload []T) {
 			channel <- payload
 		},
@@ -375,7 +388,7 @@ func (n nexter[T]) Channel() chan []T {
 }
 
 // Finally caps the Stream with an Applicative
-func (n nexter[T]) Finally(id string, x Applicative[T]) chan []T {
+func (n builder[T]) Finally(id string, x Applicative[T]) chan []T {
 	channel := make(chan []T)
 	v := vertex[T]{
 		id:         id,
@@ -387,12 +400,18 @@ func (n nexter[T]) Finally(id string, x Applicative[T]) chan []T {
 
 			channel <- payload
 		},
-		connector: func(ctx context.Context, b *builder[T]) error { return nil },
+		connector: func(ctx context.Context, b *stream[T]) error { return nil },
 	}
 
 	n(&node[T]{vertex: v})
 
 	return channel
+}
+
+func (n *node[T]) closeLoop() {
+	if n.loop != nil && n.next == nil {
+		n.next = n.loop
+	}
 }
 
 // New is a function for creating a new Stream. It takes an id, a Retriever function,
@@ -403,7 +422,7 @@ func New[T Identifiable](id string, retriever Retriever[T], options ...*Option[T
 
 	var edge Edge[T]
 
-	x := &builder[T]{
+	x := &stream[T]{
 		option: opt,
 		vertex: vertex[T]{
 			id:         id,
@@ -415,7 +434,7 @@ func New[T Identifiable](id string, retriever Retriever[T], options ...*Option[T
 		edges: map[string]Edge[T]{},
 	}
 
-	x.connector = func(ctx context.Context, b *builder[T]) error {
+	x.connector = func(ctx context.Context, b *stream[T]) error {
 		edge = opt.Provider.New(ctx, id, opt)
 
 		i := retriever(ctx)
@@ -441,8 +460,8 @@ func New[T Identifiable](id string, retriever Retriever[T], options ...*Option[T
 	return x
 }
 
-func newConnector[T Identifiable](id string, next *node[T]) func(ctx context.Context, b *builder[T]) error {
-	return func(ctx context.Context, b *builder[T]) error {
+func newConnector[T Identifiable](id string, next *node[T]) func(ctx context.Context, b *stream[T]) error {
+	return func(ctx context.Context, b *stream[T]) error {
 		next.edge = b.option.Provider.New(ctx, id, b.option)
 
 		next.closeLoop()
@@ -455,7 +474,7 @@ func newConnector[T Identifiable](id string, next *node[T]) func(ctx context.Con
 }
 
 func nextBuilder[T Identifiable](next *node[T]) Builder[T] {
-	return nexter[T](func(n *node[T]) *node[T] {
+	return builder[T](func(n *node[T]) *node[T] {
 		n.loop = next
 		next.next = n
 		return n
@@ -463,7 +482,7 @@ func nextBuilder[T Identifiable](next *node[T]) Builder[T] {
 }
 
 func nextLeft[T Identifiable](next, loop *node[T]) Builder[T] {
-	return nexter[T](func(n *node[T]) *node[T] {
+	return builder[T](func(n *node[T]) *node[T] {
 		n.loop = loop
 		next.left = n
 		return n
@@ -471,7 +490,7 @@ func nextLeft[T Identifiable](next, loop *node[T]) Builder[T] {
 }
 
 func nextRight[T Identifiable](next, loop *node[T]) Builder[T] {
-	return nexter[T](func(n *node[T]) *node[T] {
+	return builder[T](func(n *node[T]) *node[T] {
 		n.loop = loop
 		next.right = n
 		return n

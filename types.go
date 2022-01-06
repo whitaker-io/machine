@@ -5,26 +5,11 @@
 package machine
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
-	"log"
 )
 
 type Identifiable interface {
 	ID() string
-}
-
-// EdgeProvider is an interface that is used for providing new instances
-// of the Edge interface given the *Option set in the Stream
-type EdgeProvider[T Identifiable] interface {
-	New(ctx context.Context, id string, options *Option[T]) Edge[T]
-}
-
-// Edge is an inteface that is used for transferring data between vertices
-type Edge[T Identifiable] interface {
-	SetOutput(ctx context.Context, channel chan []T)
-	Input(payload ...T)
 }
 
 // Option type for holding machine settings.
@@ -44,14 +29,6 @@ type Option[T Identifiable] struct {
 	// of data with FIFO turned on.
 	// Default: 0
 	BufferSize *int `json:"buffer_size,omitempty" mapstructure:"buffer_size,omitempty"`
-	// Span controls whether opentelemetry spans are created for tracing
-	// Packets processed by the system.
-	// Default: true
-	Span *bool `json:"spans_enabled,omitempty" mapstructure:"spans_enabled,omitempty"`
-	// Metrics controls whether opentelemetry metrics are recorded for
-	// Packets processed by the system.
-	// Default: true
-	Metrics *bool `json:"metrics_enabled,omitempty" mapstructure:"metrics_enabled,omitempty"`
 	// Provider determines the edge type to be used, logic for what type of edge
 	// for a given id is required if not using homogeneous edges
 	// Default: nil
@@ -80,19 +57,14 @@ type Fold[T Identifiable] func(aggregate, next T) T
 // Filter is a function that can be used to filter the payload.
 type Filter[T Identifiable] func(d T) bool
 
-// Comparator is a function to compare 2 T's
+// Comparator is a function to compare 2 items
 type Comparator[T Identifiable] func(a T, b T) int
+
+// Window is a function to work on a window of data
+type Window[T Identifiable] func(payload []T) []T
 
 // Remover func that is used to remove Data based on a true result
 type Remover[T Identifiable] func(index int, d T) bool
-
-type handler[T Identifiable] func(payload []T)
-
-type edgeProvider[T Identifiable] struct{}
-
-type edge[T Identifiable] struct {
-	channel chan []T
-}
 
 func (o *Option[T]) merge(options ...*Option[T]) *Option[T] {
 	if len(options) < 1 {
@@ -109,8 +81,6 @@ func (o *Option[T]) join(option *Option[T]) *Option[T] {
 		DeepCopy:     o.DeepCopy,
 		FIFO:         o.FIFO,
 		BufferSize:   o.BufferSize,
-		Metrics:      o.Metrics,
-		Span:         o.Span,
 		Provider:     o.Provider,
 		PanicHandler: o.PanicHandler,
 	}
@@ -127,14 +97,6 @@ func (o *Option[T]) join(option *Option[T]) *Option[T] {
 		out.BufferSize = option.BufferSize
 	}
 
-	if option.Metrics != nil {
-		out.Metrics = option.Metrics
-	}
-
-	if option.Span != nil {
-		out.Span = option.Span
-	}
-
 	if option.Provider != nil {
 		out.Provider = option.Provider
 	}
@@ -142,71 +104,6 @@ func (o *Option[T]) join(option *Option[T]) *Option[T] {
 	if option.PanicHandler != nil {
 		out.PanicHandler = option.PanicHandler
 	}
-
-	return out
-}
-
-func (p *edgeProvider[T]) New(ctx context.Context, id string, options *Option[T]) Edge[T] {
-	b := 0
-
-	if options.BufferSize != nil {
-		b = *options.BufferSize
-	}
-
-	return &edge[T]{
-		channel: make(chan []T, b),
-	}
-}
-
-func (out *edge[T]) SetOutput(ctx context.Context, channel chan []T) {
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break Loop
-			case list := <-out.channel:
-				if len(list) > 0 {
-					channel <- list
-				}
-			}
-		}
-	}()
-}
-
-func (out *edge[T]) Input(payload ...T) {
-	out.channel <- payload
-}
-
-func boolP(v bool) *bool {
-	return &v
-}
-
-func intP(v int) *int {
-	return &v
-}
-
-func defaultOptions[T Identifiable]() *Option[T] {
-	return &Option[T]{
-		DeepCopy:   boolP(true),
-		FIFO:       boolP(true),
-		BufferSize: intP(0),
-		Metrics:    boolP(false),
-		Span:       boolP(false),
-		Provider:   &edgeProvider[T]{},
-		PanicHandler: func(streamID, vertexID string, err error, payload ...T) {
-			log.Printf("stream: %s, vertex: %s, panic: %s, data %v", streamID, vertexID, err, payload)
-		},
-	}
-}
-
-func deepcopy[T Identifiable](d []T) []T {
-	out := []T{}
-	buf := &bytes.Buffer{}
-	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-	_ = enc.Encode(d)
-	_ = dec.Decode(&out)
 
 	return out
 }

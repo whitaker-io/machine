@@ -28,12 +28,14 @@ type vertex[T Identifiable] struct {
 	id         string
 	vertexType string
 	input      chan []T
-	builder    *builder[T]
+	builder    *stream[T]
 	handler[T]
-	connector func(ctx context.Context, b *builder[T]) error
+	connector func(ctx context.Context, b *stream[T]) error
 }
 
-func (v *vertex[T]) cascade(ctx context.Context, b *builder[T], incoming Edge[T]) error {
+type handler[T Identifiable] func(payload []T)
+
+func (v *vertex[T]) cascade(ctx context.Context, b *stream[T], incoming Edge[T]) error {
 	v.builder = b
 
 	if v.input != nil {
@@ -57,13 +59,12 @@ func (v *vertex[T]) cascade(ctx context.Context, b *builder[T], incoming Edge[T]
 	}
 
 	v.wrap(ctx, b)
-	v.deepCopy()
 	v.run(ctx)
 
 	return nil
 }
 
-func (v *vertex[T]) wrap(ctx context.Context, b *builder[T]) {
+func (v *vertex[T]) wrap(ctx context.Context, b *stream[T]) {
 	h := v.handler
 	tracer := otel.GetTracerProvider().Tracer("machine")
 	attributes := []attribute.KeyValue{
@@ -92,6 +93,9 @@ func (v *vertex[T]) wrap(ctx context.Context, b *builder[T]) {
 			),
 		)
 
+		inCounter.Add(ctx, int64(len(payload)), attributes...)
+		start := time.Now()
+
 		defer func() {
 			if r := recover(); r != nil {
 				if err, ok := r.(error); !ok {
@@ -100,25 +104,17 @@ func (v *vertex[T]) wrap(ctx context.Context, b *builder[T]) {
 					b.option.PanicHandler(b.ID(), v.id, err, payload...)
 				}
 			}
+
+			duration := time.Since(start)
+			batchDuration.Record(ctx, int64(duration), attributes...)
+
 			span.End()
 		}()
 
-		inCounter.Add(ctx, int64(len(payload)), attributes...)
-		start := time.Now()
-
-		h(payload)
-
-		duration := time.Since(start)
-		batchDuration.Record(ctx, int64(duration), attributes...)
-	}
-}
-
-func (v *vertex[T]) deepCopy() {
-	if *v.builder.option.DeepCopy {
-		h := v.handler
-
-		v.handler = func(payload []T) {
+		if *v.builder.option.DeepCopy {
 			h(deepcopy(payload))
+		} else {
+			h(payload)
 		}
 	}
 }
