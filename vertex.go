@@ -6,8 +6,6 @@ package machine
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -28,90 +26,84 @@ type vertex[T Identifiable] struct {
 	id         string
 	vertexType string
 	input      chan []T
-	builder    *stream[T]
 	handler[T]
-	connector func(ctx context.Context, b *stream[T]) error
+	connector func(ctx context.Context, streamID, currentID string, option *Option[T]) error
 }
 
 type handler[T Identifiable] func(payload []T)
 
-func (v *vertex[T]) cascade(ctx context.Context, b *stream[T], incoming Edge[T]) error {
-	v.builder = b
-
+func (v *vertex[T]) cascade(ctx context.Context, streamID, currentID string, option *Option[T], incoming Edge[T]) error {
 	if v.input != nil {
-		incoming.SetOutput(ctx, v.input)
+		incoming.OutputTo(ctx, v.input)
 		return nil
 	}
 
-	v.input = make(chan []T, *b.option.BufferSize)
-	incoming.SetOutput(ctx, v.input)
+	v.input = make(chan []T, *option.BufferSize)
+	incoming.OutputTo(ctx, v.input)
 
-	if _, ok := b.edges[v.id]; ok && v.id != "__channel" {
-		return fmt.Errorf("duplicate vertex id %s", v.id)
-	}
-
-	if v.id != "__channel__" {
-		b.edges[v.id] = incoming
-	}
-
-	if err := v.connector(ctx, b); err != nil {
+	if err := v.connector(ctx, streamID, currentID, option); err != nil {
 		return err
 	}
 
-	v.wrap(ctx, b)
-	v.run(ctx)
+	v.wrap(ctx, streamID, option)
+	v.run(ctx, option)
 
 	return nil
 }
 
-func (v *vertex[T]) wrap(ctx context.Context, b *stream[T]) {
+func (v *vertex[T]) wrap(ctx context.Context, streamID string, option *Option[T]) {
 	h := v.handler
-	tracer := otel.GetTracerProvider().Tracer("machine")
-	attributes := []attribute.KeyValue{
-		attribute.String("/machine/stream/id", b.id),
-		attribute.String("/machine/vertex/id", v.id),
-		attribute.String("/machine/vertex/type", v.vertexType),
-		attribute.String("g.co/r/k8s_container/project_id", os.Getenv("GOOGLE_CLOUD_PROJECT")),
-		attribute.String("g.co/r/k8s_container/cluster_name", os.Getenv("CLUSTER_NAME")),
-		attribute.String("g.co/r/k8s_container/namespace", os.Getenv("NAMESPACE")),
-		attribute.String("g.co/r/k8s_container/pod_name", os.Getenv("POD_NAME")),
-		attribute.String("g.co/r/k8s_container/container_name", os.Getenv("CONTAINER_NAME")),
-		attribute.String("service.name", os.Getenv("POD_NAME")),
-		attribute.String("http.host", os.Getenv("HOSTNAME")),
-	}
+	tracer := otel.GetTracerProvider().Tracer(*option.Telemetry.TracerName)
+	attributes := append(
+		[]attribute.KeyValue{
+			attribute.String(*option.Telemetry.LabelPrefix+"/machine/stream/id", streamID),
+			attribute.String(*option.Telemetry.LabelPrefix+"/machine/vertex/id", v.id),
+			attribute.String(*option.Telemetry.LabelPrefix+"/machine/vertex/type", v.vertexType),
+		},
+		option.Telemetry.AdditionalLabels...,
+	)
 
 	v.handler = func(payload []T) {
-		ids := make([]string, len(payload))
-		for i, packet := range payload {
-			ids[i] = packet.ID()
-		}
-		_, span := tracer.Start(ctx, v.id,
-			trace.WithAttributes(
-				append(attributes,
-					attribute.StringSlice("ids", ids),
-				)...,
-			),
-		)
+		var span trace.Span
+		if option.Telemetry.Enabled != nil && *option.Telemetry.Enabled {
+			ids := make([]string, len(payload))
+			for i, packet := range payload {
+				ids[i] = packet.ID()
+			}
 
-		inCounter.Add(ctx, int64(len(payload)), attributes...)
+			_, span = tracer.Start(ctx, v.id,
+				trace.WithAttributes(
+					append(attributes,
+						attribute.StringSlice("ids", ids),
+					)...,
+				),
+			)
+
+			inCounter.Add(ctx, int64(len(payload)), attributes...)
+		}
+
 		start := time.Now()
 
 		defer func() {
 			if r := recover(); r != nil {
 				if err, ok := r.(error); !ok {
-					panicCounter.Add(ctx, 1, attributes...)
-					span.RecordError(err)
-					b.option.PanicHandler(b.ID(), v.id, err, payload...)
+					if option.Telemetry.Enabled != nil && *option.Telemetry.Enabled {
+						panicCounter.Add(ctx, 1, attributes...)
+						span.RecordError(err)
+					}
+					option.PanicHandler(streamID, v.id, err, payload...)
 				}
 			}
 
-			duration := time.Since(start)
-			batchDuration.Record(ctx, int64(duration), attributes...)
+			if option.Telemetry.Enabled != nil && *option.Telemetry.Enabled {
+				duration := time.Since(start)
+				batchDuration.Record(ctx, int64(duration), attributes...)
 
-			span.End()
+				span.End()
+			}
 		}()
 
-		if *v.builder.option.DeepCopy {
+		if *option.DeepCopy {
 			h(deepcopy(payload))
 		} else {
 			h(payload)
@@ -119,7 +111,7 @@ func (v *vertex[T]) wrap(ctx context.Context, b *stream[T]) {
 	}
 }
 
-func (v *vertex[T]) run(ctx context.Context) {
+func (v *vertex[T]) run(ctx context.Context, option *Option[T]) {
 	go func() {
 	Loop:
 		for {
@@ -131,7 +123,7 @@ func (v *vertex[T]) run(ctx context.Context) {
 					continue
 				}
 
-				if *v.builder.option.FIFO {
+				if *option.FIFO {
 					v.handler(data)
 				} else {
 					go v.handler(data)

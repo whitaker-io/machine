@@ -33,6 +33,10 @@ func boolP(v bool) *bool {
 	return &v
 }
 
+func stringP(v string) *string {
+	return &v
+}
+
 func intP(v int) *int {
 	return &v
 }

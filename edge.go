@@ -10,7 +10,7 @@ type EdgeProvider[T Identifiable] interface {
 
 // Edge is an inteface that is used for transferring data between vertices
 type Edge[T Identifiable] interface {
-	SetOutput(ctx context.Context, channel chan []T)
+	OutputTo(ctx context.Context, channel chan []T)
 	Input(payload ...T)
 }
 
@@ -32,14 +32,14 @@ func (p *edgeProvider[T]) New(ctx context.Context, id string, options *Option[T]
 	}
 }
 
-func (out *edge[T]) SetOutput(ctx context.Context, channel chan []T) {
+func (p *edge[T]) OutputTo(ctx context.Context, channel chan []T) {
 	go func() {
 	Loop:
 		for {
 			select {
 			case <-ctx.Done():
 				break Loop
-			case list := <-out.channel:
+			case list := <-p.channel:
 				if len(list) > 0 {
 					channel <- list
 				}
@@ -48,6 +48,6 @@ func (out *edge[T]) SetOutput(ctx context.Context, channel chan []T) {
 	}()
 }
 
-func (out *edge[T]) Input(payload ...T) {
-	out.channel <- payload
+func (p *edge[T]) Input(payload ...T) {
+	p.channel <- payload
 }

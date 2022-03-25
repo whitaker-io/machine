@@ -8,7 +8,6 @@ package machine
 import (
 	"context"
 	"encoding/gob"
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -96,9 +95,7 @@ func (p publishFN) HandleError(payload []idMap, err error) {}
 
 func Benchmark_Test_New(b *testing.B) {
 	channel := make(chan []idMap)
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		return channel
-	},
+	m := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
@@ -107,14 +104,16 @@ func Benchmark_Test_New(b *testing.B) {
 	)
 
 	out := m.Builder().
-		Map("map_id", func(m idMap) idMap {
-			if m.ID() == "" {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		}).Channel()
+		Map(
+			func(m idMap) idMap {
+				if m.ID() == "" {
+					b.Errorf("packet missing name %v", m)
+				}
+				return m
+			},
+		).Channel()
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Consume(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -135,16 +134,15 @@ func Benchmark_Test_New(b *testing.B) {
 
 func Test_New(b *testing.T) {
 	count := 10
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		go func() {
-			channel <- deepcopy(testListInvalidBase)
-			for n := 0; n < count; n++ {
-				channel <- deepcopy(testPayloadBase)
-			}
-		}()
-		return channel
-	},
+	channel := make(chan []idMap)
+	go func() {
+		channel <- deepcopy(testListInvalidBase)
+		for n := 0; n < count; n++ {
+			channel <- deepcopy(testPayloadBase)
+		}
+	}()
+
+	m := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
@@ -153,42 +151,52 @@ func Test_New(b *testing.T) {
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		}).Window("window_id1", func(payload []idMap) []idMap {
-		return payload
-	}).
-		Sort("sort_id1", func(a, b idMap) int {
-			return strings.Compare(a["name"].(string), b["name"].(string))
-		}).
-		Remove("remove_id1", func(index int, d idMap) bool {
-			return false
-		}).
-		FoldLeft("fold_id1", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		FoldLeft("fold_id2", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		FoldRight("fold_id3", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		Filter("fork_id", func(d idMap) bool { return true })
+		Map(
+			func(m idMap) idMap {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+				}
+				return m
+			},
+		).
+		Window(
+			func(payload []idMap) []idMap {
+				return payload
+			},
+		).
+		Sort(
+			func(a, b idMap) int {
+				return strings.Compare(a["name"].(string), b["name"].(string))
+			},
+		).
+		Remove(
+			func(index int, d idMap) bool {
+				return false
+			},
+		).
+		FoldLeft(
+			func(d1, d2 idMap) idMap {
+				return d1
+			},
+		).
+		FoldLeft(
+			func(d1, d2 idMap) idMap {
+				return d1
+			},
+		).
+		FoldRight(
+			func(d1, d2 idMap) idMap {
+				return d1
+			},
+		).
+		Filter(
+			func(d idMap) bool { return true },
+		)
 
 	out := left.Channel()
+	right.Channel()
 
-	right.Finally("sender_id2",
-		func(m idMap) idMap {
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
-		},
-	)
-
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Consume(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -205,66 +213,63 @@ func Test_New(b *testing.T) {
 
 func Test_New2(b *testing.T) {
 	count := 10
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		go func() {
-			for n := 0; n < count; n++ {
-				channel <- deepcopy(testPayloadBase)
-			}
-		}()
-		return channel
-	},
+	channel := make(chan []idMap)
+	go func() {
+		for n := 0; n < count; n++ {
+			channel <- deepcopy(testPayloadBase)
+		}
+	}()
+	m := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
 			BufferSize: intP(1000),
+			Telemetry: &Telemetry{
+				Enabled:     boolP(true),
+				TracerName:  stringP("test"),
+				LabelPrefix: stringP("test"),
+			},
 		},
 	)
 
 	left, right := m.Builder().
-		Map("map_id", func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-			}
-			return m
-		}).
-		FoldRight("fold_id2", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		Duplicate("fork_id")
+		Map(
+			func(m idMap) idMap {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+					b.FailNow()
+				}
+				return m
+			},
+		).
+		FoldRight(
+			func(d1, d2 idMap) idMap {
+				return d1
+			},
+		).
+		Duplicate()
 
 	out := left.Channel()
 
-	l2, r2 := right.Filter("fork_id1", func(d idMap) bool {
-		return true
-	})
-
-	l3, r3 := l2.Filter("fork_id2", func(d idMap) bool {
-		return false
-	})
-
-	r2.Finally("sender_id2",
-		func(m idMap) idMap {
-			fmt.Println("fail")
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
+	l2, r2 := right.Filter(
+		func(d idMap) bool {
+			return true
 		},
 	)
 
-	l3.Finally("sender_id3",
-		func(m idMap) idMap {
-			fmt.Println("fail")
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
+	r2.Channel()
+
+	l3, r3 := l2.Filter(
+		func(d idMap) bool {
+			return false
 		},
 	)
+
+	l3.Channel()
 
 	out2 := r3.Channel()
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Consume(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -292,15 +297,13 @@ func Test_New2(b *testing.T) {
 
 func Test_Panic(b *testing.T) {
 	count := 10
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		go func() {
-			for n := 0; n < count; n++ {
-				channel <- deepcopy(testPayloadBase)
-			}
-		}()
-		return channel
-	},
+	channel := make(chan []idMap)
+	go func() {
+		for n := 0; n < count; n++ {
+			channel <- deepcopy(testPayloadBase)
+		}
+	}()
+	m := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
@@ -309,156 +312,111 @@ func Test_Panic(b *testing.T) {
 	)
 
 	m.Builder().
-		Map("map_id", func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		}).
-		FoldRight("fold_id2", func(d1, d2 idMap) idMap {
-			panic("panic")
-		}).Channel()
+		Map(
+			func(m idMap) idMap {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+				}
+				return m
+			},
+		).
+		FoldRight(
+			func(d1, d2 idMap) idMap {
+				panic("panic")
+			},
+		).Channel()
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Consume(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 }
 
 func Test_Missing_Leaves(b *testing.T) {
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	})
+	m := New("machine_id", &Option[idMap]{})
 
-	left, _ := m.Builder().Duplicate("fork_id")
+	m.Builder().Duplicate()
 
-	left.Finally("sender_id",
+	m2 := New("machine_id",
+		&Option[idMap]{
+			DeepCopy:   boolP(true),
+			FIFO:       boolP(true),
+			BufferSize: intP(1000),
+		},
+	)
+
+	m2.Builder().Duplicate()
+
+	m3 := New("machine_id",
+		&Option[idMap]{
+			DeepCopy:   boolP(true),
+			FIFO:       boolP(true),
+			BufferSize: intP(1000),
+		},
+	)
+
+	m4 := New("machine_id",
+		&Option[idMap]{
+			DeepCopy:   boolP(true),
+			FIFO:       boolP(true),
+			BufferSize: intP(1000),
+		},
+	)
+
+	m4.Builder().
+		Map(
+			func(m idMap) idMap {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+				}
+				return m
+			},
+		)
+
+	m5 := New("machine_id",
+		&Option[idMap]{
+			DeepCopy:   boolP(true),
+			FIFO:       boolP(true),
+			BufferSize: intP(1000),
+		},
+	)
+
+	m5.Builder().
+		FoldRight(
+			func(d1, d2 idMap) idMap {
+				return d1
+			},
+		)
+
+	m6 := New("machine_id",
+		&Option[idMap]{
+			DeepCopy:   boolP(true),
+			FIFO:       boolP(true),
+			BufferSize: intP(1000),
+		},
+	)
+
+	l6, r6 := m6.Builder().Duplicate()
+
+	l6.Map(
 		func(m idMap) idMap {
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+			}
+			return m
 		},
 	)
 
-	m2 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m2.Builder().Duplicate("fork_id")
-
-	m3 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m4 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m4.Builder().Map("map_id", func(m idMap) idMap {
-		if _, ok := m["name"]; !ok {
-			b.Errorf("packet missing name %v", m)
-		}
-		return m
-	})
-
-	m5 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m5.Builder().FoldRight("fold_id2", func(d1, d2 idMap) idMap {
-		return d1
-	})
-
-	m6 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	l6, r6 := m6.Builder().Duplicate("fork_id")
-
-	l6.Map("map_id", func(m idMap) idMap {
-		if _, ok := m["name"]; !ok {
-			b.Errorf("packet missing name %v", m)
-		}
-		return m
-	})
-
-	r6.Map("map_id", func(m idMap) idMap {
-		if _, ok := m["name"]; !ok {
-			b.Errorf("packet missing name %v", m)
-		}
-		return m
-	})
-
-	m7 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	l7, r7 := m7.Builder().Duplicate("fork_id")
-
-	l7.Map("map_id", func(m idMap) idMap {
-		if _, ok := m["name"]; !ok {
-			b.Errorf("packet missing name %v", m)
-		}
-		return m
-	}).Finally("sender_id",
+	r6.Map(
 		func(m idMap) idMap {
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+			}
+			return m
 		},
 	)
 
-	r7.FoldLeft("fold_id2", func(d1, d2 idMap) idMap {
-		return d1
-	})
-
-	m8 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
+	m7 := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
@@ -466,14 +424,24 @@ func Test_Missing_Leaves(b *testing.T) {
 		},
 	)
 
-	m8.Builder().Loop("loop_id", func(a idMap) bool {
-		return false
-	})
+	l7, r7 := m7.Builder().Duplicate()
 
-	m9 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
+	l7.Map(
+		func(m idMap) idMap {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+			}
+			return m
+		},
+	)
+
+	r7.FoldLeft(
+		func(d1, d2 idMap) idMap {
+			return d1
+		},
+	)
+
+	m8 := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
@@ -481,14 +449,29 @@ func Test_Missing_Leaves(b *testing.T) {
 		},
 	)
 
-	m9.Builder().Sort("sort_id", func(a, b idMap) int {
-		return 0
-	})
+	m8.Builder().
+		Loop(
+			func(a idMap) bool {
+				return false
+			},
+		)
 
-	m10 := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		return channel
-	},
+	m9 := New("machine_id",
+		&Option[idMap]{
+			DeepCopy:   boolP(true),
+			FIFO:       boolP(true),
+			BufferSize: intP(1000),
+		},
+	)
+
+	m9.Builder().
+		Sort(
+			func(a, b idMap) int {
+				return 0
+			},
+		)
+
+	m10 := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(true),
@@ -496,142 +479,72 @@ func Test_Missing_Leaves(b *testing.T) {
 		},
 	)
 
-	m10.Builder().Remove("remove_id", func(index int, d idMap) bool {
-		return true
-	})
+	m10.Builder().Remove(
+		func(index int, d idMap) bool {
+			return true
+		},
+	)
 
-	if err := m.Run(context.Background()); err == nil {
+	if err := m.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m")
 		b.FailNow()
 	}
 
-	if err := m2.Run(context.Background()); err == nil {
+	if err := m2.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m2")
 		b.FailNow()
 	}
 
-	if err := m3.Run(context.Background()); err == nil {
+	if err := m3.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m3")
 		b.FailNow()
 	}
 
-	if err := m4.Run(context.Background()); err == nil {
+	if err := m4.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m4")
 		b.FailNow()
 	}
 
-	if err := m5.Run(context.Background()); err == nil {
+	if err := m5.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m5")
 		b.FailNow()
 	}
 
-	if err := m6.Run(context.Background()); err == nil {
+	if err := m6.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m6")
 		b.FailNow()
 	}
 
-	if err := m7.Run(context.Background()); err == nil {
+	if err := m7.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m7")
 		b.FailNow()
 	}
 
-	if err := m8.Run(context.Background()); err == nil {
+	if err := m8.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m8")
 		b.FailNow()
 	}
 
-	if err := m9.Run(context.Background()); err == nil {
+	if err := m9.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m9")
 		b.FailNow()
 	}
 
-	if err := m10.Run(context.Background()); err == nil {
+	if err := m10.Consume(context.Background(), make(chan []idMap)); err == nil {
 		b.Error("expected error m10")
 		b.FailNow()
 	}
 }
 
-func Test_Inject(b *testing.T) {
-	count := 10
-	channel := make(chan []idMap)
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		go func() {
-			for n := 0; n < count; n++ {
-				channel <- deepcopy(testPayloadBase)
-				channel <- nil
-			}
-		}()
-		return channel
-	},
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(false),
-			BufferSize: intP(0),
-		},
-	)
-
-	left, right := m.Builder().
-		Map("map_id", func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		}).
-		FoldLeft("fold_idx", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		FoldLeft("fold_id1", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		FoldRight("fold_id2", func(d1, d2 idMap) idMap {
-			return d1
-		}).
-		Filter("fork_id", func(a idMap) bool {
-			return false
-		})
-
-	left.Finally("sender_id",
-		func(m idMap) idMap {
-			b.Error("unexpected")
-			b.FailNow()
-			return nil
-		},
-	)
-
-	out := right.Channel()
-
-	if err := m.Run(context.Background()); err != nil {
-		b.Error(err)
-		b.FailNow()
-	}
-
-	go func() {
-		for n := 0; n < count; n++ {
-			m.Inject("map_id", deepcopy(testPayloadBase)[0])
-		}
-	}()
-
-	for n := 0; n < 2*count; n++ {
-		list := <-out
-
-		if len(list) != 1 {
-			b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
-			b.FailNow()
-		}
-	}
-}
-
 func Test_Loop(b *testing.T) {
 	count := 10
-	m := New("machine_id", func(c context.Context) chan []idMap {
-		channel := make(chan []idMap)
-		go func() {
-			for n := 0; n < count; n++ {
-				channel <- deepcopy(testPayloadBase)
-			}
-		}()
-		return channel
-	},
+	channel := make(chan []idMap)
+	go func() {
+		for n := 0; n < count; n++ {
+			channel <- deepcopy(testPayloadBase)
+		}
+	}()
+	m := New("machine_id",
 		&Option[idMap]{
 			DeepCopy:   boolP(true),
 			FIFO:       boolP(false),
@@ -641,14 +554,16 @@ func Test_Loop(b *testing.T) {
 
 	counter := 1
 	left, right := m.Builder().
-		Map("map_id", func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-			}
-			return m
-		}).
-		Loop("loop_id",
+		Map(
+			func(m idMap) idMap {
+				if _, ok := m["name"]; !ok {
+					b.Errorf("packet missing name %v", m)
+					b.FailNow()
+				}
+				return m
+			},
+		).
+		Loop(
 			func(a idMap) bool {
 				counter++
 				return counter%2 == 0
@@ -656,24 +571,26 @@ func Test_Loop(b *testing.T) {
 		)
 
 	counter2 := 1
-	inside, _ := left.Loop("loop_id2",
+	inside, _ := left.Loop(
 		func(a idMap) bool {
 			counter2++
 			return counter2%2 == 0
 		},
 	)
 
-	inside.Map("map_id2", func(m idMap) idMap {
-		if _, ok := m["name"]; !ok {
-			b.Errorf("packet missing name %v", m)
-			b.FailNow()
-		}
-		return m
-	})
+	inside.Map(
+		func(m idMap) idMap {
+			if _, ok := m["name"]; !ok {
+				b.Errorf("packet missing name %v", m)
+				b.FailNow()
+			}
+			return m
+		},
+	)
 
 	out := right.Channel()
 
-	if err := m.Run(context.Background()); err != nil {
+	if err := m.Consume(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}

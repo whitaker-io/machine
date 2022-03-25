@@ -59,7 +59,7 @@ linters:
     - exhaustive
     - funlen
     - goconst
-    - gocritic
+    # - gocritic
     - gocyclo
     - gofmt
     - goimports
