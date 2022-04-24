@@ -9,14 +9,16 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/mitchellh/mapstructure v1.4.2
 	github.com/whitaker-io/data v0.1.2
-	go.opentelemetry.io/otel v1.2.0
-	go.opentelemetry.io/otel/metric v0.25.0
-	go.opentelemetry.io/otel/trace v1.2.0
+	go.opentelemetry.io/otel v1.6.3
+	go.opentelemetry.io/otel/metric v0.29.0
+	go.opentelemetry.io/otel/trace v1.6.3
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
 require (
 	github.com/andybalholm/brotli v1.0.2 // indirect
+	github.com/go-logr/logr v1.2.3 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/klauspost/compress v1.13.4 // indirect
 	github.com/savsgio/gotils v0.0.0-20210617111740-97865ed5a873 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
