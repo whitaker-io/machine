@@ -7,128 +7,125 @@ package machine
 import (
 	"context"
 	"time"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/global"
-	"go.opentelemetry.io/otel/trace"
 )
 
-var (
-	meter         = global.Meter("machine")
-	inCounter     = metric.Must(meter).NewInt64Counter("/machine/vertex/count")
-	batchDuration = metric.Must(meter).NewInt64Histogram("/machine/vertex/duration")
-	panicCounter  = metric.Must(meter).NewInt64Counter("/machine/vertex/panics")
-)
-
-type vertex[T Identifiable] struct {
-	id         string
-	vertexType string
-	input      chan []T
-	handler[T]
-	connector func(ctx context.Context, streamID, currentID string, option *Option[T]) error
+// Component is an interface for providing a vertex that can be used to run individual components on the payload.
+type Component[T Identifiable] interface {
+	Component(e Edge[T]) Vertex[T]
 }
 
-type handler[T Identifiable] func(payload []T)
-
-func (v *vertex[T]) cascade(ctx context.Context, streamID, currentID string, option *Option[T], incoming Edge[T]) error {
-	if v.input != nil {
-		incoming.OutputTo(ctx, v.input)
-		return nil
-	}
-
-	v.input = make(chan []T, *option.BufferSize)
-	incoming.OutputTo(ctx, v.input)
-
-	if err := v.connector(ctx, streamID, currentID, option); err != nil {
-		return err
-	}
-
-	v.wrap(ctx, streamID, option)
-	v.run(ctx, option)
-
-	return nil
+// EdgeProvider is an interface for providing an edge that will be used to communicate between vertices.
+type EdgeProvider[T Identifiable] interface {
+	New(name string, option *Option[T]) Edge[T]
 }
 
-func (v *vertex[T]) wrap(ctx context.Context, streamID string, option *Option[T]) {
-	h := v.handler
-	tracer := otel.GetTracerProvider().Tracer(*option.Telemetry.TracerName)
-	attributes := append(
-		[]attribute.KeyValue{
-			attribute.String(*option.Telemetry.LabelPrefix+"/machine/stream/id", streamID),
-			attribute.String(*option.Telemetry.LabelPrefix+"/machine/vertex/id", v.id),
-			attribute.String(*option.Telemetry.LabelPrefix+"/machine/vertex/type", v.vertexType),
-		},
-		option.Telemetry.AdditionalLabels...,
-	)
+// Edge is an inteface that is used for transferring data between vertices
+type Edge[T Identifiable] interface {
+	OutputTo(ctx context.Context, channel chan []T)
+	Input(payload ...T)
+}
 
-	v.handler = func(payload []T) {
-		var span trace.Span
-		if option.Telemetry.Enabled != nil && *option.Telemetry.Enabled {
-			ids := make([]string, len(payload))
-			for i, packet := range payload {
-				ids[i] = packet.ID()
-			}
+type edgeProvider[T Identifiable] struct{}
 
-			_, span = tracer.Start(ctx, v.id,
-				trace.WithAttributes(
-					append(attributes,
-						attribute.StringSlice("ids", ids),
-					)...,
-				),
-			)
+type edge[T Identifiable] struct {
+	channel chan []T
+}
 
-			inCounter.Add(ctx, int64(len(payload)), attributes...)
-		}
+// Vertex is a type used to process data for a stream.
+type Vertex[T Identifiable] func(payload []T)
 
+func (x Vertex[T]) buildHandler(option *Option[T]) func(payload []T) {
+	return func(payload []T) {
+		var span Span[T]
 		start := time.Now()
+
+		if option.Telemetry != nil {
+			option.Telemetry.IncrementPayloadCount()
+			option.Telemetry.PayloadSize(int64(len(payload)))
+			span = option.Telemetry.StartSpan()
+			span.RecordPayload(payload...)
+		}
 
 		defer func() {
 			if r := recover(); r != nil {
 				if err, ok := r.(error); !ok {
-					if option.Telemetry.Enabled != nil && *option.Telemetry.Enabled {
-						panicCounter.Add(ctx, 1, attributes...)
+					if option.Telemetry != nil {
+						option.Telemetry.IncrementErrorCount()
+					}
+
+					if span != nil {
 						span.RecordError(err)
 					}
-					option.PanicHandler(streamID, v.id, err, payload...)
 				}
-			}
-
-			if option.Telemetry.Enabled != nil && *option.Telemetry.Enabled {
-				duration := time.Since(start)
-				batchDuration.Record(ctx, int64(duration), attributes...)
-
-				span.End()
 			}
 		}()
 
-		if *option.DeepCopy {
-			h(deepcopy(payload))
+		defer func() {
+			if option.Telemetry != nil {
+				option.Telemetry.Duration(time.Since(start))
+			}
+		}()
+
+		if option.DeepCopy != nil {
+			x(option.deepCopy(payload...))
 		} else {
-			h(payload)
+			x(payload)
 		}
 	}
 }
 
-func (v *vertex[T]) run(ctx context.Context, option *Option[T]) {
+// Run creates a go func to process the data in the channel until the context is canceled.
+func (x Vertex[T]) Run(ctx context.Context, channel chan []T, option *Option[T]) {
+	h := x.buildHandler(option)
+
 	go func() {
 	Loop:
 		for {
 			select {
 			case <-ctx.Done():
 				break Loop
-			case data := <-v.input:
+			case data := <-channel:
 				if len(data) < 1 {
 					continue
 				}
 
-				if *option.FIFO {
-					v.handler(data)
+				if option.FIFO {
+					h(data)
 				} else {
-					go v.handler(data)
+					go h(data)
 				}
 			}
 		}
 	}()
+}
+
+func (x edgeProvider[T]) New(name string, option *Option[T]) Edge[T] {
+	return &edge[T]{
+		channel: make(chan []T, option.BufferSize),
+	}
+}
+
+func (x *edge[T]) OutputTo(ctx context.Context, channel chan []T) {
+	go func() {
+	Loop:
+		for {
+			select {
+			case <-ctx.Done():
+				break Loop
+			case list := <-x.channel:
+				if len(list) > 0 {
+					channel <- list
+				}
+			}
+		}
+	}()
+}
+
+func (x *edge[T]) Input(payload ...T) {
+	x.channel <- payload
+}
+
+// AsEdge is a helper function to create an edge from a channel.
+func AsEdge[T Identifiable](c chan []T) Edge[T] {
+	return &edge[T]{c}
 }

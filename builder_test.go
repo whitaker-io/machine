@@ -7,113 +7,104 @@ package machine
 
 import (
 	"context"
-	"encoding/gob"
 	"strings"
 	"testing"
 )
 
-type idMap map[string]any
-
-func (i idMap) ID() string {
-	v := i["name"]
-
-	return v.(string)
+type kv struct {
+	name  string
+	value int
 }
 
-var testListInvalidBase = []idMap{
-	{
-		"name":  "data0",
-		"value": 0,
-	},
+func (i *kv) ID() string {
+	return i.name
 }
 
-var testPayloadBase = []idMap{
+var testListInvalidBase = []*kv{
 	{
-		"name":  "data0",
-		"value": 0,
-	},
-	{
-		"name":  "data1",
-		"value": 1,
-	},
-	{
-		"name":  "data2",
-		"value": 2,
-	},
-	{
-		"name":  "data3",
-		"value": 3,
-	},
-	{
-		"name":  "data4",
-		"value": 4,
-	},
-	{
-		"name":  "data5",
-		"value": 5,
-	},
-	{
-		"name":  "data6",
-		"value": 6,
-	},
-	{
-		"name":  "data7",
-		"value": 7,
-	},
-	{
-		"name":  "data8",
-		"value": 8,
-	},
-	{
-		"name":  "data9",
-		"value": 9,
+		name:  "data0",
+		value: 0,
 	},
 }
 
-type tester struct {
-	close error
+var testPayloadBase = []*kv{
+	{
+		name:  "data0",
+		value: 0,
+	},
+	{
+		name:  "data1",
+		value: 1,
+	},
+	{
+		name:  "data2",
+		value: 2,
+	},
+	{
+		name:  "data3",
+		value: 3,
+	},
+	{
+		name:  "data4",
+		value: 4,
+	},
+	{
+		name:  "data5",
+		value: 5,
+	},
+	{
+		name:  "data6",
+		value: 6,
+	},
+	{
+		name:  "data7",
+		value: 7,
+	},
+	{
+		name:  "data8",
+		value: 8,
+	},
+	{
+		name:  "data9",
+		value: 9,
+	},
 }
 
-func (t *tester) Read(ctx context.Context) []idMap {
-	return deepcopy(testPayloadBase)
+func deepcopy(list ...*kv) []*kv {
+	out := make([]*kv, len(list))
+
+	for n, i := range list {
+		out[n] = &kv{name: i.name, value: i.value}
+	}
+
+	return out
 }
 
-func (t *tester) Close() error {
-	return t.close
-}
-
-func (t *tester) Error(...interface{}) {}
-func (t *tester) Info(...interface{})  {}
-
-type publishFN func([]idMap) error
-
-func (p publishFN) Send(payload []idMap) error {
-	return p(payload)
-}
-
-func (p publishFN) HandleError(payload []idMap, err error) {}
+func deepcopyKV(k *kv) *kv { return &kv{name: k.name, value: k.value} }
 
 func Benchmark_Test_New(b *testing.B) {
-	channel := make(chan []idMap)
-	m := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(false),
-			BufferSize: intP(0),
+	out := make(chan []*kv)
+	channel := make(chan []*kv)
+	m := New[*kv]("machine_id",
+		&edgeProvider[*kv]{},
+		&Option[*kv]{
+			DeepCopy:   deepcopyKV,
+			FIFO:       false,
+			BufferSize: 0,
 		},
 	)
 
-	out := m.Builder().
+	m.Builder().
 		Map(
-			func(m idMap) idMap {
+			func(m *kv) *kv {
 				if m.ID() == "" {
 					b.Errorf("packet missing name %v", m)
 				}
 				return m
 			},
-		).Channel()
+		).OutputTo(out)
 
-	if err := m.Consume(context.Background(), channel); err != nil {
+	if err := m.StartWith(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -133,149 +124,131 @@ func Benchmark_Test_New(b *testing.B) {
 }
 
 func Test_New(b *testing.T) {
-	count := 10
-	channel := make(chan []idMap)
+	count := 1000
+	out := make(chan []*kv)
+	out2 := make(chan []*kv)
+	channel := make(chan []*kv)
 	go func() {
-		channel <- deepcopy(testListInvalidBase)
+		channel <- deepcopy(testListInvalidBase...)
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase)
+			channel <- deepcopy(testPayloadBase...)
 		}
 	}()
 
-	m := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(false),
-			BufferSize: intP(0),
+	m := NewWithChannels("machine_id",
+		&Option[*kv]{
+			DeepCopy:   deepcopyKV,
+			FIFO:       false,
+			BufferSize: 0,
 		},
 	)
 
 	left, right := m.Builder().
 		Map(
-			func(m idMap) idMap {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-				}
+			func(m *kv) *kv {
 				return m
 			},
 		).
 		Window(
-			func(payload []idMap) []idMap {
+			func(payload []*kv) []*kv {
 				return payload
 			},
 		).
 		Sort(
-			func(a, b idMap) int {
-				return strings.Compare(a["name"].(string), b["name"].(string))
+			func(a, b *kv) int {
+				return strings.Compare(a.name, b.name)
 			},
 		).
 		Remove(
-			func(index int, d idMap) bool {
+			func(index int, d *kv) bool {
 				return false
 			},
 		).
-		FoldLeft(
-			func(d1, d2 idMap) idMap {
-				return d1
-			},
-		).
-		FoldLeft(
-			func(d1, d2 idMap) idMap {
-				return d1
-			},
-		).
-		FoldRight(
-			func(d1, d2 idMap) idMap {
-				return d1
+		Combine(
+			func(d []*kv) *kv {
+				return d[0]
 			},
 		).
 		Filter(
-			func(d idMap) bool { return true },
+			func(d *kv) FilterResult {
+				return FilterLeft
+			},
 		)
 
-	out := left.Channel()
-	right.Channel()
+	left.OutputTo(out)
+	right.OutputTo(out2)
 
-	if err := m.Consume(context.Background(), channel); err != nil {
+	if err := m.StartWith(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 
 	for n := 0; n < count; n++ {
-		list := <-out
-
-		if len(list) != 1 {
-			b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
+		select {
+		case list := <-out:
+			if len(list) != 1 {
+				b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
+				b.FailNow()
+			}
+		case <-out2:
+			b.Errorf("should never reach this")
 			b.FailNow()
 		}
 	}
 }
 
 func Test_New2(b *testing.T) {
-	count := 10
-	channel := make(chan []idMap)
+	count := 100000
+	out := make(chan []*kv)
+	out2 := make(chan []*kv)
+	channel := make(chan []*kv)
 	go func() {
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase)
+			channel <- deepcopy(testPayloadBase...)
 		}
 	}()
-	m := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-			Telemetry: &Telemetry{
-				Enabled:     boolP(true),
-				TracerName:  stringP("test"),
-				LabelPrefix: stringP("test"),
-			},
+	m := New[*kv]("machine_id",
+		&edgeProvider[*kv]{},
+		&Option[*kv]{
+			DeepCopy:   deepcopyKV,
+			FIFO:       true,
+			BufferSize: 1000,
 		},
 	)
 
 	left, right := m.Builder().
 		Map(
-			func(m idMap) idMap {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-					b.FailNow()
-				}
+			func(m *kv) *kv {
 				return m
 			},
 		).
-		FoldRight(
-			func(d1, d2 idMap) idMap {
-				return d1
+		Combine(
+			func(d []*kv) *kv {
+				return d[0]
 			},
-		).
-		Duplicate()
+		).Filter(Duplicate[*kv])
 
-	out := left.Channel()
+	left.OutputTo(out)
 
 	l2, r2 := right.Filter(
-		func(d idMap) bool {
-			return true
+		func(d *kv) FilterResult {
+			return FilterLeft
 		},
 	)
 
-	r2.Channel()
+	r2.OutputTo(out2)
 
 	l3, r3 := l2.Filter(
-		func(d idMap) bool {
-			return false
+		func(d *kv) FilterResult {
+			return FilterRight
 		},
 	)
 
-	l3.Channel()
+	l3.OutputTo(out2)
+	r3.OutputTo(out)
 
-	out2 := r3.Channel()
-
-	if err := m.Consume(context.Background(), channel); err != nil {
+	if err := m.StartWith(context.Background(), channel); err != nil {
 		b.Error(err)
-		b.FailNow()
-	}
-
-	if m.ID() != "machine_id" {
-		b.Errorf("incorrect id have %v want %v", m.ID(), "machine_id")
 		b.FailNow()
 	}
 
@@ -283,314 +256,140 @@ func Test_New2(b *testing.T) {
 		select {
 		case list := <-out:
 			if len(list) != 1 {
-				b.Errorf("incorrect data have %v want %v", list, testPayloadBase[9])
+				b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
 				b.FailNow()
 			}
-		case list := <-out2:
-			if len(list) != 1 {
-				b.Errorf("incorrect data have %v want %v", list, testPayloadBase[9])
-				b.FailNow()
-			}
+		case <-out2:
+			b.Errorf("should never reach this")
+			b.FailNow()
 		}
 	}
 }
 
 func Test_Panic(b *testing.T) {
-	count := 10
-	channel := make(chan []idMap)
+	out := make(chan []*kv)
+	count := 100000
+	channel := make(chan []*kv)
 	go func() {
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase)
+			channel <- deepcopy(testPayloadBase...)
 		}
 	}()
-	m := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
+	m := NewWithChannels("machine_id",
+		&Option[*kv]{
+			DeepCopy:   deepcopyKV,
+			FIFO:       true,
+			BufferSize: 1000,
 		},
 	)
 
 	m.Builder().
 		Map(
-			func(m idMap) idMap {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-				}
+			func(m *kv) *kv {
 				return m
 			},
 		).
-		FoldRight(
-			func(d1, d2 idMap) idMap {
-				panic("panic")
+		Combine(
+			func(d []*kv) *kv {
+				panic("not supposed to be here")
+				return d[0]
 			},
-		).Channel()
+		).OutputTo(out)
 
-	if err := m.Consume(context.Background(), channel); err != nil {
+	if err := m.StartWith(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 }
 
 func Test_Missing_Leaves(b *testing.T) {
-	m := New("machine_id", &Option[idMap]{})
+	m := NewWithChannels("machine_id", &Option[*kv]{})
 
-	m.Builder().Duplicate()
-
-	m2 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m2.Builder().Duplicate()
-
-	m3 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m4 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m4.Builder().
+	m.Builder().
 		Map(
-			func(m idMap) idMap {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-				}
+			func(m *kv) *kv {
 				return m
 			},
 		)
 
-	m5 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
+	m2 := NewWithChannels("machine_id", &Option[*kv]{})
 
-	m5.Builder().
-		FoldRight(
-			func(d1, d2 idMap) idMap {
-				return d1
+	m.Builder().
+		Filter(
+			func(d *kv) FilterResult {
+				return FilterLeft
 			},
 		)
 
-	m6 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	l6, r6 := m6.Builder().Duplicate()
-
-	l6.Map(
-		func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		},
-	)
-
-	r6.Map(
-		func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		},
-	)
-
-	m7 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	l7, r7 := m7.Builder().Duplicate()
-
-	l7.Map(
-		func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-			}
-			return m
-		},
-	)
-
-	r7.FoldLeft(
-		func(d1, d2 idMap) idMap {
-			return d1
-		},
-	)
-
-	m8 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m8.Builder().
-		Loop(
-			func(a idMap) bool {
-				return false
-			},
-		)
-
-	m9 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(1000),
-		},
-	)
-
-	m9.Builder().
-		Sort(
-			func(a, b idMap) int {
-				return 0
-			},
-		)
-
-	m10 := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(true),
-			BufferSize: intP(0),
-		},
-	)
-
-	m10.Builder().Remove(
-		func(index int, d idMap) bool {
-			return true
-		},
-	)
-
-	if err := m.Consume(context.Background(), make(chan []idMap)); err == nil {
+	if err := m.StartWith(context.Background(), make(chan []*kv)); err == nil {
 		b.Error("expected error m")
 		b.FailNow()
 	}
 
-	if err := m2.Consume(context.Background(), make(chan []idMap)); err == nil {
+	if err := m2.StartWith(context.Background(), make(chan []*kv)); err == nil {
 		b.Error("expected error m2")
-		b.FailNow()
-	}
-
-	if err := m3.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m3")
-		b.FailNow()
-	}
-
-	if err := m4.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m4")
-		b.FailNow()
-	}
-
-	if err := m5.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m5")
-		b.FailNow()
-	}
-
-	if err := m6.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m6")
-		b.FailNow()
-	}
-
-	if err := m7.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m7")
-		b.FailNow()
-	}
-
-	if err := m8.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m8")
-		b.FailNow()
-	}
-
-	if err := m9.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m9")
-		b.FailNow()
-	}
-
-	if err := m10.Consume(context.Background(), make(chan []idMap)); err == nil {
-		b.Error("expected error m10")
 		b.FailNow()
 	}
 }
 
 func Test_Loop(b *testing.T) {
-	count := 10
-	channel := make(chan []idMap)
+	out := make(chan []*kv)
+	count := 100000
+	channel := make(chan []*kv)
 	go func() {
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase)
+			channel <- deepcopy(testPayloadBase...)
 		}
 	}()
-	m := New("machine_id",
-		&Option[idMap]{
-			DeepCopy:   boolP(true),
-			FIFO:       boolP(false),
-			BufferSize: intP(0),
+	m := NewWithChannels("machine_id",
+		&Option[*kv]{
+			DeepCopy:   deepcopyKV,
+			FIFO:       false,
+			BufferSize: 0,
 		},
 	)
 
 	counter := 1
 	left, right := m.Builder().
 		Map(
-			func(m idMap) idMap {
-				if _, ok := m["name"]; !ok {
-					b.Errorf("packet missing name %v", m)
-					b.FailNow()
-				}
+			func(m *kv) *kv {
 				return m
 			},
 		).
 		Loop(
-			func(a idMap) bool {
+			func(a *kv) FilterResult {
 				counter++
-				return counter%2 == 0
+				if counter%2 == 0 {
+					return FilterLeft
+				}
+				return FilterRight
 			},
 		)
 
 	counter2 := 1
 	inside, _ := left.Loop(
-		func(a idMap) bool {
+		func(a *kv) FilterResult {
 			counter2++
-			return counter2%2 == 0
+			if counter%2 == 0 {
+				return FilterLeft
+			}
+			return FilterRight
 		},
 	)
 
 	inside.Map(
-		func(m idMap) idMap {
-			if _, ok := m["name"]; !ok {
-				b.Errorf("packet missing name %v", m)
-				b.FailNow()
-			}
+		func(m *kv) *kv {
 			return m
 		},
 	)
 
-	out := right.Channel()
+	right.OutputTo(out)
 
-	if err := m.Consume(context.Background(), channel); err != nil {
+	m.Consume(channel)
+	m.Clear()
+	m.Consume(channel)
+
+	if err := m.Start(context.Background()); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -602,9 +401,4 @@ func Test_Loop(b *testing.T) {
 			b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
 		}
 	}
-}
-
-func init() {
-	gob.Register(idMap{})
-	gob.Register([]idMap{})
 }
