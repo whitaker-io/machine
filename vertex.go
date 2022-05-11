@@ -19,7 +19,7 @@ type EdgeProvider[T Identifiable] interface {
 	New(name string, option *Option[T]) Edge[T]
 }
 
-// Edge is an inteface that is used for transferring data between vertices
+// Edge is an interface that is used for transferring data between vertices
 type Edge[T Identifiable] interface {
 	OutputTo(ctx context.Context, channel chan []T)
 	Input(payload ...T)
