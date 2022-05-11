@@ -12,7 +12,7 @@
 
 `Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
 
-Implementations of the `EdgeProvider` and `Edge` interfaces can be used for fan-out so that large volumes of data can be process by multiple nodes.
+Implementations of the `EdgeProvider` and `Edge` interfaces can be used for fan-out so that large volumes of data can be processed by multiple nodes.
 
 ```golang
 type EdgeProvider[T Identifiable] interface {
