@@ -141,12 +141,12 @@ func main() {
     for {
       select {
       case <-ctx.Done():
-				break Loop
+        break Loop
       case data := <-out:
-      //handle the processed data
-			}
-		}
-	}()
+        //handle the processed data
+      }
+    }
+  }()
 
   // run until SIGTERM
   c := make(chan os.Signal, 1)
