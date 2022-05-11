@@ -53,8 +53,8 @@ type Window[T Identifiable] func(payload []T) []T
 type Remover[T Identifiable] func(index int, d T) bool
 ```
 
-These all implement the `Component` which can be use to provide a `Vertex`. The `Vertex` is the main building block of a 
-`Stream` under the covers and can be used individually for testing of very simple single operations.
+These all implement the `Component` interface, which can be use to provide a `Vertex` instance. The `Vertex` type is the main building block of a 
+`Stream`. The builder method creates these under the covers, and they can be used individually for testing of single operations.
 
 
 ```golang
