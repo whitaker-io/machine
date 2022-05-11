@@ -1,4 +1,5 @@
 run:
+  go: '1.18'
   deadline: 5m
 # include test files or not, default is true
   tests: false
@@ -59,7 +60,7 @@ linters:
     - exhaustive
     - funlen
     - goconst
-    - gocritic
+    # - gocritic
     - gocyclo
     - gofmt
     - goimports

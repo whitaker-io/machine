@@ -18,7 +18,7 @@ jobs:
       - name: Set up Go 1.x
         uses: actions/setup-go@v2
         with:
-          go-version: ^1.16
+          go-version: 1.18
         id: go
 
       - uses: actions/checkout@master
@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v2.5.2
+        uses: golangci/golangci-lint-action@v3.2.0
         with:
           version: latest
           github-token: ${{ github.token }}

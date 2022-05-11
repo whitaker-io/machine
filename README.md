@@ -10,18 +10,59 @@
     <img alt="Machine" height="125" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Black-No-BG.png">
 </p>
 
-`Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms. 
+`Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
 
-It supports 
-[opentelemetry](https://github.com/open-telemetry/opentelemetry-go) spans and metrics out of the box 
+Implementations of the `EdgeProvider` and `Edge` interfaces can be used for fan-out so that large volumes of data can be process by multiple nodes.
 
-It also supports building dynamic pipelines using 
-- native go plugins 
-- [hashicorp](https://github.com/hashicorp/go-plugin)
-- [yaegi](https://github.com/traefik/yaegi)
-- [tengo](https://github.com/d5/tengo)
+```golang
+type EdgeProvider[T Identifiable] interface {
+	New(name string, option *Option[T]) Edge[T]
+}
 
-[Components](https://github.com/whitaker-io/components) is a repository of different vertex and plugin implementations 
+type Edge[T Identifiable] interface {
+	OutputTo(ctx context.Context, channel chan []T)
+	Input(payload ...T)
+}
+```
+
+Examples of using both AWS SQS and Google Pub/Sub coming soon!
+
+------
+
+The main function types are:
+
+```golang
+// Applicative is a function that is applied on an individual
+// basis for each Packet in the payload. The resulting data replaces
+// the old data
+type Applicative[T Identifiable] func(d T) T
+
+// Combiner is a function used to combine a payload into a single Packet.
+type Combiner[T Identifiable] func(payload []T) T
+
+// Filter is a function that can be used to filter the payload.
+type Filter[T Identifiable] func(d T) FilterResult
+
+// Comparator is a function to compare 2 items
+type Comparator[T Identifiable] func(a T, b T) int
+
+// Window is a function to work on a window of data
+type Window[T Identifiable] func(payload []T) []T
+
+// Remover func that is used to remove Data based on a true result
+type Remover[T Identifiable] func(index int, d T) bool
+```
+
+These all implement the `Component` which can be use to provide a `Vertex`. The `Vertex` is the main building block of a 
+`Stream` under the covers and can be used individually for testing of very simple single operations.
+
+
+```golang
+// Component is an interface for providing a Vertex that can be used to run individual components on the payload.
+type Component[T Identifiable] interface {
+	Component(e Edge[T]) Vertex[T]
+}
+```
 
 ------
 
@@ -31,70 +72,92 @@ Add the primary library to your project
 ```bash
   go get -u github.com/whitaker-io/machine
 ```
-
-
-------
-
-[Data](https://github.com/whitaker-io/data) is a library for getting and setting values in a `map`[`string`]`interface`{} 
-
-------
-
-## [Documentation](#docs)
-
-<img alt="Gopher" align="right" height="250" src="https://raw.githubusercontent.com/whitaker-io/machine/master/docs/static/Gopher.png">
-
-[Docs](./docs)
-  * [Stream](./docs/01_Stream.md)
-  * [Map](./docs/02_Map.md)
-  * [Fork](./docs/03_Fork.md)
-  * [Fold](./docs/04_Fold.md)
-  * [Loop](./docs/07_Loop.md)
-  * [Sort](./docs/09_Sort.md)
-  * [Remove](./docs/10_Remove.md)
-  * [Publish](./docs/06_Publisher.md)
-  * [Plugins](./docs/08_Plugins.md)
-
-***
 ## [Example](#example)
 
 
 Basic `receive` -> `process` -> `send` Flow
 
 ```golang
-  stream := NewStream("unique_id1", 
-    func(c context.Context) chan []Data {
-      channel := make(chan []Data)
-    
-      // setup channel to collect data as long as 
-      // the context has not completed
+package main
 
-      return channel
+import (
+  "context"
+  "fmt"
+  "os"
+  "os/signal"
+  "time"
+
+  "github.com/whitaker-io/machine"
+)
+
+type kv struct {
+  name  string
+  value int
+}
+
+func (i *kv) ID() string {
+  return i.name
+}
+
+func deepcopyKV(k *kv) *kv { return &kv{name: k.name, value: k.value} }
+
+func main() {
+  ctx, cancel := context.WithCancel(context.Background())
+
+  stream := machine.NewWithChannels(
+    "test_stream",
+    &Option[*kv]{
+      DeepCopy:   deepcopyKV,
+      FIFO:       false,
+      BufferSize: 0,
     },
-    &Option{FIFO: boolP(false)},
-    &Option{Metrics: boolP(true)},
-    &Option{Span: boolP(false)},
   )
 
-  stream.Builder().Map("unique_id2", 
-      func(m Data) error {
-        var err error
+  input := make(chan []*kv)
+  out := make(chan []*kv)
 
-        // ...do some processing
 
-        return err
+  go func() {
+    input <- someData //get some data from somewhere
+  }()
+
+  // this is a very simple example try experimenting 
+  // with more complex flows including loops and filters
+  stream.Builder().
+    Map(
+      func(m *kv) *kv {
+        // do some processing
+        return m
       },
-    ).Publish("publish_left_id", publishFN(func(d []data.Data) error {
-      // send the data somewhere
+    ).OutputTo(out)
 
-      return nil
-    }),
-  )
-
-  if err := stream.Run(context.Background()); err != nil {
-    // Run will return an error in the case that 
-    // one of the paths is not terminated (i.e. missing a Publish)
-    panic(err)
+  if err := streamm.StartWith(ctx, input); err != nil {
+    fmt.Println(err)
   }
+
+
+  go func() {
+  Loop:
+    for {
+      select {
+      case <-ctx.Done():
+				break Loop
+      case data := <-out:
+      //handle the processed data
+			}
+		}
+	}()
+
+  // run until SIGTERM
+  c := make(chan os.Signal, 1)
+  signal.Notify(c, os.Interrupt)
+
+  <-c
+  cancel()
+
+  // give some time for a graceful shutdown
+  <-time.After(time.Second * 2)
+}
 ```
 
 ***

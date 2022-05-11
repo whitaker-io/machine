@@ -5,335 +5,124 @@
 package machine
 
 import (
-	"bytes"
-	"context"
-	"encoding/gob"
-	"encoding/json"
-	"time"
-
-	"github.com/whitaker-io/data"
+	"fmt"
+	"sort"
 )
 
-var (
-	// ForkDuplicate is a Fork that creates a deep copy of the
-	// payload and sends it down both branches.
-	ForkDuplicate Fork = func(payload []*Packet) (a, b []*Packet) {
-		return payload, deepCopyPayload(payload)
-	}
-
-	// ForkError is a Fork that splits machine.Packets based on
-	// the presence of an error. Errors are sent down the
-	// right side path.
-	ForkError Fork = func(payload []*Packet) (s, f []*Packet) {
-		s = []*Packet{}
-		f = []*Packet{}
-
-		for _, packet := range payload {
-			if len(packet.Errors) > 0 {
-				f = append(f, packet)
-			} else {
-				s = append(s, packet)
-			}
-		}
-
-		return s, f
-	}
-
-	defaultOptions = &Option{
-		DeepCopy:   boolP(false),
-		FIFO:       boolP(false),
-		Metrics:    boolP(true),
-		Span:       boolP(true),
-		BufferSize: intP(0),
-		Provider:   &edgeProvider{},
-	}
+const (
+	// FilterLeft is a filter result that indicates that the item should move to the left branch.
+	FilterLeft FilterResult = iota
+	// FilterRight is a filter result that indicates that the item should move to the right branch.
+	FilterRight
+	// FilterBoth is a filter result that indicates that the item should go down both paths using the option.Deepcopy fn if provided.
+	FilterBoth
 )
 
-// EdgeProvider is an interface that is used for providing new instances
-// of the Edge interface given the *Option set in the Stream
-type EdgeProvider interface {
-	New(ctx context.Context, id string, options *Option) Edge
+// Duplicate shorthand for FilterBoth.
+func Duplicate[T Identifiable](d T) FilterResult {
+	return FilterBoth
 }
 
-// Edge is an inteface that is used for transferring data between vertices
-type Edge interface {
-	Send(ctx context.Context, channel chan []*Packet)
-	Next(payload ...*Packet)
-}
+// FilterResult is a type that is used to indicate the result of a filter.
+type FilterResult uint8
 
-// Subscription is an interface for creating a pull based stream.
-// It requires 2 methods Read and Close.
-//
-// Read is called when the interval passes and the resulting
-// payload is sent down the Stream.
-//
-// Close is called during a graceful termination and any errors
-// are logged.
-type Subscription interface {
-	Read(ctx context.Context) []data.Data
-	Close() error
+// Identifiable is an interface that is used for providing an ID for a packet
+type Identifiable interface {
+	ID() string
 }
-
-// Publisher is an interface for sending data out of the Stream
-type Publisher interface {
-	Send([]data.Data) error
-}
-
-// Packet type that holds information traveling through the machine.
-type Packet struct {
-	ID     string           `json:"id"`
-	Data   data.Data        `json:"data"`
-	Errors map[string]error `json:"errors"`
-}
-
-// Option type for holding machine settings.
-type Option struct {
-	// DeepCopy uses encoding/gob to create a deep copy of the payload
-	// before the processing to ensure concurrent map exceptions cannot
-	// happen. Is fairly resource intensive so use with caution.
-	// Default: false
-	DeepCopy *bool `json:"deep_copy,omitempty" mapstructure:"deep_copy,omitempty"`
-	// FIFO controls the processing order of the payloads
-	// If set to true the system will wait for one payload
-	// to be processed before starting the next.
-	// Default: false
-	FIFO *bool `json:"fifo,omitempty" mapstructure:"fifo,omitempty"`
-	// BufferSize sets the buffer size on the edge channels between the
-	// vertices, this setting can be useful when processing large amounts
-	// of data with FIFO turned on.
-	// Default: 0
-	BufferSize *int `json:"buffer_size,omitempty" mapstructure:"buffer_size,omitempty"`
-	// Span controls whether opentelemetry spans are created for tracing
-	// Packets processed by the system.
-	// Default: true
-	Span *bool `json:"spans_enabled,omitempty" mapstructure:"spans_enabled,omitempty"`
-	// Metrics controls whether opentelemetry metrics are recorded for
-	// Packets processed by the system.
-	// Default: true
-	Metrics *bool `json:"metrics_enabled,omitempty" mapstructure:"metrics_enabled,omitempty"`
-	// Provider determines the edge type to be used, logic for what type of edge
-	// for a given id is required if not using homogeneous edges
-	// Default: nil
-	Provider EdgeProvider `json:"-" mapstructure:"-"`
-	// Validators are used to ensure the incoming Data is compliant
-	// they are run at the start of the stream before creation of Packets
-	// Default: nil
-	Validators map[string]ForkRule `json:"-" mapstructure:"-"`
-}
-
-// Retriever is a function that provides data to a generic Stream
-// must stop when the context receives a done signal.
-type Retriever func(ctx context.Context) chan []data.Data
 
 // Applicative is a function that is applied on an individual
 // basis for each Packet in the payload. The resulting data replaces
 // the old data
-type Applicative func(d data.Data) data.Data
+type Applicative[T Identifiable] func(d T) T
 
-// Window is a function that is applied to the entire payload.
-// The resulting data replaces the old data
-type Window func(list ...*Packet) []*Packet
+// Combiner is a function used to combine a payload into a single Packet.
+type Combiner[T Identifiable] func(payload []T) T
 
-// Fold is a function used to combine a payload into a single Packet.
-// It may be used with either a Fold Left or Fold Right operation,
-// which starts at the corresponding side and moves through the payload.
-// The returned instance of data.Data is used as the aggregate in the subsequent
-// call.
-type Fold func(aggregate, next data.Data) data.Data
+// Filter is a function that can be used to filter the payload.
+type Filter[T Identifiable] func(d T) FilterResult
 
-// Fork is a function for splitting the payload into 2 separate paths.
-// Default Forks for duplication and error checking are provided by
-// ForkDuplicate and ForkError respectively.
-type Fork func(list []*Packet) (a, b []*Packet)
+// Comparator is a function to compare 2 items
+type Comparator[T Identifiable] func(a T, b T) int
 
-// ForkRule is a function that can be converted to a Fork via the Handler
-// method allowing for Forking based on the contents of the data.
-type ForkRule func(d data.Data) bool
-
-// Comparator is a function to compare 2 data.Data's
-type Comparator func(a data.Data, b data.Data) int
+// Window is a function to work on a window of data
+type Window[T Identifiable] func(payload []T) []T
 
 // Remover func that is used to remove Data based on a true result
-type Remover func(index int, d data.Data) bool
+type Remover[T Identifiable] func(index int, d T) bool
 
-// Error type for wrapping errors coming from the Stream
-type Error struct {
-	Err        error     `json:"err"`
-	StreamID   string    `json:"stream_id"`
-	VertexID   string    `json:"vertex_id"`
-	VertexType string    `json:"vertex_type"`
-	Packets    []*Packet `json:"payload"`
-	Time       time.Time `json:"time"`
-}
-
-type handler func(payload []*Packet)
-
-type edgeProvider struct{}
-
-type edge struct {
-	channel chan []*Packet
-}
-
-func (o *Option) merge(options ...*Option) *Option {
-	if len(options) < 1 {
-		return o
-	} else if len(options) == 1 {
-		return o.join(options[0])
-	}
-
-	return o.join(options[0]).merge(options[1:]...)
-}
-
-func (o *Option) join(option *Option) *Option {
-	out := &Option{
-		DeepCopy:   o.DeepCopy,
-		FIFO:       o.FIFO,
-		BufferSize: o.BufferSize,
-		Metrics:    o.Metrics,
-		Span:       o.Span,
-		Provider:   o.Provider,
-		Validators: o.Validators,
-	}
-
-	if option.DeepCopy != nil {
-		out.DeepCopy = option.DeepCopy
-	}
-
-	if option.FIFO != nil {
-		out.FIFO = option.FIFO
-	}
-
-	if option.BufferSize != nil {
-		out.BufferSize = option.BufferSize
-	}
-
-	if option.Metrics != nil {
-		out.Metrics = option.Metrics
-	}
-
-	if option.Span != nil {
-		out.Span = option.Span
-	}
-
-	if option.Provider != nil {
-		out.Provider = option.Provider
-	}
-
-	if option.Validators != nil {
-		out.Validators = option.Validators
-	}
-
-	return out
-}
-
-// Handler is a method for turning the ForkRule into an instance of Fork
-func (r ForkRule) Handler(payload []*Packet) (t, f []*Packet) {
-	t = []*Packet{}
-	f = []*Packet{}
-
-	for _, packet := range payload {
-		if r(packet.Data) {
-			t = append(t, packet)
-		} else {
-			f = append(f, packet)
+func (x Applicative[T]) Component(output Edge[T]) Vertex[T] {
+	return func(payload []T) {
+		for i, packet := range payload {
+			payload[i] = x(packet)
 		}
-	}
 
-	return t, f
-}
-
-func (e *Error) Error() string {
-	bytez, err := json.Marshal(e)
-
-	if err != nil {
-		return e.Error()
-	}
-
-	return string(bytez)
-}
-
-func (p *edgeProvider) New(ctx context.Context, id string, options *Option) Edge {
-	b := 0
-
-	if options.BufferSize != nil {
-		b = *options.BufferSize
-	}
-
-	return &edge{
-		channel: make(chan []*Packet, b),
+		output.Input(payload...)
 	}
 }
 
-func (out *edge) Send(ctx context.Context, channel chan []*Packet) {
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break Loop
-			case list := <-out.channel:
-				if len(list) > 0 {
-					channel <- list
-				}
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Combiner[T]) Component(output Edge[T]) Vertex[T] {
+	return func(payload []T) {
+		output.Input(x(payload))
+	}
+}
+
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Filter[T]) Component(left, right Edge[T], option *Option[T]) Vertex[T] {
+	return func(payload []T) {
+		l := []T{}
+		r := []T{}
+
+		for _, packet := range payload {
+			fr := x(packet)
+
+			if fr == FilterLeft {
+				l = append(l, packet)
+			} else if fr == FilterRight {
+				r = append(r, packet)
+			} else if fr == FilterBoth {
+				l = append(l, packet)
+				r = append(r, option.deepCopy(packet)...)
+			} else {
+				panic(fmt.Errorf("unknown filter result: %v", x(packet)))
 			}
 		}
-	}()
+
+		left.Input(l...)
+		right.Input(r...)
+	}
 }
 
-func (out *edge) Next(payload ...*Packet) {
-	out.channel <- payload
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Comparator[T]) Component(output Edge[T]) Vertex[T] {
+	return func(payload []T) {
+		sort.Slice(payload, func(i, j int) bool {
+			return x(payload[i], payload[j]) < 0
+		})
+
+		output.Input(payload...)
+	}
 }
 
-func boolP(v bool) *bool {
-	return &v
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Window[T]) Component(output Edge[T]) Vertex[T] {
+	return func(payload []T) {
+		output.Input(x(payload)...)
+	}
 }
 
-func intP(v int) *int {
-	return &v
-}
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Remover[T]) Component(output Edge[T]) Vertex[T] {
+	return func(payload []T) {
+		out := []T{}
 
-func (o *Option) validate(payload ...data.Data) [][]string {
-	list := make([][]string, len(payload))
-	failed := false
-	if o.Validators != nil {
-		for i, d := range payload {
-			for k, v := range o.Validators {
-				if !v(d) {
-					if len(list[i]) < 1 {
-						list[i] = []string{}
-					}
-					list[i] = append(list[i], k)
-					failed = true
-				}
+		for i, v := range payload {
+			if !x(i, v) {
+				out = append(out, v)
 			}
 		}
+
+		output.Input(out...)
 	}
-
-	if failed {
-		return list
-	}
-
-	return [][]string{}
-}
-
-func deepCopy(d []data.Data) []data.Data {
-	out := []data.Data{}
-	buf := &bytes.Buffer{}
-	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-	_ = enc.Encode(d)
-	_ = dec.Decode(&out)
-
-	return out
-}
-
-func deepCopyPayload(d []*Packet) []*Packet {
-	out := []*Packet{}
-	buf := &bytes.Buffer{}
-	enc, dec := gob.NewEncoder(buf), gob.NewDecoder(buf)
-
-	_ = enc.Encode(d)
-	_ = dec.Decode(&out)
-
-	return out
 }
