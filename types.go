@@ -85,7 +85,7 @@ func (x Filter[T]) Component(left, right Edge[T], option *Option[T]) Vertex[T] {
 				l = append(l, packet)
 				r = append(r, option.deepCopy(packet)...)
 			} else {
-				panic(fmt.Errorf("Unknown filter result: %v", x(packet)))
+				panic(fmt.Errorf("unknown filter result: %v", x(packet)))
 			}
 		}
 
