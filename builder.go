@@ -19,11 +19,9 @@ const (
 type nodeChild string
 
 // Stream is a representation of a data stream and its associated logic.
-// Creating a new Stream is handled by the appropriately named NewStream function.
 //
 // The Builder method is the entrypoint into creating the data processing flow.
-// All branches of the Stream are required to end in either a Publish or
-// a Link in order to be considered valid.
+// All branches of the Stream are required to end in an OutputTo call.
 type Stream[T Identifiable] interface {
 	Start(ctx context.Context) error
 	StartWith(ctx context.Context, input ...chan []T) error
@@ -118,17 +116,17 @@ func (x *stream[T]) Builder() Builder[T] {
 	}
 }
 
-// Map apply a mutation
+// Map apply a mutation to each individual element of the payload.
 func (x builder[T]) Map(fn Applicative[T]) Builder[T] {
 	return x.component("map", fn)
 }
 
-// Map apply a mutation on the entire payload
+// Window apply a mutation on the entire payload at once.
 func (x builder[T]) Window(fn Window[T]) Builder[T] {
 	return x.component("window", fn)
 }
 
-// Sort modifies the order of the T based on the Comparator
+// Sort modifies the order of the payload based on the Comparator
 func (x builder[T]) Sort(fn Comparator[T]) Builder[T] {
 	return x.component("sort", fn)
 }
@@ -138,23 +136,22 @@ func (x builder[T]) Remove(fn Remover[T]) Builder[T] {
 	return x.component("remove", fn)
 }
 
-// Combine the data
+// Combine the data into a singleton payload
 func (x builder[T]) Combine(fn Combiner[T]) Builder[T] {
 	return x.component("combine", fn)
 }
 
-// Filter the data
+// Filter splits the data into multiple stream branches
 func (x builder[T]) Filter(fn Filter[T]) (left, right Builder[T]) {
 	return x.filterComponent("filter", fn, false)
 }
 
-// Loop the data combining a fork and link the first output is the Builder for the loop
-// and the second is the output of the loop
+// Loop creates a loop in the stream based on the filter
 func (x builder[T]) Loop(fn Filter[T]) (loop, out Builder[T]) {
 	return x.filterComponent("loop", fn, true)
 }
 
-// OutputTo Caps the builder and sends the output to the provided channel
+// OutputTo caps the builder and sends the output to the provided channel
 func (x builder[T]) OutputTo(channel chan []T) {
 	this := &node[T]{
 		name: x.n.name + ":output",
