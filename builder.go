@@ -78,19 +78,8 @@ func (x *stream[T]) Start(ctx context.Context) error {
 }
 
 func (x *stream[T]) StartWith(ctx context.Context, input ...chan []T) error {
-	if x.n == nil {
-		return fmt.Errorf("non-terminated builder %s", x.name)
-	}
-
-	channel := make(chan []T, x.option.BufferSize)
-
 	x.Consume(input...)
-
-	for _, c := range x.consumables {
-		c.OutputTo(ctx, channel)
-	}
-
-	return x.n.run(ctx, channel, x.option)
+	return x.Start(ctx)
 }
 
 func (x *stream[T]) Consume(input ...chan []T) {
