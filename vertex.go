@@ -34,15 +34,15 @@ type edge[T Identifiable] struct {
 // Vertex is a type used to process data for a stream.
 type Vertex[T Identifiable] func(payload []T)
 
-func (x Vertex[T]) buildHandler(option *Option[T]) func(payload []T) {
+func (x Vertex[T]) buildHandler(name string, option *Option[T]) func(payload []T) {
 	return func(payload []T) {
 		var span Span[T]
 		start := time.Now()
 
 		if option.Telemetry != nil {
-			option.Telemetry.IncrementPayloadCount()
-			option.Telemetry.PayloadSize(int64(len(payload)))
-			span = option.Telemetry.StartSpan()
+			option.Telemetry.IncrementPayloadCount(name)
+			option.Telemetry.PayloadSize(name, int64(len(payload)))
+			span = option.Telemetry.StartSpan(name)
 			span.RecordPayload(payload...)
 		}
 
@@ -50,7 +50,7 @@ func (x Vertex[T]) buildHandler(option *Option[T]) func(payload []T) {
 			if r := recover(); r != nil {
 				if err, ok := r.(error); !ok {
 					if option.Telemetry != nil {
-						option.Telemetry.IncrementErrorCount()
+						option.Telemetry.IncrementErrorCount(name)
 					}
 
 					if span != nil {
@@ -62,7 +62,7 @@ func (x Vertex[T]) buildHandler(option *Option[T]) func(payload []T) {
 
 		defer func() {
 			if option.Telemetry != nil {
-				option.Telemetry.Duration(time.Since(start))
+				option.Telemetry.Duration(name, time.Since(start))
 			}
 		}()
 
@@ -75,8 +75,8 @@ func (x Vertex[T]) buildHandler(option *Option[T]) func(payload []T) {
 }
 
 // Run creates a go func to process the data in the channel until the context is canceled.
-func (x Vertex[T]) Run(ctx context.Context, channel chan []T, option *Option[T]) {
-	h := x.buildHandler(option)
+func (x Vertex[T]) Run(ctx context.Context, name string, channel chan []T, option *Option[T]) {
+	h := x.buildHandler(name, option)
 
 	go func() {
 	Loop:

@@ -84,7 +84,7 @@ func (x *stream[T]) StartWith(ctx context.Context, input ...chan []T) error {
 
 func (x *stream[T]) Consume(input ...chan []T) {
 	for _, c := range input {
-		x.consumables = append(x.consumables, AsEdge[T](c))
+		x.consumables = append(x.consumables, AsEdge(c))
 	}
 }
 
@@ -151,7 +151,7 @@ func (x builder[T]) OutputTo(channel chan []T) {
 	}
 
 	this.run = func(ctx context.Context, channel chan []T, option *Option[T]) error {
-		this.Run(ctx, channel, option)
+		this.Run(ctx, this.name, channel, option)
 		return nil
 	}
 
@@ -175,7 +175,7 @@ func (x *builder[T]) component(typeName string, fn Component[T]) Builder[T] {
 			return err
 		}
 
-		this.Run(ctx, channel, option)
+		this.Run(ctx, name, channel, option)
 
 		return nil
 	}
@@ -217,7 +217,7 @@ func (x *builder[T]) filterComponent(typeName string, fn Filter[T], loop bool) (
 			return err
 		}
 
-		this.Run(ctx, c, option)
+		this.Run(ctx, name, c, option)
 
 		return nil
 	}

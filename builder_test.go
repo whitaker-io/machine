@@ -292,7 +292,6 @@ func Test_Panic(b *testing.T) {
 		Combine(
 			func(d []*kv) *kv {
 				panic("not supposed to be here")
-				return d[0]
 			},
 		).OutputTo(out)
 

@@ -28,11 +28,11 @@ type Option[T Identifiable] struct {
 
 // Telemetry type for holding telemetry settings.
 type Telemetry[T Identifiable] interface {
-	PayloadSize(int64)
-	IncrementPayloadCount()
-	IncrementErrorCount()
-	Duration(time.Duration)
-	StartSpan() Span[T]
+	PayloadSize(string, int64)
+	IncrementPayloadCount(string)
+	IncrementErrorCount(string)
+	Duration(string, time.Duration)
+	StartSpan(string) Span[T]
 }
 
 // Span type for holding telemetry settings.
