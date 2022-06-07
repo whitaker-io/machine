@@ -1,7 +1,7 @@
 {
   "editor.suggestSelection": "first",
   "vsintellicode.modify.editor.suggestSelection": "automaticallyOverrodeDefaultValue",
-  "workbench.colorTheme": "GitHub Dark",
+  "workbench.colorTheme": "GitHub Dark Default",
   "go.formatTool": "goimports",
   "go.useLanguageServer": true,
   "workbench.iconTheme": "material-icon-theme",
