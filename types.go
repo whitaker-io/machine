@@ -108,7 +108,7 @@ func (x testList[T]) AndCompose() Test[T] {
 type filterComponent[T any] func(left, right chan T, option *Option[T]) Vertex[T]
 
 // Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Test[T]) Component(left, right chan T, option *Option[T]) Vertex[T] {
+func (x Test[T]) Component(left, right chan T, _ *Option[T]) Vertex[T] {
 	return func(payload T) {
 		out, err := x(payload)
 
@@ -121,7 +121,7 @@ func (x Test[T]) Component(left, right chan T, option *Option[T]) Vertex[T] {
 }
 
 // Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Filter[T]) Component(left, right chan T, option *Option[T]) Vertex[T] {
+func (x Filter[T]) Component(left, right chan T, _ *Option[T]) Vertex[T] {
 	return func(payload T) {
 		fr := x(payload)
 

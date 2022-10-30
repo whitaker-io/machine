@@ -206,11 +206,7 @@ func (x *builder[T]) setup(ctx context.Context) error {
 		return fmt.Errorf("non-terminated builder %s", x.name)
 	}
 
-	if err := x.start(ctx, x.output); err != nil {
-		return err
-	}
-
-	return nil
+	return x.start(ctx, x.output)
 }
 
 func (x *builder[T]) next(name string) *builder[T] {
