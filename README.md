@@ -13,6 +13,16 @@
 `Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
 
 
+
+------
+
+### **Installation**
+
+Add the primary library to your project
+```bash
+  go get github.com/whitaker-io/machine/v2
+```
+
 ------
 
 The main function types are:
@@ -69,15 +79,7 @@ type Edge[T any] interface {
 
 The `Send` method is used for data leaving the associated vertex and the `ReceiveOn` method is used by the following vertex to receive data. The `context.Context` used is the same as the one used to start the `Stream`.
 
-
 ------
-
-### **Installation**
-
-Add the primary library to your project
-```bash
-  go get -u github.com/whitaker-io/machine
-```
 
 ***
 ## 🤝 Contributing
