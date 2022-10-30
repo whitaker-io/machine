@@ -5,124 +5,207 @@
 package machine
 
 import (
-	"fmt"
-	"sort"
+	"context"
+	"time"
 )
 
-const (
-	// FilterLeft is a filter result that indicates that the item should move to the left branch.
-	FilterLeft FilterResult = iota
-	// FilterRight is a filter result that indicates that the item should move to the right branch.
-	FilterRight
-	// FilterBoth is a filter result that indicates that the item should go down both paths using the option.Deepcopy fn if provided.
-	FilterBoth
-)
-
-// Duplicate shorthand for FilterBoth.
-func Duplicate[T Identifiable](d T) FilterResult {
-	return FilterBoth
+// Component is an interface for providing a vertex that can be used to run individual components on the payload.
+type Component[T any] interface {
+	Component(e chan T) Vertex[T]
 }
 
-// FilterResult is a type that is used to indicate the result of a filter.
-type FilterResult uint8
-
-// Identifiable is an interface that is used for providing an ID for a packet
-type Identifiable interface {
-	ID() string
+// Edge is an interface that is used for transferring data between vertices
+type Edge[T any] interface {
+	ReceiveOn(ctx context.Context, channel chan T)
+	Send(payload T)
 }
+
+// Vertex is a type used to process data for a stream.
+type Vertex[T any] func(payload T)
 
 // Applicative is a function that is applied on an individual
-// basis for each Packet in the payload. The resulting data replaces
-// the old data
-type Applicative[T Identifiable] func(d T) T
+// basis for each payload and used for transformations
+type Applicative[T any] func(d T) T
 
-// Combiner is a function used to combine a payload into a single Packet.
-type Combiner[T Identifiable] func(payload []T) T
+// Test is a function used in composition of And/Or operations and used to
+// filter results down different branches with transformations
+type Test[T any] func(d T) (T, error)
+
+type testList[T any] []Test[T]
 
 // Filter is a function that can be used to filter the payload.
-type Filter[T Identifiable] func(d T) FilterResult
+type Filter[T any] func(d T) bool
 
-// Comparator is a function to compare 2 items
-type Comparator[T Identifiable] func(a T, b T) int
+// Option type for holding machine settings.
+type Option[T any] struct {
+	// FIFO controls the processing order of the payloads
+	// If set to true the system will wait for one payload
+	// to be processed before starting the next.
+	FIFO bool `json:"fifo,omitempty"`
+	// BufferSize sets the buffer size on the edge channels between the
+	// vertices, this setting can be useful when processing large amounts
+	// of data with FIFO turned on.
+	BufferSize int `json:"buffer_size,omitempty"`
+	// Telemetry provides the ability to enable and configure telemetry
+	Telemetry Telemetry[T] `json:"telemetry,omitempty"`
+	// PanicHandler is a function that is called when a panic occurs
+	PanicHandler func(err error, payload T) `json:"-"`
+	// DeepCopy is a function to preform a deep copy of the Payload
+	DeepCopy func(T) T `json:"-"`
+}
 
-// Window is a function to work on a window of data
-type Window[T Identifiable] func(payload []T) []T
+// Telemetry type for holding telemetry settings.
+type Telemetry[T any] interface {
+	IncrementPayloadCount(vertexName string)
+	IncrementErrorCount(vertexName string)
+	Duration(vertexName string, duration time.Duration)
+	RecordPayload(vertexName string, payload T)
+	RecordError(vertexName string, payload T, err error)
+}
 
-// Remover func that is used to remove Data based on a true result
-type Remover[T Identifiable] func(index int, d T) bool
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Applicative[T]) Component(output chan T) Vertex[T] {
+	return func(payload T) {
+		output <- x(payload)
+	}
+}
 
-func (x Applicative[T]) Component(output Edge[T]) Vertex[T] {
-	return func(payload []T) {
-		for i, packet := range payload {
-			payload[i] = x(packet)
+func (x testList[T]) OrCompose() Test[T] {
+	if len(x) == 1 {
+		return x[0]
+	}
+
+	x2 := x[1:].OrCompose()
+
+	return func(d T) (T, error) {
+		out, err := x[0](d)
+
+		if err == nil {
+			return out, nil
 		}
 
-		output.Input(payload...)
+		return x2(d)
+	}
+}
+
+func (x testList[T]) AndCompose() Test[T] {
+	if len(x) == 1 {
+		return x[0]
+	}
+
+	x2 := x[1:].AndCompose()
+
+	return func(d T) (T, error) {
+		out, err := x[0](d)
+
+		if err == nil {
+			return x2(d)
+		}
+
+		return out, err
+	}
+}
+
+type filterComponent[T any] func(left, right chan T, option *Option[T]) Vertex[T]
+
+// Component is a function for providing a vertex that can be used to run individual components on the payload.
+func (x Test[T]) Component(left, right chan T, option *Option[T]) Vertex[T] {
+	return func(payload T) {
+		out, err := x(payload)
+
+		if err == nil {
+			left <- out
+		} else {
+			right <- out
+		}
 	}
 }
 
 // Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Combiner[T]) Component(output Edge[T]) Vertex[T] {
-	return func(payload []T) {
-		output.Input(x(payload))
+func (x Filter[T]) Component(left, right chan T, option *Option[T]) Vertex[T] {
+	return func(payload T) {
+		fr := x(payload)
+
+		if fr {
+			left <- payload
+		} else {
+			right <- payload
+		}
 	}
 }
 
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Filter[T]) Component(left, right Edge[T], option *Option[T]) Vertex[T] {
-	return func(payload []T) {
-		l := []T{}
-		r := []T{}
+func duplicateComponent[T any](left, right chan T, option *Option[T]) Vertex[T] {
+	return func(payload T) {
+		payload2 := payload
 
-		for _, packet := range payload {
-			fr := x(packet)
+		if option.DeepCopy != nil {
+			payload2 = option.DeepCopy(payload)
+		}
 
-			if fr == FilterLeft {
-				l = append(l, packet)
-			} else if fr == FilterRight {
-				r = append(r, packet)
-			} else if fr == FilterBoth {
-				l = append(l, packet)
-				r = append(r, option.deepCopy(packet)...)
-			} else {
-				panic(fmt.Errorf("unknown filter result: %v", x(packet)))
+		left <- payload
+		right <- payload2
+	}
+}
+
+func edgeComponent[T any](e Edge[T]) Vertex[T] {
+	return func(payload T) {
+		e.Send(payload)
+	}
+}
+
+func (x Vertex[T]) wrap(name string, option *Option[T]) Vertex[T] {
+	return func(payload T) {
+		start := time.Now()
+
+		if option.Telemetry != nil {
+			option.Telemetry.IncrementPayloadCount(name)
+			option.Telemetry.RecordPayload(name, payload)
+		}
+
+		defer func() {
+			if option.Telemetry != nil {
+				option.Telemetry.Duration(name, time.Since(start))
+			}
+
+			if r := recover(); r != nil {
+				if err, ok := r.(error); ok {
+					if option.Telemetry != nil {
+						option.Telemetry.IncrementErrorCount(name)
+						option.Telemetry.RecordError(name, payload, err)
+					}
+
+					if option.PanicHandler != nil {
+						option.PanicHandler(err, payload)
+					}
+				}
+			}
+		}()
+
+		if option.DeepCopy != nil {
+			x(option.DeepCopy(payload))
+		} else {
+			x(payload)
+		}
+	}
+}
+
+// Run creates a go func to process the data in the channel until the context is canceled.
+func (x Vertex[T]) Run(ctx context.Context, name string, channel chan T, option *Option[T]) {
+	h := x.wrap(name, option)
+
+	go func() {
+	Loop:
+		for {
+			select {
+			case <-ctx.Done():
+				break Loop
+			case data := <-channel:
+				if option.FIFO {
+					h(data)
+				} else {
+					go h(data)
+				}
 			}
 		}
-
-		left.Input(l...)
-		right.Input(r...)
-	}
-}
-
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Comparator[T]) Component(output Edge[T]) Vertex[T] {
-	return func(payload []T) {
-		sort.Slice(payload, func(i, j int) bool {
-			return x(payload[i], payload[j]) < 0
-		})
-
-		output.Input(payload...)
-	}
-}
-
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Window[T]) Component(output Edge[T]) Vertex[T] {
-	return func(payload []T) {
-		output.Input(x(payload)...)
-	}
-}
-
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Remover[T]) Component(output Edge[T]) Vertex[T] {
-	return func(payload []T) {
-		out := []T{}
-
-		for i, v := range payload {
-			if !x(i, v) {
-				out = append(out, v)
-			}
-		}
-
-		output.Input(out...)
-	}
+	}()
 }

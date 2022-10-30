@@ -7,8 +7,9 @@ package machine
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"testing"
+	"time"
 )
 
 type kv struct {
@@ -20,61 +21,15 @@ func (i *kv) ID() string {
 	return i.name
 }
 
-var testListInvalidBase = []*kv{
-	{
-		name:  "data0",
-		value: 0,
-	},
+var testPayloadBase = &kv{
+	name:  "data0",
+	value: 0,
 }
 
-var testPayloadBase = []*kv{
-	{
-		name:  "data0",
-		value: 0,
-	},
-	{
-		name:  "data1",
-		value: 1,
-	},
-	{
-		name:  "data2",
-		value: 2,
-	},
-	{
-		name:  "data3",
-		value: 3,
-	},
-	{
-		name:  "data4",
-		value: 4,
-	},
-	{
-		name:  "data5",
-		value: 5,
-	},
-	{
-		name:  "data6",
-		value: 6,
-	},
-	{
-		name:  "data7",
-		value: 7,
-	},
-	{
-		name:  "data8",
-		value: 8,
-	},
-	{
-		name:  "data9",
-		value: 9,
-	},
-}
-
-func deepcopy(list ...*kv) []*kv {
-	out := make([]*kv, len(list))
-
-	for n, i := range list {
-		out[n] = &kv{name: i.name, value: i.value}
+func deepcopy(item *kv) *kv {
+	out := &kv{
+		name:  item.name,
+		value: item.value,
 	}
 
 	return out
@@ -82,20 +37,38 @@ func deepcopy(list ...*kv) []*kv {
 
 func deepcopyKV(k *kv) *kv { return &kv{name: k.name, value: k.value} }
 
+type channelEdge[T any] struct {
+	channel chan T
+}
+
+func (t *channelEdge[T]) ReceiveOn(ctx context.Context, channel chan T) {
+	t.channel = channel
+}
+func (t *channelEdge[T]) Send(payload T) {
+	t.channel <- payload
+}
+
+type noopTelemetry[T any] struct{}
+
+func (t *noopTelemetry[T]) IncrementPayloadCount(string)   {}
+func (t *noopTelemetry[T]) IncrementErrorCount(string)     {}
+func (t *noopTelemetry[T]) Duration(string, time.Duration) {}
+func (t *noopTelemetry[T]) RecordPayload(string, T)        {}
+func (t *noopTelemetry[T]) RecordError(string, T, error)   {}
+
 func Benchmark_Test_New(b *testing.B) {
-	out := make(chan []*kv)
-	channel := make(chan []*kv)
-	m := New[*kv]("machine_id",
-		&edgeProvider[*kv]{},
+	out := make(chan *kv)
+	channel := make(chan *kv)
+	m := New("machine_id",
 		&Option[*kv]{
-			DeepCopy:   deepcopyKV,
+			// DeepCopy:   deepcopyKV,
 			FIFO:       false,
 			BufferSize: 0,
 		},
 	)
 
 	m.Builder().
-		Map(
+		Then(
 			func(m *kv) *kv {
 				if m.ID() == "" {
 					b.Errorf("packet missing name %v", m)
@@ -104,7 +77,7 @@ func Benchmark_Test_New(b *testing.B) {
 			},
 		).OutputTo(out)
 
-	if err := m.StartWith(context.Background(), channel); err != nil {
+	if err := m.Start(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
@@ -114,235 +87,342 @@ func Benchmark_Test_New(b *testing.B) {
 			channel <- testPayloadBase
 		}()
 
-		list := <-out
-
-		if len(list) != len(testPayloadBase) {
-			b.Errorf("incorrect data have %v want %v", list, testPayloadBase)
-			b.FailNow()
-		}
+		<-out
 	}
 }
 
 func Test_New(b *testing.T) {
-	count := 1000
-	out := make(chan []*kv)
-	out2 := make(chan []*kv)
-	channel := make(chan []*kv)
+	count := 10000
+	out := make(chan *kv)
+	out2 := make(chan *kv)
+	channel := make(chan *kv)
 	go func() {
-		channel <- deepcopy(testListInvalidBase...)
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase...)
+			channel <- &kv{
+				name:  fmt.Sprintf("name%d", n),
+				value: n,
+			}
 		}
 	}()
 
-	m := NewWithChannels("machine_id",
+	m := New("machine_id",
 		&Option[*kv]{
 			DeepCopy:   deepcopyKV,
+			Telemetry:  &noopTelemetry[*kv]{},
 			FIFO:       false,
 			BufferSize: 0,
 		},
 	)
 
 	left, right := m.Builder().
-		Map(
+		Then(
 			func(m *kv) *kv {
 				return m
 			},
 		).
-		Window(
-			func(payload []*kv) []*kv {
-				return payload
-			},
-		).
-		Sort(
-			func(a, b *kv) int {
-				return strings.Compare(a.name, b.name)
-			},
-		).
-		Remove(
-			func(index int, d *kv) bool {
-				return false
-			},
-		).
-		Combine(
-			func(d []*kv) *kv {
-				return d[0]
-			},
-		).
 		Filter(
-			func(d *kv) FilterResult {
-				return FilterLeft
+			func(d *kv) bool {
+				return true
 			},
 		)
 
-	left.OutputTo(out)
-	right.OutputTo(out2)
+	l2, r2 := left.Or(func(d *kv) (*kv, error) {
+		return d, nil
+	}, func(d *kv) (*kv, error) {
+		return d, nil
+	})
 
-	if err := m.StartWith(context.Background(), channel); err != nil {
+	l3, r3 := l2.Or(func(d *kv) (*kv, error) {
+		return d, fmt.Errorf("error")
+	}, func(d *kv) (*kv, error) {
+		return d, fmt.Errorf("error")
+	})
+
+	l4, r4 := r3.And(func(d *kv) (*kv, error) {
+		return d, nil
+	}, func(d *kv) (*kv, error) {
+		return d, nil
+	})
+
+	l5, r5 := l4.And(func(d *kv) (*kv, error) {
+		return d, nil
+	}, func(d *kv) (*kv, error) {
+		return d, fmt.Errorf("error")
+	}, func(d *kv) (*kv, error) {
+		return d, nil
+	})
+
+	r5.OutputTo(out)
+
+	right.OutputTo(out2)
+	r2.OutputTo(out2)
+	l3.OutputTo(out2)
+	r4.OutputTo(out2)
+	l5.OutputTo(out2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := m.Start(ctx, channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 
 	for n := 0; n < count; n++ {
 		select {
-		case list := <-out:
-			if len(list) != 1 {
-				b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
-				b.FailNow()
-			}
+		case <-out:
 		case <-out2:
 			b.Errorf("should never reach this")
 			b.FailNow()
 		}
 	}
+
+	cancel()
+
+	<-time.After(10 * time.Millisecond)
 }
 
 func Test_New2(b *testing.T) {
 	count := 100000
-	out := make(chan []*kv)
-	out2 := make(chan []*kv)
-	channel := make(chan []*kv)
+	out := make(chan *kv)
+	out2 := make(chan *kv)
+	channel := make(chan *kv)
 	go func() {
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase...)
+			channel <- deepcopy(testPayloadBase)
 		}
 	}()
-	m := New[*kv]("machine_id",
-		&edgeProvider[*kv]{},
+	m := New("machine_id",
 		&Option[*kv]{
-			DeepCopy:   deepcopyKV,
 			FIFO:       true,
 			BufferSize: 1000,
+			DeepCopy:   deepcopyKV,
 		},
 	)
 
 	left, right := m.Builder().
-		Map(
+		Then(
 			func(m *kv) *kv {
 				return m
 			},
 		).
-		Combine(
-			func(d []*kv) *kv {
-				return d[0]
-			},
-		).Filter(Duplicate[*kv])
+		Distribute(&channelEdge[*kv]{}).
+		Duplicate()
 
 	left.OutputTo(out)
 
 	l2, r2 := right.Filter(
-		func(d *kv) FilterResult {
-			return FilterLeft
+		func(d *kv) bool {
+			return true
 		},
 	)
 
 	r2.OutputTo(out2)
 
 	l3, r3 := l2.Filter(
-		func(d *kv) FilterResult {
-			return FilterRight
+		func(d *kv) bool {
+			return false
 		},
 	)
 
 	l3.OutputTo(out2)
-	r3.OutputTo(out)
+	l4, r4 := r3.Duplicate()
 
-	if err := m.StartWith(context.Background(), channel); err != nil {
+	l4.OutputTo(out)
+	r4.Drop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := m.Start(ctx, channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 
 	for n := 0; n < 2*count; n++ {
 		select {
-		case list := <-out:
-			if len(list) != 1 {
-				b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
-				b.FailNow()
-			}
+		case <-out:
 		case <-out2:
 			b.Errorf("should never reach this")
 			b.FailNow()
 		}
 	}
+
+	cancel()
+
+	<-time.After(10 * time.Millisecond)
 }
 
 func Test_Panic(b *testing.T) {
-	out := make(chan []*kv)
+	out := make(chan *kv)
 	count := 100000
-	channel := make(chan []*kv)
+	channel := make(chan *kv)
 	go func() {
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase...)
+			channel <- deepcopy(testPayloadBase)
 		}
 	}()
-	m := NewWithChannels("machine_id",
+	m := New("machine_id",
 		&Option[*kv]{
-			DeepCopy:   deepcopyKV,
-			FIFO:       true,
-			BufferSize: 1000,
+			DeepCopy:     deepcopyKV,
+			Telemetry:    &noopTelemetry[*kv]{},
+			FIFO:         true,
+			BufferSize:   1000,
+			PanicHandler: func(err error, payload *kv) {},
 		},
 	)
 
 	m.Builder().
-		Map(
+		Then(
+			func(m *kv) *kv {
+				panic(fmt.Errorf("error"))
+			},
+		).OutputTo(out)
+
+	if err := m.Start(context.Background(), channel); err != nil {
+		b.Error(err)
+		b.FailNow()
+	}
+
+	<-time.After(10 * time.Millisecond)
+}
+
+func Test_Missing_Leaves(b *testing.T) {
+	m := New("machine_id", &Option[*kv]{})
+
+	m.Builder().
+		Then(
+			func(m *kv) *kv {
+				return m
+			},
+		)
+
+	m2 := New("machine_id", &Option[*kv]{})
+
+	m2.Builder().
+		Filter(
+			func(d *kv) bool {
+				return true
+			},
+		)
+
+	m3 := New("machine_id", &Option[*kv]{})
+
+	m3.Builder().
+		Then(
 			func(m *kv) *kv {
 				return m
 			},
 		).
-		Combine(
-			func(d []*kv) *kv {
-				panic("not supposed to be here")
-			},
-		).OutputTo(out)
-
-	if err := m.StartWith(context.Background(), channel); err != nil {
-		b.Error(err)
-		b.FailNow()
-	}
-}
-
-func Test_Missing_Leaves(b *testing.T) {
-	m := NewWithChannels("machine_id", &Option[*kv]{})
-
-	m.Builder().
-		Map(
+		Then(
 			func(m *kv) *kv {
 				return m
 			},
 		)
 
-	m2 := NewWithChannels("machine_id", &Option[*kv]{})
+	m4 := New("machine_id",
+		&Option[*kv]{
+			FIFO:       false,
+			BufferSize: 0,
+		},
+	)
 
-	m.Builder().
-		Filter(
-			func(d *kv) FilterResult {
-				return FilterLeft
+	counter := 1
+	left, right := m4.Builder().
+		Then(
+			func(m *kv) *kv {
+				return m
+			},
+		).
+		Loop(
+			func(a *kv) bool {
+				counter++
+				return counter%2 == 0
 			},
 		)
 
-	if err := m.StartWith(context.Background(), make(chan []*kv)); err == nil {
+	left.
+		Filter(
+			func(d *kv) bool {
+				return true
+			},
+		)
+
+	right.
+		Filter(
+			func(d *kv) bool {
+				return true
+			},
+		)
+
+	m5 := New("machine_id", &Option[*kv]{})
+
+	left, _ = m5.Builder().
+		Filter(
+			func(d *kv) bool {
+				return true
+			},
+		)
+
+	left.
+		Then(
+			func(m *kv) *kv {
+				return m
+			},
+		)
+
+	m6 := New("machine_id", &Option[*kv]{})
+
+	m7 := New("machine_id", &Option[*kv]{})
+
+	m7.Builder().
+		Distribute(&channelEdge[*kv]{make(chan *kv)})
+
+	if err := m.Start(context.Background(), make(chan *kv)); err == nil {
 		b.Error("expected error m")
 		b.FailNow()
 	}
 
-	if err := m2.StartWith(context.Background(), make(chan []*kv)); err == nil {
+	if err := m2.Start(context.Background(), make(chan *kv)); err == nil {
 		b.Error("expected error m2")
+		b.FailNow()
+	}
+
+	if err := m3.Start(context.Background(), make(chan *kv)); err == nil {
+		b.Error("expected error m3")
+		b.FailNow()
+	}
+
+	if err := m4.Start(context.Background(), make(chan *kv)); err == nil {
+		b.Error("expected error m4")
+		b.FailNow()
+	}
+
+	if err := m5.Start(context.Background(), make(chan *kv)); err == nil {
+		b.Error("expected error m4")
+		b.FailNow()
+	}
+
+	if err := m6.Start(context.Background(), make(chan *kv)); err == nil {
+		b.Error("expected error m4")
+		b.FailNow()
+	}
+
+	if err := m7.Start(context.Background(), make(chan *kv)); err == nil {
+		b.Error("expected error m4")
 		b.FailNow()
 	}
 }
 
 func Test_Loop(b *testing.T) {
-	out := make(chan []*kv)
-	count := 100000
-	channel := make(chan []*kv)
+	out := make(chan *kv)
+	count := 10000
+	channel := make(chan *kv)
 	go func() {
 		for n := 0; n < count; n++ {
-			channel <- deepcopy(testPayloadBase...)
+			channel <- deepcopy(testPayloadBase)
 		}
 	}()
-	m := NewWithChannels("machine_id",
+	m := New("machine_id",
 		&Option[*kv]{
-			DeepCopy:   deepcopyKV,
 			FIFO:       false,
 			BufferSize: 0,
 		},
@@ -350,33 +430,27 @@ func Test_Loop(b *testing.T) {
 
 	counter := 1
 	left, right := m.Builder().
-		Map(
+		Then(
 			func(m *kv) *kv {
 				return m
 			},
 		).
 		Loop(
-			func(a *kv) FilterResult {
+			func(a *kv) bool {
 				counter++
-				if counter%2 == 0 {
-					return FilterLeft
-				}
-				return FilterRight
+				return counter%2 == 0
 			},
 		)
 
 	counter2 := 1
 	inside, _ := left.Loop(
-		func(a *kv) FilterResult {
+		func(a *kv) bool {
 			counter2++
-			if counter%2 == 0 {
-				return FilterLeft
-			}
-			return FilterRight
+			return counter2%2 == 0
 		},
 	)
 
-	inside.Map(
+	inside.Then(
 		func(m *kv) *kv {
 			return m
 		},
@@ -384,20 +458,12 @@ func Test_Loop(b *testing.T) {
 
 	right.OutputTo(out)
 
-	m.Consume(channel)
-	m.Clear()
-	m.Consume(channel)
-
-	if err := m.Start(context.Background()); err != nil {
+	if err := m.Start(context.Background(), channel); err != nil {
 		b.Error(err)
 		b.FailNow()
 	}
 
 	for n := 0; n < count; n++ {
-		list := <-out
-
-		if len(list) == 10 {
-			b.Errorf("incorrect data have %v want %v", list, testPayloadBase[0])
-		}
+		<-out
 	}
 }
