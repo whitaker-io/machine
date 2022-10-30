@@ -8,7 +8,7 @@ on:
       - "**.mod"
       - "**.sum"
   pull_request:
-    branches: [master]
+    branches: [master, v2]
 
 jobs:
   build:
