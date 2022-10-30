@@ -26,7 +26,7 @@ linters-settings:
       severity: error
     - name: cognitive-complexity
       severity: error
-      arguments: [25]
+      arguments: [11]
     - name: confusing-results
       severity: error
     - name: constant-logical-expr
@@ -37,7 +37,7 @@ linters-settings:
       severity: error
     - name: cyclomatic
       severity: error
-      arguments: [8]
+      arguments: [6]
     - name: datarace
       severity: error
     - name: deep-exit

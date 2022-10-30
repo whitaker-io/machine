@@ -161,24 +161,7 @@ func (x Vertex[T]) wrap(name string, option *Option[T]) Vertex[T] {
 			option.Telemetry.RecordPayload(name, payload)
 		}
 
-		defer func() {
-			if option.Telemetry != nil {
-				option.Telemetry.Duration(name, time.Since(start))
-			}
-
-			if r := recover(); r != nil {
-				if err, ok := r.(error); ok {
-					if option.Telemetry != nil {
-						option.Telemetry.IncrementErrorCount(name)
-						option.Telemetry.RecordError(name, payload, err)
-					}
-
-					if option.PanicHandler != nil {
-						option.PanicHandler(err, payload)
-					}
-				}
-			}
-		}()
+		defer recoverFn(name, start, payload, option)
 
 		if option.DeepCopy != nil {
 			x(option.DeepCopy(payload))
@@ -207,4 +190,23 @@ func (x Vertex[T]) Run(ctx context.Context, name string, channel chan T, option 
 			}
 		}
 	}()
+}
+
+func recoverFn[T any](name string, start time.Time, payload T, option *Option[T]) {
+	if option.Telemetry != nil {
+		option.Telemetry.Duration(name, time.Since(start))
+	}
+
+	if r := recover(); r != nil {
+		if err, ok := r.(error); ok {
+			if option.Telemetry != nil {
+				option.Telemetry.IncrementErrorCount(name)
+				option.Telemetry.RecordError(name, payload, err)
+			}
+
+			if option.PanicHandler != nil {
+				option.PanicHandler(err, payload)
+			}
+		}
+	}
 }
