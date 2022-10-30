@@ -27,7 +27,7 @@ linters-settings:
       - whyNoLint
       - ifElseChain
   gocyclo:
-    min-complexity: 16
+    min-complexity: 10
   gomnd:
     settings:
       mnd:
