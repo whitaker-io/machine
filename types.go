@@ -23,15 +23,12 @@ type Edge[T any] interface {
 // Vertex is a type used to process data for a stream.
 type Vertex[T any] func(payload T)
 
-// Applicative is a function that is applied on an individual
-// basis for each payload and used for transformations
+// Applicative is a function that is applied to payload and used for transformations
 type Applicative[T any] func(d T) T
 
 // Test is a function used in composition of And/Or operations and used to
 // filter results down different branches with transformations
 type Test[T any] func(d T) (T, error)
-
-type testList[T any] []Test[T]
 
 // Filter is a function that can be used to filter the payload.
 type Filter[T any] func(d T) bool
@@ -62,6 +59,8 @@ type Telemetry[T any] interface {
 	RecordPayload(vertexName string, payload T)
 	RecordError(vertexName string, payload T, err error)
 }
+
+type testList[T any] []Test[T]
 
 // Component is a function for providing a vertex that can be used to run individual components on the payload.
 func (x Applicative[T]) Component(output chan T) Vertex[T] {

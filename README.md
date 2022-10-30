@@ -12,57 +12,63 @@
 
 `Machine` is a library for creating data workflows. These workflows can be either very concise or quite complex, even allowing for cycles for flows that need retry or self healing mechanisms.
 
-Implementations of the `EdgeProvider` and `Edge` interfaces can be used for fan-out so that large volumes of data can be processed by multiple nodes.
-
-```golang
-type EdgeProvider[T Identifiable] interface {
-	New(name string, option *Option[T]) Edge[T]
-}
-
-type Edge[T Identifiable] interface {
-	OutputTo(ctx context.Context, channel chan []T)
-	Input(payload ...T)
-}
-```
-
-Examples of using both AWS SQS and Google Pub/Sub coming soon!
 
 ------
 
 The main function types are:
 
 ```golang
-// Applicative is a function that is applied on an individual
-// basis for each Packet in the payload. The resulting data replaces
-// the old data
-type Applicative[T Identifiable] func(d T) T
+// Applicative is a function that is applied to payload and used for transformations
+type Applicative[T any] func(d T) T
 
-// Combiner is a function used to combine a payload into a single Packet.
-type Combiner[T Identifiable] func(payload []T) T
+// Test is a function used in composition of And/Or operations and used to
+// filter results down different branches with transformations
+type Test[T any] func(d T) (T, error)
 
 // Filter is a function that can be used to filter the payload.
-type Filter[T Identifiable] func(d T) FilterResult
+type Filter[T any] func(d T) bool
 
-// Comparator is a function to compare 2 items
-type Comparator[T Identifiable] func(a T, b T) int
-
-// Window is a function to work on a window of data
-type Window[T Identifiable] func(payload []T) []T
-
-// Remover func that is used to remove Data based on a true result
-type Remover[T Identifiable] func(index int, d T) bool
 ```
 
-These all implement the `Component` interface, which can be use to provide a `Vertex` instance. The `Vertex` type is the main building block of a 
-`Stream`. The builder method creates these under the covers, and they can be used individually for testing of single operations.
+These are used in the `Builder` type provided by the `Stream` type:
 
 
 ```golang
-// Component is an interface for providing a Vertex that can be used to run individual components on the payload.
-type Component[T Identifiable] interface {
-	Component(e Edge[T]) Vertex[T]
+// Stream is a representation of a data stream and its associated logic.
+//
+// The Builder method is the entrypoint into creating the data processing flow.
+// All branches of the Stream are required to end in an OutputTo call.
+type Stream[T any] interface {
+	Start(ctx context.Context, input chan T) error
+	Builder() Builder[T]
+}
+
+// Builder is the interface provided for creating a data processing stream.
+type Builder[T any] interface {
+	Then(a Applicative[T]) Builder[T]
+	Or(x ...Test[T]) (Builder[T], Builder[T])
+	And(x ...Test[T]) (Builder[T], Builder[T])
+	Filter(f Filter[T]) (Builder[T], Builder[T])
+	Duplicate() (Builder[T], Builder[T])
+	Loop(x Filter[T]) (loop, out Builder[T])
+	Drop()
+	Distribute(Edge[T]) Builder[T]
+	OutputTo(x chan T)
 }
 ```
+
+`Distribute` is a special method used for fan-out operations. It takes an instance of `Edge[T]` and can be used most typically to distribute work via a Pub/Sub. The `Edge[T]` interface is as follows:
+
+```golang
+// Edge is an interface that is used for transferring data between vertices
+type Edge[T any] interface {
+	ReceiveOn(ctx context.Context, channel chan T)
+	Send(payload T)
+}
+```
+
+The `Send` method is used for data leaving the associated vertex and the `ReceiveOn` method is used by the following vertex to receive data. The `context.Context` used is the same as the one used to start the `Stream`.
+
 
 ------
 
@@ -71,93 +77,6 @@ type Component[T Identifiable] interface {
 Add the primary library to your project
 ```bash
   go get -u github.com/whitaker-io/machine
-```
-## [Example](#example)
-
-
-Basic `receive` -> `process` -> `send` Flow
-
-```golang
-package main
-
-import (
-  "context"
-  "fmt"
-  "os"
-  "os/signal"
-  "time"
-
-  "github.com/whitaker-io/machine"
-)
-
-type kv struct {
-  name  string
-  value int
-}
-
-func (i *kv) ID() string {
-  return i.name
-}
-
-func deepcopyKV(k *kv) *kv { return &kv{name: k.name, value: k.value} }
-
-func main() {
-  ctx, cancel := context.WithCancel(context.Background())
-
-  stream := machine.NewWithChannels(
-    "test_stream",
-    &Option[*kv]{
-      DeepCopy:   deepcopyKV,
-      FIFO:       false,
-      BufferSize: 0,
-    },
-  )
-
-  input := make(chan []*kv)
-  out := make(chan []*kv)
-
-
-  go func() {
-    input <- someData //get some data from somewhere
-  }()
-
-  // this is a very simple example try experimenting 
-  // with more complex flows including loops and filters
-  stream.Builder().
-    Map(
-      func(m *kv) *kv {
-        // do some processing
-        return m
-      },
-    ).OutputTo(out)
-
-  if err := streamm.StartWith(ctx, input); err != nil {
-    fmt.Println(err)
-  }
-
-
-  go func() {
-  Loop:
-    for {
-      select {
-      case <-ctx.Done():
-        break Loop
-      case data := <-out:
-        //handle the processed data
-      }
-    }
-  }()
-
-  // run until SIGTERM
-  c := make(chan os.Signal, 1)
-  signal.Notify(c, os.Interrupt)
-
-  <-c
-  cancel()
-
-  // give some time for a graceful shutdown
-  <-time.After(time.Second * 2)
-}
 ```
 
 ***
