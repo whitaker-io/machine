@@ -4,6 +4,146 @@ run:
 # include test files or not, default is true
   tests: false
 linters-settings:
+  revive:
+    ignore-generated-header: true
+    severity: warning
+    rules:
+    - name: add-constant
+      severity: error
+      arguments: [{"maxLitCount": "3", "allowStrs": "\"\"", "allowInts": "0,1,2", "allowFloats": "0.0,0.,1.0,1.,2.0,2.", "ignoreFuncs": "os\\.*,fmt\\.Println,make"}]
+    - name: argument-limit
+      severity: error
+      arguments: [4]
+    - name: atomic
+      severity: error
+    - name: bare-return
+      severity: error
+    - name: blank-imports
+      severity: error
+    - name: bool-literal-in-expr
+      severity: error
+    - name: call-to-gc
+      severity: error
+    - name: cognitive-complexity
+      severity: error
+      arguments: [25]
+    - name: confusing-results
+      severity: error
+    - name: constant-logical-expr
+      severity: error
+    - name: context-as-argument
+      severity: error
+    - name: context-keys-type
+      severity: error
+    - name: cyclomatic
+      severity: error
+      arguments: [8]
+    - name: datarace
+      severity: error
+    - name: deep-exit
+      severity: error
+    - name: defer
+      severity: error
+      arguments: [["call-chain","loop"]]
+    - name: dot-imports
+      severity: error
+    - name: duplicated-imports
+      severity: error
+    - name: early-return
+      severity: error
+    - name: empty-block
+      severity: error
+    - name: empty-lines
+      severity: error
+    - name: error-naming
+      severity: error
+    - name: error-return
+      severity: error
+    - name: error-strings
+      severity: error
+    - name: errorf
+      severity: error
+    - name: exported
+      severity: error
+    - name: function-length
+      severity: error
+      arguments: [20,0]
+    - name: function-result-limit
+      severity: error
+      arguments: [3]
+    - name: get-return
+      severity: error
+    - name: identical-branches
+      severity: error
+    - name: if-return
+    - name: import-shadowing
+      severity: error
+    - name: increment-decrement
+      severity: error
+    - name: indent-error-flow
+      severity: error
+    - name: line-length-limit
+      severity: error
+      arguments: [120]
+    - name: max-public-structs
+      severity: error
+      arguments: [10]
+    - name: modifies-parameter
+      severity: error
+    - name: modifies-value-receiver
+      severity: error
+    - name: nested-structs
+      severity: error
+    - name: optimize-operands-order
+      severity: error
+    - name: package-comments
+      severity: error
+    - name: range
+      severity: error
+    - name: range-val-address
+      severity: error
+    - name: range-val-in-closure
+      severity: error
+    - name: receiver-naming
+      severity: error
+    - name: redefines-builtin-id
+      severity: error
+    - name: string-format
+      severity: error
+    - name: string-of-int
+      severity: error
+    - name: struct-tag
+      severity: error
+    - name: superfluous-else
+      severity: error
+    - name: time-equal
+      severity: error
+    - name: time-naming
+      severity: error
+    - name: unconditional-recursion
+      severity: error
+    - name: unexported-return
+      severity: error
+    - name: unhandled-error
+      severity: error
+    - name: unnecessary-stmt
+      severity: error
+    - name: unreachable-code
+      severity: error
+    - name: unused-parameter
+      severity: error
+    - name: unused-receiver
+      severity: error
+    - name: use-any
+      severity: error
+    - name: useless-break
+      severity: error
+    - name: var-declaration
+      severity: error
+    - name: var-naming
+      severity: error
+    - name: waitgroup-by-value
+      severity: error
   exhaustive:
     default-signifies-exhaustive: false
   funlen:
@@ -51,6 +191,7 @@ linters:
   # inverted configuration with `enable-all` and `disable` is not scalable during updates of golangci-lint
   disable-all: true
   enable:
+    - revive
     - bodyclose
     - deadcode
     - depguard
