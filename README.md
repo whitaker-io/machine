@@ -81,6 +81,39 @@ The `Send` method is used for data leaving the associated vertex and the `Receiv
 
 ------
 
+You can also setup `Telemetry` and other options by passing in the `Option` type
+
+```golang
+// Option type for holding machine settings.
+type Option[T any] struct {
+	// FIFO controls the processing order of the payloads
+	// If set to true the system will wait for one payload
+	// to be processed before starting the next.
+	FIFO bool `json:"fifo,omitempty"`
+	// BufferSize sets the buffer size on the edge channels between the
+	// vertices, this setting can be useful when processing large amounts
+	// of data with FIFO turned on.
+	BufferSize int `json:"buffer_size,omitempty"`
+	// Telemetry provides the ability to enable and configure telemetry
+	Telemetry Telemetry[T] `json:"telemetry,omitempty"`
+	// PanicHandler is a function that is called when a panic occurs
+	PanicHandler func(err error, payload T) `json:"-"`
+	// DeepCopy is a function to preform a deep copy of the Payload
+	DeepCopy func(T) T `json:"-"`
+}
+
+// Telemetry type for holding telemetry settings.
+type Telemetry[T any] interface {
+	IncrementPayloadCount(vertexName string)
+	IncrementErrorCount(vertexName string)
+	Duration(vertexName string, duration time.Duration)
+	RecordPayload(vertexName string, payload T)
+	RecordError(vertexName string, payload T, err error)
+}
+```
+
+------
+
 ***
 ## 🤝 Contributing
 
