@@ -47,6 +47,10 @@ type Option[T any] struct {
 	Telemetry Telemetry[T] `json:"telemetry,omitempty"`
 	// PanicHandler is a function that is called when a panic occurs
 	PanicHandler func(err error, payload T) `json:"-"`
+	// DeepCopyBetweenVerticies controls whether DeepCopy is performed between verticies.
+	// This is useful if the functions applied are holding copies of the payload for
+	// longer than they process it. DeepCopy must be set
+	DeepCopyBetweenVerticies bool `json:"deep_copy_between_vetricies,omitempty"`
 	// DeepCopy is a function to preform a deep copy of the Payload
 	DeepCopy func(T) T `json:"-"`
 }
@@ -163,7 +167,7 @@ func (x Vertex[T]) wrap(name string, option *Option[T]) Vertex[T] {
 
 		defer recoverFn(name, start, payload, option)
 
-		if option.DeepCopy != nil {
+		if option.DeepCopyBetweenVerticies && option.DeepCopy != nil {
 			x(option.DeepCopy(payload))
 		} else {
 			x(payload)

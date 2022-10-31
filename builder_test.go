@@ -193,9 +193,10 @@ func Test_New2(b *testing.T) {
 	}()
 	m := New("machine_id",
 		&Option[*kv]{
-			FIFO:       true,
-			BufferSize: 1000,
-			DeepCopy:   deepcopyKV,
+			FIFO:                     true,
+			BufferSize:               1000,
+			DeepCopy:                 deepcopyKV,
+			DeepCopyBetweenVerticies: true,
 		},
 	)
 
