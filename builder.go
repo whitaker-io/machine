@@ -22,7 +22,7 @@ type Stream[T any] interface {
 // Builder is the interface provided for creating a data processing stream.
 type Builder[T any] interface {
 	Then(a Applicative[T]) Builder[T]
-	Y(x BaseFnTransform[T]) Builder[T]
+	Y(x Transform[T]) Builder[T]
 	Or(x ...Test[T]) (Builder[T], Builder[T])
 	And(x ...Test[T]) (Builder[T], Builder[T])
 	Filter(f Filter[T]) (Builder[T], Builder[T])
@@ -71,7 +71,7 @@ func (x *builder[T]) Then(fn Applicative[T]) Builder[T] {
 }
 
 // Y applies a recursive function to the payload through a Y Combinator.
-func (x *builder[T]) Y(fn BaseFnTransform[T]) Builder[T] {
+func (x *builder[T]) Y(fn Transform[T]) Builder[T] {
 	return x.component("y", fn)
 }
 
