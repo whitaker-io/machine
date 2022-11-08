@@ -38,10 +38,6 @@ type Test[T any] func(d T) (T, error)
 // Filter is a function that can be used to filter the payload.
 type Filter[T any] func(d T) bool
 
-// BaseFn is a function that is used to process the payload in a single step
-// of the Y Combinator recursion.
-type BaseFn[T any] func(d T) T
-
 // BaseFnTransform is a function used by the Y Combinator to perform a recursion
 // on the payload.
 // Example:
@@ -54,7 +50,7 @@ type BaseFn[T any] func(d T) T
 // 		 }
 // 	 }
 // }
-type BaseFnTransform[T any] func(d BaseFn[T]) BaseFn[T]
+type BaseFnTransform[T any] func(d Applicative[T]) Applicative[T]
 
 ```
 

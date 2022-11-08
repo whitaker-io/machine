@@ -120,7 +120,7 @@ func Test_New(b *testing.T) {
 				return m
 			},
 		).
-		Y(func(f BaseFn[*kv]) BaseFn[*kv] {
+		Y(func(f Applicative[*kv]) Applicative[*kv] {
 			return func(x *kv) *kv {
 				if x.value < 1 {
 					return &kv{x.name, 1}

@@ -33,10 +33,6 @@ type Test[T any] func(d T) (T, error)
 // Filter is a function that can be used to filter the payload.
 type Filter[T any] func(d T) bool
 
-// BaseFn is a function that is used to process the payload in a single step
-// of the Y Combinator recursion.
-type BaseFn[T any] func(d T) T
-
 // BaseFnTransform is a function used by the Y Combinator to perform a recursion
 // on the payload.
 // Example:
@@ -50,9 +46,9 @@ type BaseFn[T any] func(d T) T
 //			 }
 //		 }
 //	}
-type BaseFnTransform[T any] func(d BaseFn[T]) BaseFn[T]
+type BaseFnTransform[T any] func(d Applicative[T]) Applicative[T]
 
-type recursiveBaseFn[T any] func(recursiveBaseFn[T]) BaseFn[T]
+type recursiveBaseFn[T any] func(recursiveBaseFn[T]) Applicative[T]
 
 // Option type for holding machine settings.
 type Option[T any] struct {
@@ -96,7 +92,7 @@ func (x Applicative[T]) Component(output chan T) Vertex[T] {
 
 // Component is a function for providing a vertex that can be used to run individual components on the payload.
 func (x BaseFnTransform[T]) Component(output chan T) Vertex[T] {
-	g := func(h recursiveBaseFn[T]) BaseFn[T] {
+	g := func(h recursiveBaseFn[T]) Applicative[T] {
 		return func(q T) T {
 			return (x(h(h))(q))
 		}
