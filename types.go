@@ -37,7 +37,7 @@ type Filter[T any] func(d T) bool
 // on the payload.
 // Example:
 //
-//	func(f BaseFn[int]) BaseFn[int] {
+//	func(f Applicative[int]) Applicative[int] {
 //		 return func(x int) int {
 //			 if x <= 0 {
 //				 return 1

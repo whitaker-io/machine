@@ -41,7 +41,7 @@ type Filter[T any] func(d T) bool
 // BaseFnTransform is a function used by the Y Combinator to perform a recursion
 // on the payload.
 // Example:
-// func(f BaseFn[int]) BaseFn[int] {
+// func(f Applicative[int]) Applicative[int] {
 // 	 return func(x int) int {
 // 		 if x < 1 {
 // 			 return 1
