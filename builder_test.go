@@ -122,7 +122,7 @@ func Test_New(b *testing.T) {
 		).
 		Y(func(f BaseFn[*kv]) BaseFn[*kv] {
 			return func(x *kv) *kv {
-				if x.value <= 0 {
+				if x.value < 1 {
 					return &kv{x.name, 1}
 				} else {
 					return &kv{x.name, x.value * f(&kv{x.name, x.value - 1}).value}
