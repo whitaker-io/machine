@@ -70,7 +70,7 @@ type Stream[T any] interface {
 // Builder is the interface provided for creating a data processing stream.
 type Builder[T any] interface {
 	Then(a Applicative[T]) Builder[T]
-	Y(x BaseFnTransform[T]) Builder[T]
+	Y(x Transform[T]) Builder[T]
 	Or(x ...Test[T]) (Builder[T], Builder[T])
 	And(x ...Test[T]) (Builder[T], Builder[T])
 	Filter(f Filter[T]) (Builder[T], Builder[T])
