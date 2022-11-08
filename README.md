@@ -38,6 +38,14 @@ type Test[T any] func(d T) (T, error)
 // Filter is a function that can be used to filter the payload.
 type Filter[T any] func(d T) bool
 
+// BaseFn is a function that is used to process the payload in a single step
+// of the Y Combinator recursion.
+type BaseFn[T any] func(d T) T
+
+// BaseFnTransform is a function used by the Y COmbinator to perform a recursion
+// on the payload.
+type BaseFnTransform[T any] func(d BaseFn[T]) BaseFn[T]
+
 ```
 
 These are used in the `Builder` type provided by the `Stream` type:
@@ -56,6 +64,7 @@ type Stream[T any] interface {
 // Builder is the interface provided for creating a data processing stream.
 type Builder[T any] interface {
 	Then(a Applicative[T]) Builder[T]
+	Y(x BaseFnTransform[T]) Builder[T]
 	Or(x ...Test[T]) (Builder[T], Builder[T])
 	And(x ...Test[T]) (Builder[T], Builder[T])
 	Filter(f Filter[T]) (Builder[T], Builder[T])

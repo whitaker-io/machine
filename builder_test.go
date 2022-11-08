@@ -23,7 +23,7 @@ func (i *kv) ID() string {
 
 var testPayloadBase = &kv{
 	name:  "data0",
-	value: 0,
+	value: 5,
 }
 
 func deepcopy(item *kv) *kv {
@@ -100,7 +100,7 @@ func Test_New(b *testing.T) {
 		for n := 0; n < count; n++ {
 			channel <- &kv{
 				name:  fmt.Sprintf("name%d", n),
-				value: n,
+				value: 5,
 			}
 		}
 	}()
@@ -120,6 +120,15 @@ func Test_New(b *testing.T) {
 				return m
 			},
 		).
+		Y(func(f BaseFn[*kv]) BaseFn[*kv] {
+			return func(x *kv) *kv {
+				if x.value <= 0 {
+					return &kv{x.name, 1}
+				} else {
+					return &kv{x.name, x.value * f(&kv{x.name, x.value - 1}).value}
+				}
+			}
+		}).
 		Filter(
 			func(d *kv) bool {
 				return true
@@ -169,7 +178,10 @@ func Test_New(b *testing.T) {
 
 	for n := 0; n < count; n++ {
 		select {
-		case <-out:
+		case x := <-out:
+			if x.value != 120 {
+				b.Errorf("unexpected value %v", x.value)
+			}
 		case <-out2:
 			b.Errorf("should never reach this")
 			b.FailNow()
