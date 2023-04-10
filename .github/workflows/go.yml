@@ -16,15 +16,16 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go 1.x
-        uses: actions/setup-go@v4
-        with:
-          go-version: 1.20
-        id: go
-
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+
+      - name: Set up Go 1.x
+        uses: actions/setup-go@v4
+        with:
+          go-version-file: 'go.mod'
+          cache-dependency-path: 'go.sum'
+        id: go
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v3.4.0
