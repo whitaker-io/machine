@@ -94,6 +94,8 @@ type Edge[T any] interface {
 
 The `Send` method is used for data leaving the associated vertex and the `ReceiveOn` method is used by the following vertex to receive data. The `context.Context` used is the same as the one used to start the `Stream`.
 
+An example using google pubsub can be found in the `edge/pubsub` directory
+
 ------
 
 You can also setup `Telemetry` and other options by passing in the `Option` type
