@@ -66,7 +66,9 @@ type Stream[T any] interface {
 	Start(ctx context.Context, input chan T) error
 	Builder() Builder[T]
 }
+```
 
+```golang
 // Builder is the interface provided for creating a data processing stream.
 type Builder[T any] interface {
 	// Then apply a mutation to each individual element of the payload.
