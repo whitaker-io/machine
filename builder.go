@@ -21,15 +21,28 @@ type Stream[T any] interface {
 
 // Builder is the interface provided for creating a data processing stream.
 type Builder[T any] interface {
+	// Then apply a mutation to each individual element of the payload.
 	Then(a Applicative[T]) Builder[T]
+	// Y applies a recursive function to the payload through a Y Combinator.
 	Y(x Transform[T]) Builder[T]
+	// Or runs all of the functions until one succeeds or sends the payload to the right branch
 	Or(x ...Test[T]) (Builder[T], Builder[T])
+	// And runs all of the functions and if one doesnt succeed sends the payload to the right branch
 	And(x ...Test[T]) (Builder[T], Builder[T])
+	// Filter splits the data into multiple stream branches
 	Filter(f Filter[T]) (Builder[T], Builder[T])
+	// When applies a series of Filters to the payload and returns a list of Builders
+	// the last one being for any unmatched payloads.
+	When(fns ...Filter[T]) []Builder[T]
+	// Duplicate splits the data into multiple stream branches
 	Duplicate() (Builder[T], Builder[T])
+	// Loop creates a loop in the stream based on the filter
 	Loop(x Filter[T]) (loop, out Builder[T])
+	// Drop terminates the data from further processing without passing it on
 	Drop()
+	// Distribute is a function used for fanout
 	Distribute(Edge[T]) Builder[T]
+	// OutputTo caps the builder and sends the output to the provided channel
 	OutputTo(x chan T)
 }
 
@@ -70,6 +83,23 @@ func (x *builder[T]) Then(fn Applicative[T]) Builder[T] {
 	return x.component("then", fn)
 }
 
+// When applies a series of Filters to the payload and returns a list of Builders
+// the last one being for any unmatched payloads.
+func (x *builder[T]) When(fns ...Filter[T]) []Builder[T] {
+	out := []Builder[T]{}
+
+	var last = x
+	for i, fn := range fns {
+		o, l := last.filterComponent(fmt.Sprintf("when-%d", i), fn.Component, false)
+		out = append(out, o)
+		last = l.(*builder[T])
+	}
+
+	out = append(out, last)
+
+	return out
+}
+
 // Y applies a recursive function to the payload through a Y Combinator.
 func (x *builder[T]) Y(fn Transform[T]) Builder[T] {
 	return x.component("y", fn)
@@ -107,7 +137,7 @@ func (x *builder[T]) Filter(fn Filter[T]) (left, right Builder[T]) {
 	return x.filterComponent("filter", fn.Component, false)
 }
 
-// Filter splits the data into multiple stream branches
+// Duplicate splits the data into multiple stream branches
 func (x *builder[T]) Duplicate() (left, right Builder[T]) {
 	return x.filterComponent("duplicate", duplicateComponent[T], false)
 }

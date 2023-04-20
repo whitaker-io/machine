@@ -114,7 +114,7 @@ func Test_New(b *testing.T) {
 		},
 	)
 
-	left, right := m.Builder().
+	list := m.Builder().
 		Then(
 			func(m *kv) *kv {
 				return m
@@ -129,7 +129,24 @@ func Test_New(b *testing.T) {
 				}
 			}
 		}).
-		Filter(
+		When(
+			func(d *kv) bool {
+				return false
+			},
+			func(d *kv) bool {
+				return false
+			},
+			func(d *kv) bool {
+				return true
+			},
+		)
+
+		list[0].Drop()
+		list[1].Drop()
+		list[3].Drop()
+
+
+		left, right := list[2].Filter(
 			func(d *kv) bool {
 				return true
 			},
