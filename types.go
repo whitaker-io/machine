@@ -68,7 +68,8 @@ func getOption[T any](option *Option[T]) *Option[T] {
 		opt.PanicHandler = option.PanicHandler
 	} else {
 		opt.PanicHandler = func(err error, payload T) {
-			fmt.Printf("panic: %v, payload: %v\n", err, payload)
+			//nolint:revive // This is a panic handler
+			fmt.Println("panic: ", err, "payload: ", payload)
 		}
 	}
 
