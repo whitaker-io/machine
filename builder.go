@@ -7,90 +7,118 @@ package machine
 import (
 	"context"
 	"fmt"
-	"sync"
 )
 
-// Stream is a representation of a data stream and its associated logic.
+// New is a function for creating a new Machine.
 //
-// The Builder method is the entrypoint into creating the data processing flow.
-// All branches of the Stream are required to end in an OutputTo call.
-type Stream[T any] interface {
-	Start(ctx context.Context, input chan T) error
-	Builder() Builder[T]
+// name string
+// input chan T
+// option *Option[T]
+//
+// Call the startFn returned by New to start the Machine once built.
+func New[T any](name string, input chan T, options *Option[T]) (startFn func(context.Context), x Machine[T]) {
+	b := &builder[T]{
+		name:   name,
+		loop:   nil,
+		option: getOption(options),
+		output: input,
+	}
+	b.head = b
+	return func(ctx context.Context) {
+		b.start(ctx, input)
+	}, b
 }
 
-// Builder is the interface provided for creating a data processing stream.
-type Builder[T any] interface {
+// Machine is the interface provided for creating a data processing stream.
+type Machine[T any] interface {
+	// Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
+	Name() string
 	// Then apply a mutation to each individual element of the payload.
-	Then(a Applicative[T]) Builder[T]
-	// Y applies a recursive function to the payload through a Y Combinator.
-	Y(x Transform[T]) Builder[T]
+	Then(a Monad[T]) Machine[T]
+	// Recurse applies a recursive function to the payload through a Y Combinator.
+	// f is a function used by the Y Combinator to perform a recursion
+	// on the payload.
+	// Example:
+	//
+	//	func(f Monad[int]) Monad[int] {
+	//		 return func(x int) int {
+	//			 if x <= 0 {
+	//				 return 1
+	//			 } else {
+	//				 return x * f(x-1)
+	//			 }
+	//		 }
+	//	}
+	Recurse(x Monad[Monad[T]]) Machine[T]
+	// Memoize applies a recursive function to the payload through a Y Combinator
+	// and memoizes the results based on the index func.
+	// f is a function used by the Y Combinator to perform a recursion
+	// on the payload.
+	// Example:
+	//
+	//	func(f Monad[int]) Monad[int] {
+	//		 return func(x int) int {
+	//			 if x <= 0 {
+	//				 return 1
+	//			 } else {
+	//				 return x * f(x-1)
+	//			 }
+	//		 }
+	//	}
+	Memoize(x Monad[Monad[T]], index func(T) string) Machine[T]
 	// Or runs all of the functions until one succeeds or sends the payload to the right branch
-	Or(x ...Test[T]) (Builder[T], Builder[T])
+	Or(x ...Filter[T]) (Machine[T], Machine[T])
 	// And runs all of the functions and if one doesnt succeed sends the payload to the right branch
-	And(x ...Test[T]) (Builder[T], Builder[T])
+	And(x ...Filter[T]) (Machine[T], Machine[T])
 	// Filter splits the data into multiple stream branches
-	Filter(f Filter[T]) (Builder[T], Builder[T])
-	// When applies a series of Filters to the payload and returns a list of Builders
+	If(f Filter[T]) (Machine[T], Machine[T])
+	// Select applies a series of Filters to the payload and returns a list of Builders
 	// the last one being for any unmatched payloads.
-	When(fns ...Filter[T]) []Builder[T]
+	Select(fns ...Filter[T]) []Machine[T]
 	// Duplicate splits the data into multiple stream branches
-	Duplicate() (Builder[T], Builder[T])
-	// Loop creates a loop in the stream based on the filter
-	Loop(x Filter[T]) (loop, out Builder[T])
+	Duplicate() (Machine[T], Machine[T])
+	// While creates a loop in the stream based on the filter
+	While(x Filter[T]) (loop, out Machine[T])
 	// Drop terminates the data from further processing without passing it on
 	Drop()
 	// Distribute is a function used for fanout
-	Distribute(Edge[T]) Builder[T]
-	// OutputTo caps the builder and sends the output to the provided channel
-	OutputTo(x chan T)
+	Distribute(Edge[T]) Machine[T]
+	// Output provided channel
+	Output() chan T
+	// Converts the Machine to an Edge, important to note
+	// that only paloads to this Machine will be output.
+	// The startFn returned by New must be called to start
+	// this Machine before calling Send on this Edge
+	AsEdge() Edge[T]
 }
 
 type builder[T any] struct {
-	s      *stream[T]
 	name   string
+	head   *builder[T]
+	option *Option[T]
 	output chan T
-	start  func(ctx context.Context, channel chan T) error
+	start  func(ctx context.Context, channel chan T)
 	loop   *builder[T]
 }
 
-type stream[T any] struct {
-	name    string
-	mtx     *sync.Mutex
-	builder *builder[T]
-	option  *Option[T]
-}
-
-func (x *stream[T]) Start(ctx context.Context, input chan T) error {
-	if x.builder == nil || x.builder.start == nil {
-		return fmt.Errorf("non-terminated builder %s", x.name)
-	}
-
-	return x.builder.start(ctx, input)
-}
-
-func (x *stream[T]) Builder() Builder[T] {
-	x.builder = &builder[T]{
-		s:    x,
-		name: x.name,
-	}
-
-	return x.builder
+// Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
+func (x *builder[T]) Name() string {
+	return x.name
 }
 
 // Then apply a mutation to each individual element of the payload.
-func (x *builder[T]) Then(fn Applicative[T]) Builder[T] {
-	return x.component("then", fn)
+func (x *builder[T]) Then(fn Monad[T]) Machine[T] {
+	return x.component("then", fn.component)
 }
 
-// When applies a series of Filters to the payload and returns a list of Builders
+// Select applies a series of Filters to the payload and returns a list of Builders
 // the last one being for any unmatched payloads.
-func (x *builder[T]) When(fns ...Filter[T]) []Builder[T] {
-	out := []Builder[T]{}
+func (x *builder[T]) Select(fns ...Filter[T]) []Machine[T] {
+	out := []Machine[T]{}
 
 	var last = x
 	for i, fn := range fns {
-		o, l := last.filterComponent(fmt.Sprintf("when-%d", i), fn.Component, false)
+		o, l := last.filterComponent(fmt.Sprintf("when-%d", i), fn.component, false)
 		out = append(out, o)
 		last = l.(*builder[T])
 	}
@@ -100,14 +128,43 @@ func (x *builder[T]) When(fns ...Filter[T]) []Builder[T] {
 	return out
 }
 
-// Y applies a recursive function to the payload through a Y Combinator.
-func (x *builder[T]) Y(fn Transform[T]) Builder[T] {
-	return x.component("y", fn)
+// Recurse applies a recursive function to the payload through a Y Combinator.
+func (x *builder[T]) Recurse(fn Monad[Monad[T]]) Machine[T] {
+	g := func(h recursiveBaseFn[T]) Monad[T] {
+		return func(payload T) T {
+			return fn(h(h))(payload)
+		}
+	}
+	p := g(g)
+
+	return x.component("y", p.component)
+}
+
+// Memoize applies a recursive function to the payload through a Y Combinator
+// and memoizes the results based on the index func.
+func (x *builder[T]) Memoize(fn Monad[Monad[T]], index func(T) string) Machine[T] {
+	g := func(h memoizedBaseFn[T], m map[string]T) Monad[T] {
+		return func(payload T) T {
+			id := index(payload)
+			if v, ok := m[id]; ok {
+				return v
+			}
+
+			m[id] = fn(h(h, m))(payload)
+			return m[id]
+		}
+	}
+	p := Monad[T](func(payload T) T {
+		m := map[string]T{}
+		return g(g, m)(payload)
+	})
+
+	return x.component("y", p.component)
 }
 
 // Drop terminates the data from further processing without passing it on
 func (x *builder[T]) Drop() {
-	x.start = func(ctx context.Context, input chan T) error {
+	x.start = func(ctx context.Context, input chan T) {
 		go func() {
 		Loop:
 			for {
@@ -118,78 +175,79 @@ func (x *builder[T]) Drop() {
 				}
 			}
 		}()
-		return nil
 	}
 }
 
 // Or runs all of the functions until one succeeds or sends the payload to the right branch
-func (x *builder[T]) Or(list ...Test[T]) (left, right Builder[T]) {
-	return x.filterComponent("or", testList[T](list).OrCompose().Component, false)
+func (x *builder[T]) Or(list ...Filter[T]) (left, right Machine[T]) {
+	return x.filterComponent("or", filterList[T](list).or().component, false)
 }
 
 // And runs all of the functions and if one doesnt succeed sends the payload to the right branch
-func (x *builder[T]) And(list ...Test[T]) (left, right Builder[T]) {
-	return x.filterComponent("or", testList[T](list).AndCompose().Component, false)
+func (x *builder[T]) And(list ...Filter[T]) (left, right Machine[T]) {
+	return x.filterComponent("and", filterList[T](list).and().component, false)
 }
 
-// Filter splits the data into multiple stream branches
-func (x *builder[T]) Filter(fn Filter[T]) (left, right Builder[T]) {
-	return x.filterComponent("filter", fn.Component, false)
+// If splits the data into multiple stream branches
+func (x *builder[T]) If(fn Filter[T]) (left, right Machine[T]) {
+	return x.filterComponent("if", fn.component, false)
 }
 
 // Duplicate splits the data into multiple stream branches
-func (x *builder[T]) Duplicate() (left, right Builder[T]) {
+func (x *builder[T]) Duplicate() (left, right Machine[T]) {
 	return x.filterComponent("duplicate", duplicateComponent[T], false)
 }
 
-// Loop creates a loop in the stream based on the filter
-func (x *builder[T]) Loop(fn Filter[T]) (loop, out Builder[T]) {
-	return x.filterComponent("loop", fn.Component, true)
+// While creates a loop in the stream based on the filter
+func (x *builder[T]) While(fn Filter[T]) (loop, out Machine[T]) {
+	return x.filterComponent("loop", fn.component, true)
 }
 
 // Distribute is a function used for fanout
-func (x *builder[T]) Distribute(edge Edge[T]) Builder[T] {
+func (x *builder[T]) Distribute(edge Edge[T]) Machine[T] {
 	this := x.next("distribute")
 
-	x.start = func(ctx context.Context, channel chan T) error {
-		if err := this.setup(ctx); err != nil {
-			return err
-		}
+	this.output = edge.Output()
+	x.start = func(ctx context.Context, channel chan T) {
+		this.setup(ctx)
 
-		edge.ReceiveOn(ctx, this.output)
-		edgeComponent(edge).Run(ctx, this.name, channel, x.s.option)
-
-		return nil
+		vertex[T](edge.Send).run(ctx, this.name, channel, x.option)
 	}
 
 	return this
 }
 
-// OutputTo caps the builder and sends the output to the provided channel
-func (x *builder[T]) OutputTo(channel chan T) {
-	x.start = func(ctx context.Context, input chan T) error {
-		outputTo(ctx, input, channel)
-		return nil
-	}
+// Output return output channel
+func (x *builder[T]) Output() chan T {
+	return x.output
 }
 
-func (x *builder[T]) component(typeName string, fn Component[T]) Builder[T] {
+// Sends the payload to Machine
+// The startFn returned by New must be called to start
+// this Machine before calling Send on this Edge
+func (x *builder[T]) Send(payload T) {
+	x.head.output <- payload
+}
+
+// Converts the Machine to an Edge.
+// The startFn returned by New must be called to start
+// this Machine before calling Send on this Edge
+func (x *builder[T]) AsEdge() Edge[T] {
+	return x
+}
+
+func (x *builder[T]) component(typeName string, fn func(output chan T) vertex[T]) Machine[T] {
 	this := x.next(typeName)
 
-	x.start = func(ctx context.Context, channel chan T) error {
-		if err := this.setup(ctx); err != nil {
-			return err
-		}
-
-		fn.Component(this.output).Run(ctx, this.name, channel, x.s.option)
-
-		return nil
+	x.start = func(ctx context.Context, channel chan T) {
+		this.setup(ctx)
+		fn(this.output).run(ctx, this.name, channel, x.option)
 	}
 
 	return this
 }
 
-func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loop bool) (Builder[T], Builder[T]) {
+func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loop bool) (Machine[T], Machine[T]) {
 	name := x.name + ":" + typeName
 
 	l := x.loop
@@ -200,69 +258,54 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 
 	left := &builder[T]{
 		name:   name + ":left",
-		s:      x.s,
 		loop:   l,
-		output: make(chan T, x.s.option.BufferSize),
+		option: x.option,
+		head:   x.head,
+		output: make(chan T, x.option.BufferSize),
 	}
 
 	right := x.next("right")
 
 	alreadySetup := false
 
-	x.start = func(ctx context.Context, channel chan T) error {
+	x.start = func(ctx context.Context, channel chan T) {
 		if alreadySetup {
 			if typeName == "loop" {
 				outputTo(ctx, channel, x.output)
 			}
-			return nil
+			return
 		}
 
 		alreadySetup = true
 
-		if err := left.setup(ctx); err != nil {
-			return err
-		} else if err := right.setup(ctx); err != nil {
-			return err
-		}
+		left.setup(ctx)
+		right.setup(ctx)
 
-		fn(left.output, right.output, x.s.option).Run(ctx, name, channel, x.s.option)
-
-		return nil
+		fn(left.output, right.output, x.option).run(ctx, name, channel, x.option)
 	}
 
 	return left, right
 }
 
-func (x *builder[T]) setup(ctx context.Context) error {
+func (x *builder[T]) setup(ctx context.Context) {
 	if x.start == nil && x.loop != nil {
 		x.start = x.loop.start
 	}
 
 	if x.start == nil {
-		return fmt.Errorf("non-terminated builder %s", x.name)
+		return
 	}
 
-	return x.start(ctx, x.output)
+	x.start(ctx, x.output)
 }
 
 func (x *builder[T]) next(name string) *builder[T] {
 	return &builder[T]{
-		name:   name + ":" + name,
-		s:      x.s,
+		name:   x.name + ":" + name,
 		loop:   x.loop,
-		output: make(chan T, x.s.option.BufferSize),
-	}
-}
-
-// New is a function for creating a new Stream.
-//
-// name string
-// option *Option[T]
-func New[T any](name string, options *Option[T]) Stream[T] {
-	return &stream[T]{
-		name:   name,
-		mtx:    &sync.Mutex{},
-		option: options,
+		option: x.option,
+		head:   x.head,
+		output: make(chan T, x.option.BufferSize),
 	}
 }
 

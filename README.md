@@ -25,91 +25,107 @@ Add the primary library to your project
 
 ------
 
-The main function types are:
+The two function types are:
 
 ```golang
-// Applicative is a function that is applied to payload and used for transformations
-type Applicative[T any] func(d T) T
-
-// Test is a function used in composition of And/Or operations and used to
-// filter results down different branches with transformations
-type Test[T any] func(d T) (T, error)
+// Monad is a function that is applied to payload and used for transformations
+type Monad[T any] func(d T) T
 
 // Filter is a function that can be used to filter the payload.
 type Filter[T any] func(d T) bool
 
-// Transform is a function used by the Y Combinator to perform a recursion
-// on the payload.
-// Example:
-// func(f Applicative[int]) Applicative[int] {
-// 	 return func(x int) int {
-// 		 if x < 1 {
-// 			 return 1
-// 		 } else {
-// 			 return x * f(x-1)
-// 		 }
-// 	 }
-// }
-type Transform[T any] func(d Applicative[T]) Applicative[T]
-
 ```
 
-These are used in the `Builder` type provided by the `Stream` type:
-
+These are used in the `Machine` for functional operations
 
 ```golang
-// Stream is a representation of a data stream and its associated logic.
+// New is a function for creating a new Machine.
 //
-// The Builder method is the entrypoint into creating the data processing flow.
-// All branches of the Stream are required to end in an OutputTo call.
-type Stream[T any] interface {
-	Start(ctx context.Context, input chan T) error
-	Builder() Builder[T]
-}
-```
+// name string
+// input chan T
+// option *Option[T]
+//
+// Call the startFn returned by New to start the Machine once built.
+func New[T any](name string, input chan T, options *Option[T]) (startFn func(context.Context), x Machine[T])
 
-```golang
-// Builder is the interface provided for creating a data processing stream.
-type Builder[T any] interface {
+// Machine is the interface provided for creating a data processing stream.
+type Machine[T any] interface {
+	// Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
+	Name() string
 	// Then apply a mutation to each individual element of the payload.
-	Then(a Applicative[T]) Builder[T]
-	// Y applies a recursive function to the payload through a Y Combinator.
-	Y(x Transform[T]) Builder[T]
+	Then(a Monad[T]) Machine[T]
+	// Recurse applies a recursive function to the payload through a Y Combinator.
+	// f is a function used by the Y Combinator to perform a recursion
+	// on the payload.
+	// Example:
+	//
+	//	func(f Monad[int]) Monad[int] {
+	//		 return func(x int) int {
+	//			 if x <= 0 {
+	//				 return 1
+	//			 } else {
+	//				 return x * f(x-1)
+	//			 }
+	//		 }
+	//	}
+	Recurse(x Monad[Monad[T]]) Machine[T]
+	// Memoize applies a recursive function to the payload through a Y Combinator
+	// and memoizes the results based on the index func.
+	// f is a function used by the Y Combinator to perform a recursion
+	// on the payload.
+	// Example:
+	//
+	//	func(f Monad[int]) Monad[int] {
+	//		 return func(x int) int {
+	//			 if x <= 0 {
+	//				 return 1
+	//			 } else {
+	//				 return x * f(x-1)
+	//			 }
+	//		 }
+	//	}
+	Memoize(x Monad[Monad[T]], index func(T) string) Machine[T]
 	// Or runs all of the functions until one succeeds or sends the payload to the right branch
-	Or(x ...Test[T]) (Builder[T], Builder[T])
+	Or(x ...Filter[T]) (Machine[T], Machine[T])
 	// And runs all of the functions and if one doesnt succeed sends the payload to the right branch
-	And(x ...Test[T]) (Builder[T], Builder[T])
+	And(x ...Filter[T]) (Machine[T], Machine[T])
 	// Filter splits the data into multiple stream branches
-	Filter(f Filter[T]) (Builder[T], Builder[T])
-	// When applies a series of Filters to the payload and returns a list of Builders
+	If(f Filter[T]) (Machine[T], Machine[T])
+	// Select applies a series of Filters to the payload and returns a list of Builders
 	// the last one being for any unmatched payloads.
-	When(fns ...Filter[T]) []Builder[T]
+	Select(fns ...Filter[T]) []Machine[T]
 	// Duplicate splits the data into multiple stream branches
-	Duplicate() (Builder[T], Builder[T])
-	// Loop creates a loop in the stream based on the filter
-	Loop(x Filter[T]) (loop, out Builder[T])
+	Duplicate() (Machine[T], Machine[T])
+	// While creates a loop in the stream based on the filter
+	While(x Filter[T]) (loop, out Machine[T])
 	// Drop terminates the data from further processing without passing it on
 	Drop()
 	// Distribute is a function used for fanout
-	Distribute(Edge[T]) Builder[T]
-	// OutputTo caps the builder and sends the output to the provided channel
-	OutputTo(x chan T)
+	Distribute(Edge[T]) Machine[T]
+	// Output provided channel
+	Output() chan T
+	// Converts the Machine to an Edge, important to note
+	// that only paloads to this Machine will be output.
+	// The startFn returned by New must be called to start
+	// this Machine before calling Send on this Edge
+	AsEdge() Edge[T]
 }
 ```
 
-`Distribute` is a special method used for fan-out operations. It takes an instance of `Edge[T]` and can be used most typically to distribute work via a Pub/Sub. The `Edge[T]` interface is as follows:
+`Distribute` is a special method used for fan-out operations. It takes an instance of `Edge[T]` and can be used most typically to distribute work via a Pub/Sub or it can be used in a commandline utility to handle user input or a similiar blocking process. 
+
+
+The `Edge[T]` interface is as follows:
 
 ```golang
 // Edge is an interface that is used for transferring data between vertices
 type Edge[T any] interface {
-	ReceiveOn(ctx context.Context, channel chan T)
+	Output() chan T
 	Send(payload T)
 }
 ```
 
-The `Send` method is used for data leaving the associated vertex and the `ReceiveOn` method is used by the following vertex to receive data. The `context.Context` used is the same as the one used to start the `Stream`.
-
-An example using google pubsub can be found in the `edge/pubsub` directory
+The `Send` method is used for data leaving the associated vertex and the `Output` method is used by the following vertex to receive data from the channel.
 
 ------
 

@@ -6,49 +6,30 @@ package machine
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
-// Component is an interface for providing a vertex that can be used to run individual components on the payload.
-type Component[T any] interface {
-	Component(e chan T) Vertex[T]
-}
-
-// Edge is an interface that is used for transferring data between vertices
-type Edge[T any] interface {
-	ReceiveOn(ctx context.Context, channel chan T)
-	Send(payload T)
-}
-
-// Vertex is a type used to process data for a stream.
-type Vertex[T any] func(payload T)
-
-// Applicative is a function that is applied to payload and used for transformations
-type Applicative[T any] func(d T) T
-
-// Test is a function used in composition of And/Or operations and used to
-// filter results down different branches with transformations
-type Test[T any] func(d T) (T, error)
+// Monad is a function that is applied to payload and used for transformations
+type Monad[T any] func(d T) T
 
 // Filter is a function that can be used to filter the payload.
 type Filter[T any] func(d T) bool
 
-// Transform is a function used by the Y Combinator to perform a recursion
-// on the payload.
-// Example:
-//
-//	func(f Applicative[int]) Applicative[int] {
-//		 return func(x int) int {
-//			 if x <= 0 {
-//				 return 1
-//			 } else {
-//				 return x * f(x-1)
-//			 }
-//		 }
-//	}
-type Transform[T any] func(d Applicative[T]) Applicative[T]
+// Edge is an interface that is used for transferring data between vertices
+type Edge[T any] interface {
+	Output() chan T
+	Send(payload T)
+}
 
-type recursiveBaseFn[T any] func(recursiveBaseFn[T]) Applicative[T]
+// Telemetry type for holding telemetry settings.
+type Telemetry[T any] interface {
+	IncrementPayloadCount(vertexName string)
+	IncrementErrorCount(vertexName string)
+	Duration(vertexName string, duration time.Duration)
+	RecordPayload(vertexName string, payload T)
+	RecordError(vertexName string, payload T, err error)
+}
 
 // Option type for holding machine settings.
 type Option[T any] struct {
@@ -69,94 +50,66 @@ type Option[T any] struct {
 	// longer than they process it. DeepCopy must be set
 	DeepCopyBetweenVerticies bool `json:"deep_copy_between_vetricies,omitempty"`
 	// DeepCopy is a function to preform a deep copy of the Payload
-	DeepCopy func(T) T `json:"-"`
+	DeepCopy Monad[T] `json:"-"`
 }
 
-// Telemetry type for holding telemetry settings.
-type Telemetry[T any] interface {
-	IncrementPayloadCount(vertexName string)
-	IncrementErrorCount(vertexName string)
-	Duration(vertexName string, duration time.Duration)
-	RecordPayload(vertexName string, payload T)
-	RecordError(vertexName string, payload T, err error)
+func getOption[T any](option *Option[T]) *Option[T] {
+	opt := &Option[T]{}
+
+	if option != nil {
+		opt.FIFO = option.FIFO
+		opt.BufferSize = option.BufferSize
+		opt.Telemetry = option.Telemetry
+		opt.DeepCopyBetweenVerticies = option.DeepCopyBetweenVerticies
+		opt.DeepCopy = option.DeepCopy
+	}
+
+	if option != nil && option.PanicHandler != nil {
+		opt.PanicHandler = option.PanicHandler
+	} else {
+		opt.PanicHandler = func(err error, payload T) {
+			fmt.Printf("panic: %v, payload: %v\n", err, payload)
+		}
+	}
+
+	return opt
 }
 
-type testList[T any] []Test[T]
+type vertex[T any] func(payload T)
 
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Applicative[T]) Component(output chan T) Vertex[T] {
+type recursiveBaseFn[T any] func(recursiveBaseFn[T]) Monad[T]
+type memoizedBaseFn[T any] func(h memoizedBaseFn[T], m map[string]T) Monad[T]
+
+type filterList[T any] []Filter[T]
+type filterComponent[T any] func(left, right chan T, option *Option[T]) vertex[T]
+
+func (x Monad[T]) component(output chan T) vertex[T] {
 	return func(payload T) {
 		output <- x(payload)
 	}
 }
 
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Transform[T]) Component(output chan T) Vertex[T] {
-	g := func(h recursiveBaseFn[T]) Applicative[T] {
-		return func(q T) T {
-			return (x(h(h))(q))
-		}
-	}
-	fn := g(g)
-
-	return func(payload T) {
-		output <- fn(payload)
-	}
-}
-
-func (x testList[T]) OrCompose() Test[T] {
+func (x filterList[T]) or() Filter[T] {
 	if len(x) == 1 {
 		return x[0]
 	}
 
-	x2 := x[1:].OrCompose()
-
-	return func(d T) (T, error) {
-		out, err := x[0](d)
-
-		if err == nil {
-			return out, nil
-		}
-
-		return x2(d)
+	return func(d T) bool {
+		return x[0](d) || x[1:].or()(d)
 	}
 }
 
-func (x testList[T]) AndCompose() Test[T] {
+func (x filterList[T]) and() Filter[T] {
 	if len(x) == 1 {
 		return x[0]
 	}
 
-	x2 := x[1:].AndCompose()
-
-	return func(d T) (T, error) {
-		out, err := x[0](d)
-
-		if err == nil {
-			return x2(d)
-		}
-
-		return out, err
+	return func(d T) bool {
+		return x[0](d) && x[1:].and()(d)
 	}
 }
 
-type filterComponent[T any] func(left, right chan T, option *Option[T]) Vertex[T]
-
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Test[T]) Component(left, right chan T, _ *Option[T]) Vertex[T] {
-	return func(payload T) {
-		out, err := x(payload)
-
-		if err == nil {
-			left <- out
-		} else {
-			right <- out
-		}
-	}
-}
-
-// Component is a function for providing a vertex that can be used to run individual components on the payload.
-func (x Filter[T]) Component(left, right chan T, _ *Option[T]) Vertex[T] {
+func (x Filter[T]) component(left, right chan T, _ *Option[T]) vertex[T] {
 	return func(payload T) {
 		fr := x(payload)
 
@@ -168,7 +121,7 @@ func (x Filter[T]) Component(left, right chan T, _ *Option[T]) Vertex[T] {
 	}
 }
 
-func duplicateComponent[T any](left, right chan T, option *Option[T]) Vertex[T] {
+func duplicateComponent[T any](left, right chan T, option *Option[T]) vertex[T] {
 	return func(payload T) {
 		payload2 := payload
 
@@ -181,13 +134,7 @@ func duplicateComponent[T any](left, right chan T, option *Option[T]) Vertex[T] 
 	}
 }
 
-func edgeComponent[T any](e Edge[T]) Vertex[T] {
-	return func(payload T) {
-		e.Send(payload)
-	}
-}
-
-func (x Vertex[T]) wrap(name string, option *Option[T]) Vertex[T] {
+func (x vertex[T]) wrap(name string, option *Option[T]) vertex[T] {
 	return func(payload T) {
 		start := time.Now()
 
@@ -206,8 +153,7 @@ func (x Vertex[T]) wrap(name string, option *Option[T]) Vertex[T] {
 	}
 }
 
-// Run creates a go func to process the data in the channel until the context is canceled.
-func (x Vertex[T]) Run(ctx context.Context, name string, channel chan T, option *Option[T]) {
+func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option *Option[T]) {
 	h := x.wrap(name, option)
 
 	go func() {
@@ -238,10 +184,7 @@ func recoverFn[T any](name string, start time.Time, payload T, option *Option[T]
 				option.Telemetry.IncrementErrorCount(name)
 				option.Telemetry.RecordError(name, payload, err)
 			}
-
-			if option.PanicHandler != nil {
-				option.PanicHandler(err, payload)
-			}
+			option.PanicHandler(err, payload)
 		}
 	}
 }
