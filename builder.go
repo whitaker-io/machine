@@ -118,7 +118,7 @@ func (x *builder[T]) Select(fns ...Filter[T]) []Machine[T] {
 
 	var last = x
 	for i, fn := range fns {
-		o, l := last.filterComponent(fmt.Sprintf("when-%d", i), fn.component, false)
+		o, l := last.filterComponent(fmt.Sprintf("select-%d", i), fn.component, false)
 		out = append(out, o)
 		last = l.(*builder[T])
 	}
@@ -137,7 +137,7 @@ func (x *builder[T]) Recurse(fn Monad[Monad[T]]) Machine[T] {
 	}
 	p := g(g)
 
-	return x.component("y", p.component)
+	return x.component("recurse", p.component)
 }
 
 // Memoize applies a recursive function to the payload through a Y Combinator
@@ -159,7 +159,7 @@ func (x *builder[T]) Memoize(fn Monad[Monad[T]], index func(T) string) Machine[T
 		return g(g, m)(payload)
 	})
 
-	return x.component("y", p.component)
+	return x.component("memoize", p.component)
 }
 
 // Drop terminates the data from further processing without passing it on
@@ -200,7 +200,7 @@ func (x *builder[T]) Duplicate() (left, right Machine[T]) {
 
 // While creates a loop in the stream based on the filter
 func (x *builder[T]) While(fn Filter[T]) (loop, out Machine[T]) {
-	return x.filterComponent("loop", fn.component, true)
+	return x.filterComponent("while", fn.component, true)
 }
 
 // Distribute is a function used for fanout
@@ -270,7 +270,7 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 
 	x.start = func(ctx context.Context, channel chan T) {
 		if alreadySetup {
-			if typeName == "loop" {
+			if typeName == "while" {
 				outputTo(ctx, channel, x.output)
 			}
 			return
@@ -292,11 +292,9 @@ func (x *builder[T]) setup(ctx context.Context) {
 		x.start = x.loop.start
 	}
 
-	if x.start == nil {
-		return
+	if x.start != nil {
+		x.start(ctx, x.output)
 	}
-
-	x.start(ctx, x.output)
 }
 
 func (x *builder[T]) next(name string) *builder[T] {
