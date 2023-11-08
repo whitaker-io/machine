@@ -43,7 +43,7 @@ These are used in the `Machine` for functional operations
 //
 // name string
 // input chan T
-// option *Option[T]
+// option ...Option
 //
 // Call the startFn returned by New to start the Machine once built.
 func New[T any](name string, input chan T, options ...Option) (startFn func(context.Context), x Machine[T])
