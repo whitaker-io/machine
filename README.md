@@ -1,4 +1,4 @@
-![Go](https://github.com/whitaker-io/machine/workflows/Go/badge.svg?branch=master)
+![Go](https://github.com/whitaker-io/machine/workflows/Go/badge.svg?branch=v3)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/whitaker-io/machine)](https://pkg.go.dev/github.com/whitaker-io/machine)
 [![GoDoc](https://godoc.org/github.com/whitaker-io/machine?status.svg)](https://godoc.org/github.com/whitaker-io/machine)
 [![Go Report Card](https://goreportcard.com/badge/github.com/whitaker-io/machine)](https://goreportcard.com/report/github.com/whitaker-io/machine)
