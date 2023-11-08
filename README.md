@@ -20,7 +20,7 @@
 
 Add the primary library to your project
 ```bash
-  go get github.com/whitaker-io/machine/v2
+  go get github.com/whitaker-io/machine/v3
 ```
 
 ------
