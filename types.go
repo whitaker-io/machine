@@ -6,9 +6,12 @@ package machine
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
+	"os"
 	"time"
 )
+
+var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
 
 // Monad is a function that is applied to payload and used for transformations
 type Monad[T any] func(d T) T
@@ -22,58 +25,49 @@ type Edge[T any] interface {
 	Send(payload T)
 }
 
-// Telemetry type for holding telemetry settings.
-type Telemetry[T any] interface {
-	IncrementPayloadCount(vertexName string)
-	IncrementErrorCount(vertexName string)
-	Duration(vertexName string, duration time.Duration)
-	RecordPayload(vertexName string, payload T)
-	RecordError(vertexName string, payload T, err error)
+type Option interface {
+	apply(*config)
 }
 
-// Option type for holding machine settings.
-type Option[T any] struct {
-	// FIFO controls the processing order of the payloads
-	// If set to true the system will wait for one payload
-	// to be processed before starting the next.
-	FIFO bool `json:"fifo,omitempty"`
-	// BufferSize sets the buffer size on the edge channels between the
-	// vertices, this setting can be useful when processing large amounts
-	// of data with FIFO turned on.
-	BufferSize int `json:"buffer_size,omitempty"`
-	// Telemetry provides the ability to enable and configure telemetry
-	Telemetry Telemetry[T] `json:"telemetry,omitempty"`
-	// PanicHandler is a function that is called when a panic occurs
-	PanicHandler func(err error, payload T) `json:"-"`
-	// DeepCopyBetweenVerticies controls whether DeepCopy is performed between verticies.
-	// This is useful if the functions applied are holding copies of the payload for
-	// longer than they process it. DeepCopy must be set
-	DeepCopyBetweenVerticies bool `json:"deep_copy_between_vetricies,omitempty"`
-	// DeepCopy is a function to preform a deep copy of the Payload
-	DeepCopy Monad[T] `json:"-"`
+type option struct {
+	fn func(*config)
 }
 
-func getOption[T any](option *Option[T]) *Option[T] {
-	opt := &Option[T]{}
+func (o *option) apply(c *config) {
+	o.fn(c)
+}
 
-	if option != nil {
-		opt.FIFO = option.FIFO
-		opt.BufferSize = option.BufferSize
-		opt.Telemetry = option.Telemetry
-		opt.DeepCopyBetweenVerticies = option.DeepCopyBetweenVerticies
-		opt.DeepCopy = option.DeepCopy
+// OptionFIF0 controls the processing order of the payloads
+// If set to true the system will wait for one payload
+// to be processed before starting the next.
+var OptionFIF0 Option = &option{
+	func(c *config) {
+		c.fifo = true
+	},
+}
+
+// OptionBufferSize sets the buffer size on the edge channels between the
+// vertices, this setting can be useful when processing large amounts
+// of data with FIFO turned on.
+func OptionBufferSize(size int) Option {
+	return &option{
+		func(c *config) {
+			c.bufferSize = size
+		},
 	}
+}
 
-	if option != nil && option.PanicHandler != nil {
-		opt.PanicHandler = option.PanicHandler
-	} else {
-		opt.PanicHandler = func(err error, payload T) {
-			//nolint:revive // This is a panic handler
-			fmt.Println("panic: ", err, "payload: ", payload)
-		}
-	}
+// OptionDebug enables debug logging for the machine
+var OptionDebug Option = &option{
+	func(c *config) {
+		c.debug = true
+	},
+}
 
-	return opt
+type config struct {
+	fifo       bool
+	bufferSize int
+	debug      bool
 }
 
 type vertex[T any] func(payload T)
@@ -82,7 +76,7 @@ type recursiveBaseFn[T any] func(recursiveBaseFn[T]) Monad[T]
 type memoizedBaseFn[T any] func(h memoizedBaseFn[T], m map[string]T) Monad[T]
 
 type filterList[T any] []Filter[T]
-type filterComponent[T any] func(left, right chan T, option *Option[T]) vertex[T]
+type filterComponent[T any] func(left, right chan T) vertex[T]
 
 func (x Monad[T]) component(output chan T) vertex[T] {
 	return func(payload T) {
@@ -110,7 +104,7 @@ func (x filterList[T]) and() Filter[T] {
 	}
 }
 
-func (x Filter[T]) component(left, right chan T, _ *Option[T]) vertex[T] {
+func (x Filter[T]) component(left, right chan T) vertex[T] {
 	return func(payload T) {
 		fr := x(payload)
 
@@ -122,39 +116,17 @@ func (x Filter[T]) component(left, right chan T, _ *Option[T]) vertex[T] {
 	}
 }
 
-func duplicateComponent[T any](left, right chan T, option *Option[T]) vertex[T] {
-	return func(payload T) {
-		payload2 := payload
-
-		if option.DeepCopy != nil {
-			payload2 = option.DeepCopy(payload)
-		}
-
-		left <- payload
-		right <- payload2
-	}
-}
-
-func (x vertex[T]) wrap(name string, option *Option[T]) vertex[T] {
+func (x vertex[T]) wrap(name string, option *config) vertex[T] {
 	return func(payload T) {
 		start := time.Now()
 
-		if option.Telemetry != nil {
-			option.Telemetry.IncrementPayloadCount(name)
-			option.Telemetry.RecordPayload(name, payload)
-		}
-
 		defer recoverFn(name, start, payload, option)
 
-		if option.DeepCopyBetweenVerticies && option.DeepCopy != nil {
-			x(option.DeepCopy(payload))
-		} else {
-			x(payload)
-		}
+		x(payload)
 	}
 }
 
-func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option *Option[T]) {
+func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option *config) {
 	h := x.wrap(name, option)
 
 	go func() {
@@ -164,7 +136,7 @@ func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option 
 			case <-ctx.Done():
 				break Loop
 			case data := <-channel:
-				if option.FIFO {
+				if option.fifo {
 					h(data)
 				} else {
 					go h(data)
@@ -174,18 +146,24 @@ func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option 
 	}()
 }
 
-func recoverFn[T any](name string, start time.Time, payload T, option *Option[T]) {
-	if option.Telemetry != nil {
-		option.Telemetry.Duration(name, time.Since(start))
-	}
+func recoverFn[T any](name string, start time.Time, payload T, option *config) {
+	var err error
 
 	if r := recover(); r != nil {
-		if err, ok := r.(error); ok {
-			if option.Telemetry != nil {
-				option.Telemetry.IncrementErrorCount(name)
-				option.Telemetry.RecordError(name, payload, err)
-			}
-			option.PanicHandler(err, payload)
-		}
+		err, _ = r.(error)
 	}
+
+	duration := time.Since(start)
+
+	if option.debug {
+		logger.Debug(name,
+			slog.Any("payload", payload),
+			slog.Any("error", err),
+			slog.Duration("duration", duration),
+		)
+	}
+}
+
+func DebugSlogHandler(handler slog.Handler) {
+	logger = slog.New(handler)
 }

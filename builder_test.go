@@ -8,6 +8,8 @@ package machine
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -36,8 +38,6 @@ func deepcopy(item *kv) *kv {
 	return out
 }
 
-func deepcopyKV(k *kv) *kv { return &kv{name: k.name, value: k.value} }
-
 type channelEdge[T any] chan T
 
 func (t channelEdge[T]) Output() chan T {
@@ -47,26 +47,22 @@ func (t channelEdge[T]) Send(payload T) {
 	t <- payload
 }
 
-type noopTelemetry[T any] struct{}
-
-func (t *noopTelemetry[T]) IncrementPayloadCount(string)   {}
-func (t *noopTelemetry[T]) IncrementErrorCount(string)     {}
-func (t *noopTelemetry[T]) Duration(string, time.Duration) {}
-func (t *noopTelemetry[T]) RecordPayload(string, T)        {}
-func (t *noopTelemetry[T]) RecordError(string, T, error)   {}
-
 func Benchmark_Test_New(b *testing.B) {
 	channel := make(chan *kv)
 	startFn, m := New("machine_id",
 		channel,
-		&Option[*kv]{
-			// DeepCopy:   deepcopyKV,
-			FIFO:       false,
-			BufferSize: 0,
-		},
+		OptionFIF0,
 	)
 
 	out := m.
+		Then(
+			func(m *kv) *kv {
+				if m.ID() == "" {
+					b.Errorf("packet missing name %v", m)
+				}
+				return m
+			},
+		).
 		Then(
 			func(m *kv) *kv {
 				if m.ID() == "" {
@@ -99,14 +95,11 @@ func Test_New(b *testing.T) {
 		}
 	}()
 
+	DebugSlogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
+
 	startFn, m := New("machine_id",
 		channel,
-		&Option[*kv]{
-			FIFO:         false,
-			BufferSize:   0,
-			DeepCopy:     deepcopyKV,
-			PanicHandler: func(err error, payload *kv) {},
-		},
+		OptionDebug,
 	)
 
 	m.Name()
@@ -188,30 +181,29 @@ func Test_New(b *testing.T) {
 		return true
 	})
 
-	outGood1 := r5.Output()
-
 	outBad1 := right.Output()
 	outBad2 := r2.Output()
 	outBad3 := l3.Output()
 	outBad4 := r4.Output()
 	outBad5 := l5.Output()
 
+	x, _ := Transform(r5,
+		func(payload *kv) int {
+			return payload.value
+		},
+	)
+
+	outGood1 := x.Output()
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	startFn(ctx)
 
-	right.AsEdge().Send(
-		&kv{
-			name:  fmt.Sprintf("name%d", 10001),
-			value: 11,
-		},
-	)
-
-	for n := 0; n < count+1; n++ {
+	for n := 0; n < count; n++ {
 		select {
 		case x := <-outGood1:
-			if x.value != 1779979416004714189 {
-				b.Errorf("unexpected value %v", x.value)
+			if x != 1779979416004714189 {
+				b.Errorf("unexpected value %v", x)
 			}
 		case <-outBad1:
 			b.Errorf("should never reach this")
@@ -246,12 +238,8 @@ func Test_New2(b *testing.T) {
 	}()
 	startFn, m := New("machine_id",
 		channel,
-		&Option[*kv]{
-			FIFO:                     true,
-			BufferSize:               1000,
-			DeepCopy:                 deepcopyKV,
-			DeepCopyBetweenVerticies: true,
-		},
+		OptionFIF0,
+		OptionBufferSize(1000),
 	)
 
 	left, right := m.
@@ -261,7 +249,9 @@ func Test_New2(b *testing.T) {
 			},
 		).
 		Distribute(channelEdge[*kv](make(chan *kv))).
-		Duplicate()
+		Tee(func(k *kv) (a *kv, b *kv) {
+			return k, deepcopy(k)
+		})
 
 	outGood1 := left.Output()
 
@@ -280,7 +270,9 @@ func Test_New2(b *testing.T) {
 	)
 
 	outBad2 := l3.Output()
-	l4, r4 := r3.Duplicate()
+	l4, r4 := r3.Tee(func(k *kv) (a *kv, b *kv) {
+		return k, deepcopy(k)
+	})
 
 	outGood2 := l4.Output()
 	r4.Drop()
@@ -317,12 +309,8 @@ func Test_Panic(b *testing.T) {
 	}()
 	startFn, m := New("machine_id",
 		channel,
-		&Option[*kv]{
-			DeepCopy:   deepcopyKV,
-			Telemetry:  &noopTelemetry[*kv]{},
-			FIFO:       true,
-			BufferSize: 1000,
-		},
+		OptionFIF0,
+		OptionBufferSize(1000),
 	)
 
 	m.Then(
@@ -473,7 +461,6 @@ func Test_Loop(b *testing.T) {
 	}()
 	startFn, m := New("machine_id",
 		channel,
-		&Option[*kv]{},
 	)
 
 	counter := 1
@@ -497,6 +484,17 @@ func Test_Loop(b *testing.T) {
 			return counter2%2 == 0
 		},
 	)
+
+	_, err := Transform(inside,
+		func(payload *kv) int {
+			return payload.value
+		},
+	)
+
+	if err == nil {
+		b.Error(err)
+		b.FailNow()
+	}
 
 	inside.Then(
 		func(m *kv) *kv {

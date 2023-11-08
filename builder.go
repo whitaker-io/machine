@@ -9,26 +9,6 @@ import (
 	"fmt"
 )
 
-// New is a function for creating a new Machine.
-//
-// name string
-// input chan T
-// option *Option[T]
-//
-// Call the startFn returned by New to start the Machine once built.
-func New[T any](name string, input chan T, options *Option[T]) (startFn func(context.Context), x Machine[T]) {
-	b := &builder[T]{
-		name:   name,
-		loop:   nil,
-		option: getOption(options),
-		output: input,
-	}
-	b.head = b
-	return func(ctx context.Context) {
-		b.start(ctx, input)
-	}, b
-}
-
 // Machine is the interface provided for creating a data processing stream.
 type Machine[T any] interface {
 	// Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
@@ -75,8 +55,8 @@ type Machine[T any] interface {
 	// Select applies a series of Filters to the payload and returns a list of Builders
 	// the last one being for any unmatched payloads.
 	Select(fns ...Filter[T]) []Machine[T]
-	// Duplicate splits the data into multiple stream branches
-	Duplicate() (Machine[T], Machine[T])
+	// Tee duplicates the data into multiple stream branches.
+	Tee(func(T) (a, b T)) (Machine[T], Machine[T])
 	// While creates a loop in the stream based on the filter
 	While(x Filter[T]) (loop, out Machine[T])
 	// Drop terminates the data from further processing without passing it on
@@ -85,20 +65,71 @@ type Machine[T any] interface {
 	Distribute(Edge[T]) Machine[T]
 	// Output provided channel
 	Output() chan T
-	// Converts the Machine to an Edge, important to note
-	// that only paloads to this Machine will be output.
-	// The startFn returned by New must be called to start
-	// this Machine before calling Send on this Edge
-	AsEdge() Edge[T]
+
+	component(typeName string, fn func(output chan T) vertex[T]) Machine[T]
+	filterComponent(typeName string, fn filterComponent[T], loop bool) (Machine[T], Machine[T])
+	setup(ctx context.Context)
+	next(name string) *builder[T]
 }
 
 type builder[T any] struct {
 	name   string
-	head   *builder[T]
-	option *Option[T]
+	option *config
 	output chan T
 	start  func(ctx context.Context, channel chan T)
 	loop   *builder[T]
+}
+
+// New is a function for creating a new Machine.
+//
+// name string
+// input chan T
+// option *Option[T]
+//
+// Call the startFn returned by New to start the Machine once built.
+func New[T any](name string, input chan T, options ...Option) (startFn func(context.Context), x Machine[T]) {
+	c := &config{}
+
+	for _, o := range options {
+		o.apply(c)
+	}
+
+	b := &builder[T]{
+		name:   name,
+		loop:   nil,
+		option: c,
+		output: input,
+	}
+	return func(ctx context.Context) {
+		b.start(ctx, input)
+	}, b
+}
+
+// Transform is a function for converting the type of the Machine. Cannot be used inside a loop
+// until I figure out how to do it without some kind of run time error or overly complex
+// tracking method that isn't type safe. I really wish method level generics were a thing.
+func Transform[T, U any](m Machine[T], fn func(d T) U) (Machine[U], error) {
+	x := m.(*builder[T])
+
+	if x.loop != nil {
+		return nil, fmt.Errorf("transform cannot be used in a loop")
+	}
+
+	this := &builder[U]{
+		name:   x.name + ":" + "transform",
+		loop:   nil,
+		option: x.option,
+		output: make(chan U, x.option.bufferSize),
+	}
+
+	x.start = func(ctx context.Context, channel chan T) {
+		this.setup(ctx)
+		vertex[T](func(payload T) {
+			this.output <- fn(payload)
+		}).run(ctx, this.name, channel, x.option)
+	}
+
+	return this, nil
 }
 
 // Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
@@ -193,9 +224,18 @@ func (x *builder[T]) If(fn Filter[T]) (left, right Machine[T]) {
 	return x.filterComponent("if", fn.component, false)
 }
 
-// Duplicate splits the data into multiple stream branches
-func (x *builder[T]) Duplicate() (left, right Machine[T]) {
-	return x.filterComponent("duplicate", duplicateComponent[T], false)
+// Tee duplicates the data into multiple stream branches. The payload/vertexes are
+// responsible for concurrent read/write controls
+func (x *builder[T]) Tee(fn func(T) (a, b T)) (left, right Machine[T]) {
+	return x.filterComponent("tee",
+		func(left, right chan T) vertex[T] {
+			return func(payload T) {
+				left <- payload
+				right <- payload
+			}
+		},
+		false,
+	)
 }
 
 // While creates a loop in the stream based on the filter
@@ -222,20 +262,6 @@ func (x *builder[T]) Output() chan T {
 	return x.output
 }
 
-// Sends the payload to Machine
-// The startFn returned by New must be called to start
-// this Machine before calling Send on this Edge
-func (x *builder[T]) Send(payload T) {
-	x.head.output <- payload
-}
-
-// Converts the Machine to an Edge.
-// The startFn returned by New must be called to start
-// this Machine before calling Send on this Edge
-func (x *builder[T]) AsEdge() Edge[T] {
-	return x
-}
-
 func (x *builder[T]) component(typeName string, fn func(output chan T) vertex[T]) Machine[T] {
 	this := x.next(typeName)
 
@@ -260,8 +286,7 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 		name:   name + ":left",
 		loop:   l,
 		option: x.option,
-		head:   x.head,
-		output: make(chan T, x.option.BufferSize),
+		output: make(chan T, x.option.bufferSize),
 	}
 
 	right := x.next("right")
@@ -281,7 +306,7 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 		left.setup(ctx)
 		right.setup(ctx)
 
-		fn(left.output, right.output, x.option).run(ctx, name, channel, x.option)
+		fn(left.output, right.output).run(ctx, name, channel, x.option)
 	}
 
 	return left, right
@@ -302,8 +327,7 @@ func (x *builder[T]) next(name string) *builder[T] {
 		name:   x.name + ":" + name,
 		loop:   x.loop,
 		option: x.option,
-		head:   x.head,
-		output: make(chan T, x.option.BufferSize),
+		output: make(chan T, x.option.bufferSize),
 	}
 }
 
