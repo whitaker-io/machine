@@ -230,8 +230,9 @@ func (x *builder[T]) Tee(fn func(T) (a, b T)) (left, right Machine[T]) {
 	return x.filterComponent("tee",
 		func(left, right chan T) vertex[T] {
 			return func(payload T) {
-				left <- payload
-				right <- payload
+				a, b := fn(payload)
+				left <- a
+				right <- b
 			}
 		},
 		false,

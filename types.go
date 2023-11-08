@@ -25,6 +25,7 @@ type Edge[T any] interface {
 	Send(payload T)
 }
 
+// Option is used to configure the machine
 type Option interface {
 	apply(*config)
 }
@@ -164,6 +165,8 @@ func recoverFn[T any](name string, start time.Time, payload T, option *config) {
 	}
 }
 
+// DebugSlogHandler is used for setting the slog handler for the machine debug output
+// the default is the stdlin JSON handler outputting to stdout
 func DebugSlogHandler(handler slog.Handler) {
 	logger = slog.New(handler)
 }
