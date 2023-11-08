@@ -46,7 +46,12 @@ These are used in the `Machine` for functional operations
 // option *Option[T]
 //
 // Call the startFn returned by New to start the Machine once built.
-func New[T any](name string, input chan T, options *Option[T]) (startFn func(context.Context), x Machine[T])
+func New[T any](name string, input chan T, options ...Option) (startFn func(context.Context), x Machine[T])
+
+// Transform is a function for converting the type of the Machine. Cannot be used inside a loop
+// until I figure out how to do it without some kind of run time error or overly complex
+// tracking method that isn't type safe. I really wish method level generics were a thing.
+func Transform[T, U any](m Machine[T], fn func(d T) U) (Machine[U], error)
 
 // Machine is the interface provided for creating a data processing stream.
 type Machine[T any] interface {
@@ -94,8 +99,8 @@ type Machine[T any] interface {
 	// Select applies a series of Filters to the payload and returns a list of Builders
 	// the last one being for any unmatched payloads.
 	Select(fns ...Filter[T]) []Machine[T]
-	// Duplicate splits the data into multiple stream branches
-	Duplicate() (Machine[T], Machine[T])
+	// Tee duplicates the data into multiple stream branches.
+	Tee(func(T) (a, b T)) (Machine[T], Machine[T])
 	// While creates a loop in the stream based on the filter
 	While(x Filter[T]) (loop, out Machine[T])
 	// Drop terminates the data from further processing without passing it on
@@ -104,11 +109,6 @@ type Machine[T any] interface {
 	Distribute(Edge[T]) Machine[T]
 	// Output provided channel
 	Output() chan T
-	// Converts the Machine to an Edge, important to note
-	// that only paloads to this Machine will be output.
-	// The startFn returned by New must be called to start
-	// this Machine before calling Send on this Edge
-	AsEdge() Edge[T]
 }
 ```
 
@@ -129,39 +129,26 @@ The `Send` method is used for data leaving the associated vertex and the `Output
 
 ------
 
-You can also setup `Telemetry` and other options by passing in the `Option` type
+Confirguration is done using the `Option` helper
 
 ```golang
-// Option type for holding machine settings.
-type Option[T any] struct {
-	// FIFO controls the processing order of the payloads
-	// If set to true the system will wait for one payload
-	// to be processed before starting the next.
-	FIFO bool `json:"fifo,omitempty"`
-	// BufferSize sets the buffer size on the edge channels between the
-	// vertices, this setting can be useful when processing large amounts
-	// of data with FIFO turned on.
-	BufferSize int `json:"buffer_size,omitempty"`
-	// Telemetry provides the ability to enable and configure telemetry
-	Telemetry Telemetry[T] `json:"telemetry,omitempty"`
-	// PanicHandler is a function that is called when a panic occurs
-	PanicHandler func(err error, payload T) `json:"-"`
-	// DeepCopyBetweenVerticies controls whether DeepCopy is performed between verticies.
-	// This is useful if the functions applied are holding copies of the payload for
-	// longer than they process it. DeepCopy must be set
-	DeepCopyBetweenVerticies bool `json:"deep_copy_between_vetricies,omitempty"`
-	// DeepCopy is a function to preform a deep copy of the Payload
-	DeepCopy func(T) T `json:"-"`
+// Option is used to configure the machine
+type Option interface {
+	apply(*config)
 }
 
-// Telemetry type for holding telemetry settings.
-type Telemetry[T any] interface {
-	IncrementPayloadCount(vertexName string)
-	IncrementErrorCount(vertexName string)
-	Duration(vertexName string, duration time.Duration)
-	RecordPayload(vertexName string, payload T)
-	RecordError(vertexName string, payload T, err error)
-}
+// OptionFIF0 controls the processing order of the payloads
+// If set to true the system will wait for one payload
+// to be processed before starting the next.
+var OptionFIF0 Option
+
+// OptionBufferSize sets the buffer size on the edge channels between the
+// vertices, this setting can be useful when processing large amounts
+// of data with FIFO turned on.
+func OptionBufferSize(size int) Option
+
+// OptionDebug enables debug logging for the machine
+var OptionDebug Option
 ```
 
 ------
