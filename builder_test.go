@@ -75,9 +75,7 @@ func Benchmark_Test_New(b *testing.B) {
 	startFn(context.Background())
 
 	for n := 0; n < b.N; n++ {
-		go func() {
-			channel <- testPayloadBase
-		}()
+		channel <- testPayloadBase
 
 		<-out
 	}
