@@ -196,16 +196,7 @@ func (x *builder[T]) Memoize(fn Monad[Monad[T]], index func(T) string) Machine[T
 // Drop terminates the data from further processing without passing it on
 func (x *builder[T]) Drop() {
 	x.start = func(ctx context.Context, input chan T) {
-		go func() {
-		Loop:
-			for {
-				select {
-				case <-ctx.Done():
-					break Loop
-				case <-input:
-				}
-			}
-		}()
+		go transfer(ctx, input, func(data T) {})
 	}
 }
 
@@ -297,7 +288,11 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 	x.start = func(ctx context.Context, channel chan T) {
 		if alreadySetup {
 			if typeName == "while" {
-				outputTo(ctx, channel, x.output)
+				go transfer(ctx, channel,
+					func(data T) {
+						x.output <- data
+					},
+				)
 			}
 			return
 		}
@@ -332,16 +327,13 @@ func (x *builder[T]) next(name string) *builder[T] {
 	}
 }
 
-func outputTo[T any](ctx context.Context, in, out chan T) {
-	go func() {
-	Loop:
-		for {
-			select {
-			case <-ctx.Done():
-				break Loop
-			case data := <-in:
-				out <- data
-			}
+func transfer[T any](ctx context.Context, input chan T, fn func(T)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case data := <-input:
+			fn(data)
 		}
-	}()
+	}
 }
