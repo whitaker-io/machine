@@ -41,17 +41,17 @@ func (o *option) apply(c *config) {
 // OptionFIF0 controls the processing order of the datas
 // If set to true the system will wait for one data
 // to be processed before starting the next.
-var OptionFIF0 Option = &option{ func(c *config) { c.fifo = true } }
+var OptionFIF0 Option = &option{func(c *config) { c.fifo = true }}
 
 // OptionBufferSize sets the buffer size on the edge channels between the
 // vertices, this setting can be useful when processing large amounts
 // of data with FIFO turned on.
 func OptionBufferSize(size int) Option {
-	return &option{ func(c *config) { c.bufferSize = size } }
+	return &option{func(c *config) { c.bufferSize = size }}
 }
 
 // OptionDebug enables debug logging for the machine
-var OptionDebug Option = &option{ func(c *config) { c.debug = true } }
+var OptionDebug Option = &option{func(c *config) { c.debug = true }}
 
 type config struct {
 	fifo       bool
@@ -113,7 +113,6 @@ func (x vertex[T]) wrap(name string, option *config) vertex[T] {
 
 func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option *config) {
 	h := x.wrap(name, option)
-
 
 	if option.fifo {
 		go transfer(ctx, channel, h)
