@@ -174,13 +174,13 @@ func recoverFn[T any](ctx context.Context, name string, start time.Time, data T)
 		"machine.duration",
 		slog.String("name", name),
 		slog.String("type", metricInt64Histogram),
-		slog.Int64("value", duration.Nanoseconds()),
+		slog.Int64("value", duration.Milliseconds()),
 	)
 	slog.LogAttrs(
 		ctx,
 		levelTrace,
 		name,
 		slog.String("operation", traceEnd),
-		slog.Duration("duration", duration),
+		slog.Int64("duration", duration.Milliseconds()),
 	)
 }
