@@ -116,8 +116,8 @@ func (x vertex[T]) wrap(name string) vertex[T] {
 		slog.LogAttrs(
 			c,
 			levelTrace,
-			traceStart,
-			slog.String("name", name),
+			name,
+			slog.String("operation", traceStart),
 			slog.Any("data", data),
 		)
 
@@ -155,8 +155,8 @@ func recoverFn[T any](ctx context.Context, name string, start time.Time, data T)
 		slog.LogAttrs(
 			ctx,
 			levelTrace,
-			traceEvent,
-			slog.String("name", name),
+			name,
+			slog.String("operation", traceEvent),
 			slog.Any("error", err),
 			slog.Any("data", data),
 		)
@@ -181,8 +181,8 @@ func recoverFn[T any](ctx context.Context, name string, start time.Time, data T)
 	slog.LogAttrs(
 		ctx,
 		levelTrace,
-		traceEnd,
-		slog.String("name", name),
+		name,
+		slog.String("operation", traceEnd),
 		slog.Any("data", data),
 		slog.Duration("duration", duration),
 	)
