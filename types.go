@@ -59,9 +59,16 @@ func OptionBufferSize(size int) Option {
 	return &option{func(c *config) { c.bufferSize = size }}
 }
 
+// OptionAttributes apply the slog.Attr's to the machine metrics and spans
+// Do not override the "name", "type", "duration", "error", or "value" attributes
+func OptionAttributes(attributes ...slog.Attr) Option {
+	return &option{func(c *config) { c.attributes = attributes }}
+}
+
 type config struct {
 	fifo       bool
 	bufferSize int
+	attributes []slog.Attr
 }
 
 type vertex[T any] func(ctx context.Context, data T)

@@ -8,6 +8,7 @@ package machine
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"testing"
 	"time"
@@ -454,6 +455,7 @@ func Test_Loop(b *testing.T) {
 	}()
 	startFn, m := New("machine_id",
 		channel,
+		OptionAttributes(slog.String("test", "test")),
 	)
 
 	counter := 1
