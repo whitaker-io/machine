@@ -8,8 +8,6 @@ package machine
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -43,7 +41,7 @@ type channelEdge[T any] chan T
 func (t channelEdge[T]) Output() chan T {
 	return t
 }
-func (t channelEdge[T]) Send(payload T) {
+func (t channelEdge[T]) Send(ctx context.Context, payload T) {
 	t <- payload
 }
 
@@ -93,11 +91,8 @@ func Test_New(b *testing.T) {
 		}
 	}()
 
-	DebugSlogHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
-
 	startFn, m := New("machine_id",
 		channel,
-		OptionDebug,
 	)
 
 	m.Name()

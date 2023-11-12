@@ -1,5 +1,5 @@
 run:
-  go: '1.19'
+  go: '1.21'
   deadline: 5m
 # include test files or not, default is true
   tests: false
@@ -10,7 +10,7 @@ linters-settings:
     rules:
     - name: add-constant
       severity: error
-      arguments: [{"maxLitCount": "3", "allowStrs": "\"\"", "allowInts": "0,1,2", "allowFloats": "0.0,0.,1.0,1.,2.0,2.", "ignoreFuncs": "os\\.*,fmt\\.Println,make"}]
+      arguments: [{"maxLitCount": "3", "allowStrs": "\"name\"", "allowInts": "0,1,2", "allowFloats": "0.0,0.,1.0,1.,2.0,2.", "ignoreFuncs": "os\\.*,fmt\\.Println,make"}]
     - name: argument-limit
       severity: error
       arguments: [4]

@@ -7,11 +7,20 @@ package machine
 import (
 	"context"
 	"log/slog"
-	"os"
 	"time"
 )
 
-var logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{}))
+const (
+	levelTrace             slog.Level = -16
+	levelMetric            slog.Level = -8
+	traceStart             string     = "start"
+	traceEvent             string     = "event"
+	traceEnd               string     = "end"
+	metricFloat64Counter   string     = "float64counter"
+	metricInt64Counter     string     = "int64counter"
+	metricFloat64Histogram string     = "float64histogram"
+	metricInt64Histogram   string     = "int64histogram"
+)
 
 // Monad is a function that is applied to data and used for transformations
 type Monad[T any] func(d T) T
@@ -22,7 +31,7 @@ type Filter[T any] func(d T) bool
 // Edge is an interface that is used for transferring data between vertices
 type Edge[T any] interface {
 	Output() chan T
-	Send(data T)
+	Send(ctx context.Context, data T)
 }
 
 // Option is used to configure the machine
@@ -50,16 +59,12 @@ func OptionBufferSize(size int) Option {
 	return &option{func(c *config) { c.bufferSize = size }}
 }
 
-// OptionDebug enables debug logging for the machine
-var OptionDebug Option = &option{func(c *config) { c.debug = true }}
-
 type config struct {
 	fifo       bool
 	bufferSize int
-	debug      bool
 }
 
-type vertex[T any] func(data T)
+type vertex[T any] func(ctx context.Context, data T)
 
 type recursiveBaseFn[T any] func(recursiveBaseFn[T]) Monad[T]
 type memoizedBaseFn[T any] func(h memoizedBaseFn[T], m map[string]T) Monad[T]
@@ -68,7 +73,7 @@ type filterList[T any] []Filter[T]
 type filterComponent[T any] func(left, right chan T) vertex[T]
 
 func (x Monad[T]) component(output chan T) vertex[T] {
-	return func(data T) { output <- x(data) }
+	return func(ctx context.Context, data T) { output <- x(data) }
 }
 
 func (x filterList[T]) or() Filter[T] {
@@ -92,7 +97,7 @@ func (x filterList[T]) and() Filter[T] {
 }
 
 func (x Filter[T]) component(left, right chan T) vertex[T] {
-	return func(data T) {
+	return func(ctx context.Context, data T) {
 		if x(data) {
 			left <- data
 		} else {
@@ -101,44 +106,84 @@ func (x Filter[T]) component(left, right chan T) vertex[T] {
 	}
 }
 
-func (x vertex[T]) wrap(name string, option *config) vertex[T] {
-	return func(data T) {
+func (x vertex[T]) wrap(name string) vertex[T] {
+	return func(ctx context.Context, data T) {
 		start := time.Now()
 
-		defer recoverFn(name, start, data, option)
+		spanHolder := map[string]any{}
+		//nolint
+		c := context.WithValue(ctx, "span_holder", &spanHolder)
+		slog.LogAttrs(
+			c,
+			levelTrace,
+			traceStart,
+			slog.String("name", name),
+			slog.Any("data", data),
+		)
 
-		x(data)
+		slog.LogAttrs(
+			c,
+			levelMetric,
+			"machine.runs",
+			slog.String("name", name),
+			slog.String("type", metricInt64Counter),
+			slog.Int64("value", 1),
+		)
+
+		defer recoverFn(c, name, start, data)
+
+		x(c, data)
 	}
 }
 
 func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option *config) {
-	h := x.wrap(name, option)
+	h := x.wrap(name)
 
 	if option.fifo {
 		go transfer(ctx, channel, h)
 	} else {
-		go transfer(ctx, channel, func(data T) { go h(data) })
+		go transfer(ctx, channel, func(ctx context.Context, data T) { go h(ctx, data) })
 	}
 }
 
-func recoverFn[T any](name string, start time.Time, data T, option *config) {
+func recoverFn[T any](ctx context.Context, name string, start time.Time, data T) {
 	var err error
 
+	duration := time.Since(start)
 	if r := recover(); r != nil {
 		err, _ = r.(error)
-	}
-
-	if option.debug {
-		logger.Debug(name,
-			slog.Any("data", data),
+		slog.LogAttrs(
+			ctx,
+			levelTrace,
+			traceEvent,
+			slog.String("name", name),
 			slog.Any("error", err),
-			slog.Duration("duration", time.Since(start)),
+			slog.Any("data", data),
+		)
+		slog.LogAttrs(
+			ctx,
+			levelMetric,
+			"machine.errors",
+			slog.String("name", name),
+			slog.String("type", metricInt64Counter),
+			slog.Int64("value", 1),
 		)
 	}
-}
 
-// DebugSlogHandler is used for setting the slog handler for the machine debug output
-// the default is the stdlin JSON handler outputting to stdout
-func DebugSlogHandler(handler slog.Handler) {
-	logger = slog.New(handler)
+	slog.LogAttrs(
+		ctx,
+		levelMetric,
+		"machine.duration",
+		slog.String("name", name),
+		slog.String("type", metricInt64Histogram),
+		slog.Int64("value", duration.Nanoseconds()),
+	)
+	slog.LogAttrs(
+		ctx,
+		levelTrace,
+		traceEnd,
+		slog.String("name", name),
+		slog.Any("data", data),
+		slog.Duration("duration", duration),
+	)
 }
