@@ -13,6 +13,9 @@ import (
 const (
 	levelTrace             slog.Level = -16
 	levelMetric            slog.Level = -8
+	traceStart             string     = "start"
+	traceEvent             string     = "event"
+	traceEnd               string     = "end"
 	metricFloat64Counter   string     = "float64counter"
 	metricInt64Counter     string     = "int64counter"
 	metricFloat64Histogram string     = "float64histogram"
@@ -114,7 +117,7 @@ func (x vertex[T]) wrap(name string) vertex[T] {
 			c,
 			levelTrace,
 			name,
-			slog.String("operation", "start"),
+			slog.String("type", traceStart),
 		)
 
 		slog.LogAttrs(
@@ -152,7 +155,7 @@ func recoverFn[T any](ctx context.Context, name string, start time.Time, data T)
 			ctx,
 			levelTrace,
 			name,
-			slog.String("operation", "event"),
+			slog.String("type", traceEvent),
 			slog.Any("error", err),
 		)
 		slog.LogAttrs(
@@ -177,7 +180,7 @@ func recoverFn[T any](ctx context.Context, name string, start time.Time, data T)
 		ctx,
 		levelTrace,
 		name,
-		slog.String("operation", "end"),
+		slog.String("type", traceEnd),
 		slog.Int64("duration", duration.Milliseconds()),
 	)
 }
