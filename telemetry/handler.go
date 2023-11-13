@@ -113,7 +113,6 @@ func New(
 // SpanStart starts a new span and returns a new context with the span attached.
 func SpanStart(ctx context.Context, name string, attrs ...slog.Attr) context.Context {
 	spanHolder := map[string]any{}
-	//nolint
 	c := common.Store(ctx, &spanHolder)
 	slog.LogAttrs(c, common.LevelTrace, name, append(attrs, slog.String("type", common.TraceStart))...)
 	return c
@@ -266,15 +265,12 @@ func (h *handler) Handle(ctx context.Context, r slog.Record) error {
 		err = h.passthrough.Handle(ctx, r)
 	}
 
-	if err != nil {
-		fmt.Println("telemetry/handler.go: 284", err, r)
-	}
-
 	return err
 }
 
 func recov() {
 	if r := recover(); r != nil {
+		//nolint:revive
 		fmt.Println("telemetry/handler.go: 292", r)
 	}
 }

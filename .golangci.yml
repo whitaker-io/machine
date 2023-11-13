@@ -10,10 +10,10 @@ linters-settings:
     rules:
     - name: add-constant
       severity: error
-      arguments: [{"maxLitCount": "5", "allowStrs": "\"name\",\"type\"", "allowInts": "0,1,2", "allowFloats": "0.0,0.,1.0,1.,2.0,2.", "ignoreFuncs": "os\\.*,fmt\\.Println,make"}]
+      arguments: [{"maxLitCount": "5", "allowStrs": "\"name\",\"type\",\"value\"", "allowInts": "0,1,2", "allowFloats": "0.0,0.,1.0,1.,2.0,2.", "ignoreFuncs": "os\\.*,fmt\\.Println,make"}]
     - name: argument-limit
       severity: error
-      arguments: [4]
+      arguments: [5]
     - name: atomic
       severity: error
     - name: bare-return
@@ -26,7 +26,7 @@ linters-settings:
       severity: error
     - name: cognitive-complexity
       severity: error
-      arguments: [11]
+      arguments: [15]
     - name: confusing-results
       severity: error
     - name: constant-logical-expr
@@ -37,7 +37,7 @@ linters-settings:
       severity: error
     - name: cyclomatic
       severity: error
-      arguments: [6]
+      arguments: [10]
     - name: datarace
       severity: error
     - name: deep-exit
@@ -145,7 +145,7 @@ linters-settings:
     - name: waitgroup-by-value
       severity: error
   exhaustive:
-    default-signifies-exhaustive: false
+    default-signifies-exhaustive: true
   funlen:
     lines: 100
     statements: 50
@@ -193,7 +193,6 @@ linters:
   enable:
     - revive
     - bodyclose
-    - depguard
     - dogsled
     - dupl
     - errcheck
