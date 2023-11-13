@@ -289,7 +289,7 @@ func (h *handler) Handle(ctx context.Context, r slog.Record) error {
 
 func recov() {
 	if r := recover(); r != nil {
-		fmt.Println("telemetry/handler.go: 314", r)
+		fmt.Println("telemetry/handler.go: 292", r)
 	}
 }
 
