@@ -9,26 +9,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/whitaker-io/machine/common"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const (
-	levelTrace             slog.Level = -16
-	levelMetric            slog.Level = -8
-	traceStart             string     = "start"
-	traceEvent             string     = "event"
-	traceEnd               string     = "end"
-	metricFloat64Counter   string     = "float64counter"
-	metricInt64Counter     string     = "int64counter"
-	metricFloat64Histogram string     = "float64histogram"
-	metricInt64Histogram   string     = "int64histogram"
-	spanKey                key        = iota
-)
-
 var providerMap = map[string]func(m metric.Meter) func(name string) (recorder, error){
-	metricFloat64Counter: func(m metric.Meter) func(name string) (recorder, error) {
+	common.MetricFloat64Counter: func(m metric.Meter) func(name string) (recorder, error) {
 		return func(name string) (recorder, error) {
 			x, err := m.Float64Counter(name)
 			return func(
@@ -40,7 +28,7 @@ var providerMap = map[string]func(m metric.Meter) func(name string) (recorder, e
 			}, err
 		}
 	},
-	metricInt64Counter: func(m metric.Meter) func(name string) (recorder, error) {
+	common.MetricInt64Counter: func(m metric.Meter) func(name string) (recorder, error) {
 		return func(name string) (recorder, error) {
 			x, err := m.Int64Counter(name)
 			return func(
@@ -52,7 +40,7 @@ var providerMap = map[string]func(m metric.Meter) func(name string) (recorder, e
 			}, err
 		}
 	},
-	metricFloat64Histogram: func(m metric.Meter) func(name string) (recorder, error) {
+	common.MetricFloat64Histogram: func(m metric.Meter) func(name string) (recorder, error) {
 		return func(name string) (recorder, error) {
 			x, err := m.Float64Histogram(name)
 			return func(
@@ -64,7 +52,7 @@ var providerMap = map[string]func(m metric.Meter) func(name string) (recorder, e
 			}, err
 		}
 	},
-	metricInt64Histogram: func(m metric.Meter) func(name string) (recorder, error) {
+	common.MetricInt64Histogram: func(m metric.Meter) func(name string) (recorder, error) {
 		return func(name string) (recorder, error) {
 			x, err := m.Int64Histogram(name)
 			return func(
@@ -77,8 +65,6 @@ var providerMap = map[string]func(m metric.Meter) func(name string) (recorder, e
 		}
 	},
 }
-
-type key int
 
 type recorder func(ctx context.Context, val attribute.KeyValue, options metric.MeasurementOption)
 
@@ -111,7 +97,7 @@ func New(
 ) Handler {
 	if logHandler == nil {
 		logHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: levelTrace,
+			Level: common.LevelTrace,
 		})
 	}
 	return &handler{
@@ -128,30 +114,30 @@ func New(
 func SpanStart(ctx context.Context, name string, attrs ...slog.Attr) context.Context {
 	spanHolder := map[string]any{}
 	//nolint
-	c := context.WithValue(ctx, "span_holder", &spanHolder)
-	slog.LogAttrs(c, levelTrace, name, append(attrs, slog.String("type", traceStart))...)
+	c := common.Store(ctx, &spanHolder)
+	slog.LogAttrs(c, common.LevelTrace, name, append(attrs, slog.String("type", common.TraceStart))...)
 	return c
 }
 
 // SpanEvent adds an event to the span in the context.
 func SpanEvent(ctx context.Context, name string, attrs ...slog.Attr) {
-	slog.LogAttrs(ctx, levelTrace, name, append(attrs, slog.String("type", traceEvent))...)
+	slog.LogAttrs(ctx, common.LevelTrace, name, append(attrs, slog.String("type", common.TraceEvent))...)
 }
 
 // SpanEnd ends the span in the context.
 func SpanEnd(ctx context.Context, name string, attrs ...slog.Attr) {
-	slog.LogAttrs(ctx, levelTrace, name, append(attrs, slog.String("type", traceEnd))...)
+	slog.LogAttrs(ctx, common.LevelTrace, name, append(attrs, slog.String("type", common.TraceEnd))...)
 }
 
 // Float64Counter logs a float64 counter metric.
 func Float64Counter(ctx context.Context, name string, value float64, attrs ...slog.Attr) {
 	slog.LogAttrs(
 		ctx,
-		levelMetric,
+		common.LevelMetric,
 		name,
 		append(
 			attrs,
-			slog.String("type", metricFloat64Counter),
+			slog.String("type", common.MetricFloat64Counter),
 			slog.Float64("value", value),
 		)...,
 	)
@@ -161,11 +147,11 @@ func Float64Counter(ctx context.Context, name string, value float64, attrs ...sl
 func Int64Counter(ctx context.Context, name string, value int64, attrs ...slog.Attr) {
 	slog.LogAttrs(
 		ctx,
-		levelMetric,
+		common.LevelMetric,
 		name,
 		append(
 			attrs,
-			slog.String("type", metricInt64Counter),
+			slog.String("type", common.MetricInt64Counter),
 			slog.Int64("value", value),
 		)...,
 	)
@@ -175,11 +161,11 @@ func Int64Counter(ctx context.Context, name string, value int64, attrs ...slog.A
 func Float64Histogram(ctx context.Context, name string, value float64, attrs ...slog.Attr) {
 	slog.LogAttrs(
 		ctx,
-		levelMetric,
+		common.LevelMetric,
 		name,
 		append(
 			attrs,
-			slog.String("type", metricFloat64Histogram),
+			slog.String("type", common.MetricFloat64Histogram),
 			slog.Float64("value", value),
 		)...,
 	)
@@ -189,11 +175,11 @@ func Float64Histogram(ctx context.Context, name string, value float64, attrs ...
 func Int64Histogram(ctx context.Context, name string, value int64, attrs ...slog.Attr) {
 	slog.LogAttrs(
 		ctx,
-		levelMetric,
+		common.LevelMetric,
 		name,
 		append(
 			attrs,
-			slog.String("type", metricInt64Histogram),
+			slog.String("type", common.MetricInt64Histogram),
 			slog.Int64("value", value),
 		)...,
 	)
@@ -263,7 +249,7 @@ func (h *handler) addMetric(name string, x recorder) {
 
 // Enabled returns true if the provided level is enabled.
 func (h *handler) Enabled(ctx context.Context, level slog.Level) bool {
-	return level == levelTrace || level == levelMetric || h.passthrough.Enabled(ctx, level)
+	return level == common.LevelTrace || level == common.LevelMetric || h.passthrough.Enabled(ctx, level)
 }
 
 // Handle handles the provided record.
@@ -272,9 +258,9 @@ func (h *handler) Handle(ctx context.Context, r slog.Record) error {
 	var err error
 
 	switch r.Level {
-	case levelTrace:
+	case common.LevelTrace:
 		err = h.handleTrace(ctx, r)
-	case levelMetric:
+	case common.LevelMetric:
 		err = h.handleMetric(ctx, r)
 	default:
 		err = h.passthrough.Handle(ctx, r)
@@ -321,20 +307,20 @@ func (h *handler) handleTrace(ctx context.Context, r slog.Record) error {
 	c, span, sphldr := getCtxAndSpan(ctx)
 	if sphldr == nil {
 		return fmt.Errorf("telemetry: sphldr not found in context %s", operation)
-	} else if span == nil && operation != traceStart {
+	} else if span == nil && operation != common.TraceStart {
 		return fmt.Errorf("telemetry: span not found in context %s", operation)
 	}
 	switch operation {
-	case traceStart:
+	case common.TraceStart:
 		(*sphldr)["ctx"], (*sphldr)["span"] = h.tracer.Start(
 			c,
 			message,
 			trace.WithTimestamp(r.Time),
 			trace.WithAttributes(attributes...),
 		)
-	case traceEvent:
+	case common.TraceEvent:
 		span.AddEvent(message, trace.WithTimestamp(r.Time), trace.WithAttributes(attributes...))
-	case traceEnd:
+	case common.TraceEnd:
 		span.End(trace.WithTimestamp(r.Time))
 		delete(*sphldr, "ctx")
 		delete(*sphldr, "span")
@@ -379,9 +365,7 @@ func (h *handler) handleMetric(ctx context.Context, r slog.Record) error {
 }
 
 func getCtxAndSpan(ctx context.Context) (context.Context, trace.Span, *map[string]any) {
-	if val := ctx.Value("span_holder"); val == nil {
-		return ctx, nil, nil
-	} else if sphldr, ok := val.(*map[string]any); !ok {
+	if sphldr, ok := common.Get(ctx); !ok {
 		return ctx, nil, nil
 	} else if cVal, ok := (*sphldr)["ctx"]; !ok {
 		return ctx, nil, sphldr

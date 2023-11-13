@@ -8,18 +8,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
-)
 
-const (
-	levelTrace             slog.Level = -16
-	levelMetric            slog.Level = -8
-	traceStart             string     = "start"
-	traceEvent             string     = "event"
-	traceEnd               string     = "end"
-	metricFloat64Counter   string     = "float64counter"
-	metricInt64Counter     string     = "int64counter"
-	metricFloat64Histogram string     = "float64histogram"
-	metricInt64Histogram   string     = "int64histogram"
+	"github.com/whitaker-io/machine/common"
 )
 
 // Monad is a function that is applied to data and used for transformations
@@ -118,21 +108,20 @@ func (x vertex[T]) wrap(name string) vertex[T] {
 		start := time.Now()
 
 		spanHolder := map[string]any{}
-		//nolint
-		c := context.WithValue(ctx, "span_holder", &spanHolder)
+		c := common.Store(ctx, &spanHolder)
 		slog.LogAttrs(
 			c,
-			levelTrace,
+			common.LevelTrace,
 			name,
-			slog.String("type", traceStart),
+			slog.String("type", common.TraceStart),
 		)
 
 		slog.LogAttrs(
 			c,
-			levelMetric,
+			common.LevelMetric,
 			"machine.runs",
 			slog.String("name", name),
-			slog.String("type", metricInt64Counter),
+			slog.String("type", common.MetricInt64Counter),
 			slog.Int64("value", 1),
 		)
 
@@ -160,34 +149,34 @@ func recoverFn(ctx context.Context, name string, start time.Time) {
 		err, _ = r.(error)
 		slog.LogAttrs(
 			ctx,
-			levelTrace,
+			common.LevelTrace,
 			name,
-			slog.String("type", traceEvent),
+			slog.String("type", common.TraceEvent),
 			slog.Any("error", err),
 		)
 		slog.LogAttrs(
 			ctx,
-			levelMetric,
+			common.LevelMetric,
 			"machine.errors",
 			slog.String("name", name),
-			slog.String("type", metricInt64Counter),
+			slog.String("type", common.MetricInt64Counter),
 			slog.Int64("value", 1),
 		)
 	}
 
 	slog.LogAttrs(
 		ctx,
-		levelMetric,
+		common.LevelMetric,
 		"machine.duration",
 		slog.String("name", name),
-		slog.String("type", metricInt64Histogram),
+		slog.String("type", common.MetricInt64Histogram),
 		slog.Int64("value", duration.Milliseconds()),
 	)
 	slog.LogAttrs(
 		ctx,
-		levelTrace,
+		common.LevelTrace,
 		name,
-		slog.String("type", traceEnd),
+		slog.String("type", common.TraceEnd),
 		slog.Int64("duration", duration.Milliseconds()),
 	)
 }
