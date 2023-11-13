@@ -136,7 +136,7 @@ func (x vertex[T]) wrap(name string) vertex[T] {
 			slog.Int64("value", 1),
 		)
 
-		defer recoverFn(c, name, start, data)
+		defer recoverFn(c, name, start)
 
 		x(c, data)
 	}
@@ -152,7 +152,7 @@ func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option 
 	}
 }
 
-func recoverFn[T any](ctx context.Context, name string, start time.Time, data T) {
+func recoverFn(ctx context.Context, name string, start time.Time) {
 	var err error
 
 	duration := time.Since(start)
