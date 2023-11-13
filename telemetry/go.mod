@@ -1,6 +1,6 @@
 module github.com/whitaker-io/machine/telemetry
 
-go 1.21.3
+go 1.21
 
 require (
 	go.opentelemetry.io/otel v1.20.0
