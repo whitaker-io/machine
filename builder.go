@@ -340,6 +340,7 @@ func transfer[T any](ctx context.Context, input chan T, fn vertex[T], vertexName
 			if option.flushFN != nil && option.gracePeriod > 0 {
 				flush(ctx, vertexName, input, option)
 			}
+			return
 		case data := <-input:
 			fn(ctx, data)
 		}
