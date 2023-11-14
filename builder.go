@@ -334,7 +334,7 @@ func transfer[T any](ctx context.Context, input chan T, fn vertex[T], vertexName
 		select {
 		case <-ctx.Done():
 			if option.flushFN != nil && option.gracePeriod > 0 {
-				flush(ctx, vertexName, input, option)
+				flush(vertexName, input, option)
 			}
 			return
 		case data := <-input:
@@ -343,7 +343,7 @@ func transfer[T any](ctx context.Context, input chan T, fn vertex[T], vertexName
 	}
 }
 
-func flush[T any](ctx context.Context, vertexName string, input chan T, option *config) {
+func flush[T any](vertexName string, input chan T, option *config) {
 	c, cancel := context.WithTimeout(context.Background(), option.gracePeriod)
 	defer cancel()
 	for {
