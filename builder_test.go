@@ -318,6 +318,38 @@ func Test_Panic(b *testing.T) {
 	<-time.After(300 * time.Millisecond)
 }
 
+func Test_Flush(b *testing.T) {
+	count := 10000
+	channel := make(chan *kv)
+	startFn, m := New("machine_id",
+		channel,
+		OptionFIF0,
+		OptionBufferSize(1000),
+		OptionFlush(1*time.Second, func(string, any) {
+			time.After(time.Millisecond)
+		}),
+	)
+
+	m.Then(
+		func(m *kv) *kv {
+			time.After(time.Millisecond)
+			return m
+		},
+	).Output()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		for n := 0; n < count; n++ {
+			channel <- deepcopy(testPayloadBase)
+		}
+	}()
+	startFn(ctx)
+
+	cancel()
+
+	<-time.After(2 * time.Second)
+}
+
 // func Test_Missing_Leaves(b *testing.T) {
 // 	m := New("machine_id", &Option[*kv]{})
 

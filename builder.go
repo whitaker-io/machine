@@ -7,10 +7,6 @@ package machine
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"time"
-
-	"github.com/whitaker-io/machine/common"
 )
 
 // Machine is the interface provided for creating a data processing stream.
@@ -349,32 +345,13 @@ func transfer[T any](ctx context.Context, input chan T, fn vertex[T], vertexName
 
 func flush[T any](ctx context.Context, vertexName string, input chan T, option *config) {
 	c, cancel := context.WithTimeout(context.Background(), option.gracePeriod)
-	sphldr, ok := common.Get(ctx)
-	c = common.Store(c, sphldr)
+	defer cancel()
 	for {
 		select {
 		case <-c.Done():
-			cancel()
 			return
 		case data := <-input:
-			start := time.Now()
 			option.flushFN(vertexName, data)
-			if ok {
-				slog.LogAttrs(
-					c,
-					common.LevelTrace,
-					vertexName,
-					slog.String("type", common.TraceEvent),
-					slog.Any("error", fmt.Errorf("flushed")),
-				)
-				slog.LogAttrs(
-					c,
-					common.LevelTrace,
-					vertexName,
-					slog.String("type", common.TraceEnd),
-					slog.Int64("duration", time.Since(start).Milliseconds()),
-				)
-			}
 		}
 	}
 }
