@@ -147,16 +147,12 @@ func OptionBufferSize(size int) Option
 
 // OptionAttributes apply the slog.Attr's to the machine metrics and spans
 // Do not override the "name", "type", "duration", "error", or "value" attributes
-func OptionAttributes(attributes ...slog.Attr) Option {
-	return &option{func(c *config) { c.attributes = attributes }}
-}
+func OptionAttributes(attributes ...slog.Attr) Option
 
 // OptionFlush attempts to send all data to the flushFN before exiting after the gracePeriod has expired
 // Im looking for a good way to make this type specific, but want to avoid having to add separate option
 // settings for the Transform function.
-func OptionFlush(gracePeriod time.Duration, flushFN func(vertexName string, payload any)) Option {
-	return &option{func(c *config) { c.flushFN = flushFN; c.gracePeriod = gracePeriod }}
-}
+func OptionFlush(gracePeriod time.Duration, flushFN func(vertexName string, payload any)) Option
 ```
 
 `Machine` supports collecting metrics and traces through a `log/slog` wrapper that sends 
