@@ -133,9 +133,7 @@ Confirguration is done using the `Option` helper
 
 ```golang
 // Option is used to configure the machine
-type Option interface {
-	apply(*config)
-}
+type Option interface
 
 // OptionFIF0 controls the processing order of the payloads
 // If set to true the system will wait for one payload
@@ -147,8 +145,38 @@ var OptionFIF0 Option
 // of data with FIFO turned on.
 func OptionBufferSize(size int) Option
 
-// OptionDebug enables debug logging for the machine
-var OptionDebug Option
+// OptionAttributes apply the slog.Attr's to the machine metrics and spans
+// Do not override the "name", "type", "duration", "error", or "value" attributes
+func OptionAttributes(attributes ...slog.Attr) Option {
+	return &option{func(c *config) { c.attributes = attributes }}
+}
+
+// OptionFlush attempts to send all data to the flushFN before exiting after the gracePeriod has expired
+// Im looking for a good way to make this type specific, but want to avoid having to add separate option
+// settings for the Transform function.
+func OptionFlush(gracePeriod time.Duration, flushFN func(vertexName string, payload any)) Option {
+	return &option{func(c *config) { c.flushFN = flushFN; c.gracePeriod = gracePeriod }}
+}
+```
+
+`Machine` supports collecting metrics and traces through a `log/slog` wrapper that sends 
+the telemetry to the provided [OpenTelemetry](https://github.com/open-telemetry/opentelemetry-go) `Meter` and `Tracer`
+
+```golang
+// import "github.com/whitaker-io/machine/telemetry"
+
+// Make your slog handler however you please
+yourSlogHandler := slog.Default().Handler()
+
+// wrap your handler and provide your tracer and meter
+telemetryHandler := telemetry.New(
+	yourSlogHandler,
+	meterProvider.Meter("your_meter"), // Your otel metric.Meter
+	tracerProvider.Tracer("your_tracer"), // Your otel trace.Tracer
+	false, // Log Metrics and Traces to logs as well (useful for debugging)
+)
+
+slog.SetDefault(slog.New(telemetryHandler))
 ```
 
 ------
