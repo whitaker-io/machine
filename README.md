@@ -58,8 +58,10 @@ func Transform[T, U any](m Machine[T], fn func(d T) U) (Machine[U], error)
 type Machine[T any] interface {
 	// Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
 	Name() string
+	
 	// Then apply a mutation to each individual element of the payload.
 	Then(a Monad[T]) Machine[T]
+
 	// Recurse applies a recursive function to the payload through a Y Combinator.
 	// f is a function used by the Y Combinator to perform a recursion
 	// on the payload.
@@ -75,6 +77,7 @@ type Machine[T any] interface {
 	//		 }
 	//	}
 	Recurse(x Monad[Monad[T]]) Machine[T]
+
 	// Memoize applies a recursive function to the payload through a Y Combinator
 	// and memoizes the results based on the index func.
 	// f is a function used by the Y Combinator to perform a recursion
@@ -91,23 +94,32 @@ type Machine[T any] interface {
 	//		 }
 	//	}
 	Memoize(x Monad[Monad[T]], index func(T) string) Machine[T]
+
 	// Or runs all of the functions until one succeeds or sends the payload to the right branch
 	Or(x ...Filter[T]) (Machine[T], Machine[T])
+
 	// And runs all of the functions and if one doesnt succeed sends the payload to the right branch
 	And(x ...Filter[T]) (Machine[T], Machine[T])
+
 	// Filter splits the data into multiple stream branches
 	If(f Filter[T]) (Machine[T], Machine[T])
+
 	// Select applies a series of Filters to the payload and returns a list of Builders
 	// the last one being for any unmatched payloads.
 	Select(fns ...Filter[T]) []Machine[T]
+
 	// Tee duplicates the data into multiple stream branches.
 	Tee(func(T) (a, b T)) (Machine[T], Machine[T])
+
 	// While creates a loop in the stream based on the filter
 	While(x Filter[T]) (loop, out Machine[T])
+
 	// Drop terminates the data from further processing without passing it on
 	Drop()
+
 	// Distribute is a function used for fanout
 	Distribute(Edge[T]) Machine[T]
+	
 	// Output provided channel
 	Output() chan T
 }
