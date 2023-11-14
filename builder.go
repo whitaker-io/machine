@@ -7,6 +7,10 @@ package machine
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/whitaker-io/machine/common"
 )
 
 // Machine is the interface provided for creating a data processing stream.
@@ -196,7 +200,7 @@ func (x *builder[T]) Memoize(fn Monad[Monad[T]], index func(T) string) Machine[T
 // Drop terminates the data from further processing without passing it on
 func (x *builder[T]) Drop() {
 	x.start = func(ctx context.Context, input chan T) {
-		go transfer(ctx, input, func(ctx context.Context, data T) {})
+		go transfer(ctx, input, func(ctx context.Context, data T) {}, "", &config{})
 	}
 }
 
@@ -292,6 +296,8 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 					func(ctx context.Context, data T) {
 						x.output <- data
 					},
+					name,
+					x.option,
 				)
 			}
 			return
@@ -327,13 +333,47 @@ func (x *builder[T]) next(name string) *builder[T] {
 	}
 }
 
-func transfer[T any](ctx context.Context, input chan T, fn vertex[T]) {
+func transfer[T any](ctx context.Context, input chan T, fn vertex[T], vertexName string, option *config) {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			if option.flushFN != nil && option.gracePeriod > 0 {
+				flush(ctx, vertexName, input, option)
+			}
 		case data := <-input:
 			fn(ctx, data)
+		}
+	}
+}
+
+func flush[T any](ctx context.Context, vertexName string, input chan T, option *config) {
+	c, cancel := context.WithTimeout(context.Background(), option.gracePeriod)
+	sphldr, ok := common.Get(ctx)
+	c = common.Store(c, sphldr)
+	for {
+		select {
+		case <-c.Done():
+			cancel()
+			return
+		case data := <-input:
+			start := time.Now()
+			option.flushFN(vertexName, data)
+			if ok {
+				slog.LogAttrs(
+					c,
+					common.LevelTrace,
+					vertexName,
+					slog.String("type", common.TraceEvent),
+					slog.Any("error", fmt.Errorf("flushed")),
+				)
+				slog.LogAttrs(
+					c,
+					common.LevelTrace,
+					vertexName,
+					slog.String("type", common.TraceEnd),
+					slog.Int64("duration", time.Since(start).Milliseconds()),
+				)
+			}
 		}
 	}
 }

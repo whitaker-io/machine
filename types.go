@@ -55,10 +55,19 @@ func OptionAttributes(attributes ...slog.Attr) Option {
 	return &option{func(c *config) { c.attributes = attributes }}
 }
 
+// OptionFlush attempts to send all data to the flushFN before exiting after the gracePeriod has expired
+// Im looking for a good way to make this type specific, but want to avoid having to add separate option
+// settings for the Transform function.
+func OptionFlush(gracePeriod time.Duration, flushFN func(vertexName string, payload any)) Option {
+	return &option{func(c *config) { c.flushFN = flushFN; c.gracePeriod = gracePeriod }}
+}
+
 type config struct {
-	fifo       bool
-	bufferSize int
-	attributes []slog.Attr
+	fifo        bool
+	bufferSize  int
+	attributes  []slog.Attr
+	gracePeriod time.Duration
+	flushFN     func(vertexName string, payload any)
 }
 
 type vertex[T any] func(ctx context.Context, data T)
@@ -135,9 +144,9 @@ func (x vertex[T]) run(ctx context.Context, name string, channel chan T, option 
 	h := x.wrap(name)
 
 	if option.fifo {
-		go transfer(ctx, channel, h)
+		go transfer(ctx, channel, h, name, option)
 	} else {
-		go transfer(ctx, channel, func(ctx context.Context, data T) { go h(ctx, data) })
+		go transfer(ctx, channel, func(ctx context.Context, data T) { go h(ctx, data) }, name, option)
 	}
 }
 
