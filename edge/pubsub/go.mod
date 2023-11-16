@@ -4,7 +4,7 @@ go 1.21.3
 
 require (
 	cloud.google.com/go/pubsub v1.33.0
-	github.com/whitaker-io/machine/v3 v3.2.2
+	github.com/whitaker-io/machine/v3 v3.2.3
 )
 
 require (
