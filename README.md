@@ -188,6 +188,24 @@ telemetryHandler := telemetry.New(
 slog.SetDefault(slog.New(telemetryHandler))
 ```
 
+Examples of `Edge` implentations can be found in the edge directory and can be used as follows
+
+```golang
+// import "github.com/whitaker-io/machine/edge/pubsub"
+
+func New[T any](
+	ctx context.Context,
+	subscription *pubsub.Subscription,
+	publisher *pubsub.Topic,
+	to func(T) *pubsub.Message,
+	from func(context.Context, *pubsub.Message) T,
+) machine.Edge[T]
+
+// import "github.com/whitaker-io/machine/edge/http"
+
+func New[T any](c http.Client, fn func(context.Context, T) *http.Request) machine.Edge[T]
+```
+
 ------
 
 ***
