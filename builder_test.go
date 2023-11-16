@@ -241,6 +241,9 @@ func Test_New2(b *testing.T) {
 			func(m *kv) *kv {
 				return m
 			},
+			func(m *kv) *kv {
+				return m
+			},
 		).
 		Distribute(channelEdge[*kv](make(chan *kv))).
 		Tee(func(k *kv) (a *kv, b *kv) {

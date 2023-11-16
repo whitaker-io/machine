@@ -14,7 +14,7 @@ type Machine[T any] interface {
 	// Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
 	Name() string
 	// Then apply a mutation to each individual element of the payload.
-	Then(a Monad[T]) Machine[T]
+	Then(a ...Monad[T]) Machine[T]
 	// Recurse applies a recursive function to the payload through a Y Combinator.
 	// f is a function used by the Y Combinator to perform a recursion
 	// on the payload.
@@ -138,8 +138,8 @@ func (x *builder[T]) Name() string {
 }
 
 // Then apply a mutation to each individual element of the payload.
-func (x *builder[T]) Then(fn Monad[T]) Machine[T] {
-	return x.component("then", fn.component)
+func (x *builder[T]) Then(fn ...Monad[T]) Machine[T] {
+	return x.component("then", monadList[T](fn).combine().component)
 }
 
 // Select applies a series of Filters to the payload and returns a list of Builders

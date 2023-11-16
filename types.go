@@ -75,11 +75,21 @@ type vertex[T any] func(ctx context.Context, data T)
 type recursiveBaseFn[T any] func(recursiveBaseFn[T]) Monad[T]
 type memoizedBaseFn[T any] func(h memoizedBaseFn[T], m map[string]T) Monad[T]
 
+type monadList[T any] []Monad[T]
 type filterList[T any] []Filter[T]
 type filterComponent[T any] func(left, right chan T) vertex[T]
 
 func (x Monad[T]) component(output chan T) vertex[T] {
 	return func(ctx context.Context, data T) { output <- x(data) }
+}
+func (x monadList[T]) combine() Monad[T] {
+	if len(x) == 1 {
+		return x[0]
+	}
+
+	return func(data T) T { 
+		return x[1:].combine()(x[0](data))
+	}
 }
 
 func (x filterList[T]) or() Filter[T] {

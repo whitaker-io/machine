@@ -1,0 +1,4 @@
+github.com/whitaker-io/machine/common v0.1.1 h1:6R+cpbh0wEcv6rJxrXuOqj6GDRBuFrj4wBwT21orxnk=
+github.com/whitaker-io/machine/common v0.1.1/go.mod h1:EsCg9PCydROYr/JmFFMSlx5tzGY13BG86UF2prD1/5U=
+github.com/whitaker-io/machine/v3 v3.2.2 h1:VX5cQm+s/zFuMEnD98FmpGZKQ14EkhuIyZ/09F/mP6U=
+github.com/whitaker-io/machine/v3 v3.2.2/go.mod h1:s8xvBOWv3LWffDQhVkJvyPQhFrD04tiVg0RDtrjqTzM=
