@@ -87,7 +87,7 @@ func (x monadList[T]) combine() Monad[T] {
 		return x[0]
 	}
 
-	return func(data T) T { 
+	return func(data T) T {
 		return x[1:].combine()(x[0](data))
 	}
 }
