@@ -1,6 +1,6 @@
 module github.com/whitaker-io/machine/edge/pubsub
 
-go 1.21.3
+go 1.21.4
 
 require (
 	cloud.google.com/go/pubsub v1.33.0
@@ -31,6 +31,6 @@ require (
 	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
-	google.golang.org/grpc v1.55.0 // indirect
+	google.golang.org/grpc v1.56.3 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
