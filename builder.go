@@ -57,8 +57,6 @@ type Machine[T any] interface {
 	Select(fns ...Filter[T]) []Machine[T]
 	// Tee duplicates the data into multiple stream branches.
 	Tee(func(T) (a, b T)) (Machine[T], Machine[T])
-	// While creates a loop in the stream based on the filter
-	While(x Filter[T]) (loop, out Machine[T])
 	// Drop terminates the data from further processing without passing it on
 	Drop()
 	// Distribute is a function used for fanout
@@ -66,70 +64,52 @@ type Machine[T any] interface {
 	// Output provided channel
 	Output() chan T
 
-	component(typeName string, fn func(output chan T) vertex[T]) Machine[T]
-	filterComponent(typeName string, fn filterComponent[T], loop bool) (Machine[T], Machine[T])
-	setup(ctx context.Context)
-	next(name string) *builder[T]
+	monadNext(name string, m Monad[T]) (vertex[T], *builder[T])
+	filterNext(left, right string, f Filter[T]) (vertex[T], *builder[T], *builder[T])
+	next(name string, output chan T) *builder[T]
 }
 
 type builder[T any] struct {
+	ctx    context.Context
 	name   string
-	option *config
 	output chan T
-	start  func(ctx context.Context, channel chan T)
-	loop   *builder[T]
+	option *config
 }
 
-// New is a function for creating a new Machine.
-//
-// name string
-// input chan T
-// option *Option[T]
-//
-// Call the startFn returned by New to start the Machine once built.
-func New[T any](name string, input chan T, options ...Option) (startFn func(context.Context), x Machine[T]) {
-	c := &config{}
+func New[T any](ctx context.Context, name string, channel chan T, option ...Option) Machine[T] {
+	c := &config{
+		bufferSize:  0,
+		gracePeriod: 0,
+	}
 
-	for _, o := range options {
+	for _, o := range option {
 		o.apply(c)
 	}
 
-	b := &builder[T]{
+	return &builder[T]{
+		ctx:    ctx,
 		name:   name,
-		loop:   nil,
+		output: channel,
 		option: c,
-		output: input,
 	}
-	return func(ctx context.Context) {
-		b.start(ctx, input)
-	}, b
 }
 
-// Transform is a function for converting the type of the Machine. Cannot be used inside a loop
-// until I figure out how to do it without some kind of run time error or overly complex
-// tracking method that isn't type safe. I really wish method level generics were a thing.
-func Transform[T, U any](m Machine[T], fn func(d T) U) (Machine[U], error) {
+// Transform is a function for converting the type of the Machine.
+func Transform[T, U any](m Machine[T], fn func(d T) U) Machine[U] {
 	x := m.(*builder[T])
 
-	if x.loop != nil {
-		return nil, fmt.Errorf("transform cannot be used in a loop")
-	}
-
-	this := &builder[U]{
+	next := &builder[U]{
+		ctx:    x.ctx,
 		name:   x.name + ":" + "transform",
-		loop:   nil,
-		option: x.option,
 		output: make(chan U, x.option.bufferSize),
+		option: x.option,
 	}
 
-	x.start = func(ctx context.Context, channel chan T) {
-		this.setup(ctx)
-		vertex[T](func(ctx context.Context, payload T) {
-			this.output <- fn(payload)
-		}).run(ctx, this.name, channel, x.option)
-	}
+	vertex[T](func(ctx context.Context, payload T) {
+		next.output <- fn(payload)
+	}).run(next.ctx, next.name, x.output, x.option)
 
-	return this, nil
+	return next
 }
 
 // Name returns the name of the Machine path. Useful for debugging or reasoning about the path.
@@ -139,7 +119,7 @@ func (x *builder[T]) Name() string {
 
 // Then apply a mutation to each individual element of the payload.
 func (x *builder[T]) Then(fn ...Monad[T]) Machine[T] {
-	return x.component("then", monadList[T](fn).combine().component)
+	return x.setupMonad("then", monadList[T](fn).combine())
 }
 
 // Select applies a series of Filters to the payload and returns a list of Builders
@@ -149,7 +129,7 @@ func (x *builder[T]) Select(fns ...Filter[T]) []Machine[T] {
 
 	var last = x
 	for i, fn := range fns {
-		o, l := last.filterComponent(fmt.Sprintf("select-%d", i), fn.component, false)
+		o, l := last.setupFilter(fmt.Sprintf("select-%d", i), fn)
 		out = append(out, o)
 		last = l.(*builder[T])
 	}
@@ -168,7 +148,7 @@ func (x *builder[T]) Recurse(fn Monad[Monad[T]]) Machine[T] {
 	}
 	p := g(g)
 
-	return x.component("recurse", p.component)
+	return x.setupMonad("recurse", p)
 }
 
 // Memoize applies a recursive function to the payload through a Y Combinator
@@ -190,63 +170,57 @@ func (x *builder[T]) Memoize(fn Monad[Monad[T]], index func(T) string) Machine[T
 		return g(g, m)(payload)
 	})
 
-	return x.component("memoize", p.component)
+	return x.setupMonad("memoize", p)
 }
 
 // Drop terminates the data from further processing without passing it on
 func (x *builder[T]) Drop() {
-	x.start = func(ctx context.Context, input chan T) {
-		go transfer(ctx, input, func(ctx context.Context, data T) {}, "", &config{})
-	}
+	next := x.next("drop", nil)
+	vertex[T](func(ctx context.Context, payload T) {}).run(next.ctx, next.name, x.output, x.option)
 }
 
 // Or runs all of the functions until one succeeds or sends the payload to the right branch
 func (x *builder[T]) Or(list ...Filter[T]) (left, right Machine[T]) {
-	return x.filterComponent("or", filterList[T](list).or().component, false)
+	return x.setupFilter("or", filterList[T](list).or())
 }
 
 // And runs all of the functions and if one doesnt succeed sends the payload to the right branch
 func (x *builder[T]) And(list ...Filter[T]) (left, right Machine[T]) {
-	return x.filterComponent("and", filterList[T](list).and().component, false)
+	return x.setupFilter("and", filterList[T](list).and())
 }
 
 // If splits the data into multiple stream branches
 func (x *builder[T]) If(fn Filter[T]) (left, right Machine[T]) {
-	return x.filterComponent("if", fn.component, false)
+	return x.setupFilter("if", fn)
 }
 
 // Tee duplicates the data into multiple stream branches. The payload/vertexes are
 // responsible for concurrent read/write controls
-func (x *builder[T]) Tee(fn func(T) (a, b T)) (left, right Machine[T]) {
-	return x.filterComponent("tee",
-		func(left, right chan T) vertex[T] {
-			return func(ctx context.Context, payload T) {
-				a, b := fn(payload)
-				left <- a
-				right <- b
-			}
-		},
-		false,
-	)
-}
+func (x *builder[T]) Tee(fn func(T) (a, b T)) (Machine[T], Machine[T]) {
+	name := x.name + ":tee"
 
-// While creates a loop in the stream based on the filter
-func (x *builder[T]) While(fn Filter[T]) (loop, out Machine[T]) {
-	return x.filterComponent("while", fn.component, true)
+	l, r := make(chan T, x.option.bufferSize), make(chan T, x.option.bufferSize)
+
+	v := vertex[T](func(ctx context.Context, payload T) {
+		a, b := fn(payload)
+		l <- a
+		r <- b
+	})
+
+	left, right := x.next(name+":left", l), x.next(name+":right", r)
+
+	v.run(left.ctx, left.name, x.output, x.option)
+
+	return left, right
 }
 
 // Distribute is a function used for fanout
 func (x *builder[T]) Distribute(edge Edge[T]) Machine[T] {
-	this := x.next("distribute")
+	next := x.next("distribute", edge.Output())
 
-	this.output = edge.Output()
-	x.start = func(ctx context.Context, channel chan T) {
-		this.setup(ctx)
+	vertex[T](edge.Send).run(next.ctx, next.name, x.output, x.option)
 
-		vertex[T](edge.Send).run(ctx, this.name, channel, x.option)
-	}
-
-	return this
+	return next
 }
 
 // Output return output channel
@@ -254,79 +228,43 @@ func (x *builder[T]) Output() chan T {
 	return x.output
 }
 
-func (x *builder[T]) component(typeName string, fn func(output chan T) vertex[T]) Machine[T] {
-	this := x.next(typeName)
-
-	x.start = func(ctx context.Context, channel chan T) {
-		this.setup(ctx)
-		fn(this.output).run(ctx, this.name, channel, x.option)
-	}
-
-	return this
+func (x *builder[T]) monadNext(name string, m Monad[T]) (vertex[T], *builder[T]) {
+	v, output := m.convert(x.option)
+	return v, x.next(name, output)
 }
 
-func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loop bool) (Machine[T], Machine[T]) {
+func (x *builder[T]) setupMonad(typeName string, m Monad[T]) Machine[T] {
+	vert, next := x.monadNext(typeName, m)
+
+	vert.run(next.ctx, next.name, x.output, x.option)
+
+	return next
+}
+
+func (x *builder[T]) filterNext(left, right string, f Filter[T]) (vertex[T], *builder[T], *builder[T]) {
+	v, l, r := f.convert(x.option)
+	return v, x.next(left, l), x.next(right, r)
+}
+
+func (x *builder[T]) setupFilter(typeName string, f Filter[T]) (Machine[T], Machine[T]) {
 	name := x.name + ":" + typeName
 
-	l := x.loop
+	vert, left, right := x.filterNext(name+":left", name+":right", f)
 
-	if loop {
-		l = x
-	}
-
-	left := &builder[T]{
-		name:   name + ":left",
-		loop:   l,
-		option: x.option,
-		output: make(chan T, x.option.bufferSize),
-	}
-
-	right := x.next("right")
-
-	alreadySetup := false
-
-	x.start = func(ctx context.Context, channel chan T) {
-		if alreadySetup {
-			if typeName == "while" {
-				go transfer(ctx, channel,
-					func(ctx context.Context, data T) {
-						x.output <- data
-					},
-					name,
-					x.option,
-				)
-			}
-			return
-		}
-
-		alreadySetup = true
-
-		left.setup(ctx)
-		right.setup(ctx)
-
-		fn(left.output, right.output).run(ctx, name, channel, x.option)
-	}
+	vert.run(left.ctx, left.name, x.output, x.option)
 
 	return left, right
 }
 
-func (x *builder[T]) setup(ctx context.Context) {
-	if x.start == nil && x.loop != nil {
-		x.start = x.loop.start
-	}
-
-	if x.start != nil {
-		x.start(ctx, x.output)
-	}
-}
-
-func (x *builder[T]) next(name string) *builder[T] {
-	return &builder[T]{
+func (x *builder[T]) next(name string, output chan T) *builder[T] {
+	next := &builder[T]{
+		ctx:    x.ctx,
 		name:   x.name + ":" + name,
-		loop:   x.loop,
+		output: output,
 		option: x.option,
-		output: make(chan T, x.option.bufferSize),
 	}
+
+	return next
 }
 
 func transfer[T any](ctx context.Context, input chan T, fn vertex[T], vertexName string, option *config) {

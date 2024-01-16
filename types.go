@@ -33,9 +33,7 @@ type option struct {
 	fn func(*config)
 }
 
-func (o *option) apply(c *config) {
-	o.fn(c)
-}
+func (o *option) apply(c *config) { o.fn(c) }
 
 // OptionFIF0 controls the processing order of the datas
 // If set to true the system will wait for one data
@@ -77,11 +75,14 @@ type memoizedBaseFn[T any] func(h memoizedBaseFn[T], m map[string]T) Monad[T]
 
 type monadList[T any] []Monad[T]
 type filterList[T any] []Filter[T]
-type filterComponent[T any] func(left, right chan T) vertex[T]
 
-func (x Monad[T]) component(output chan T) vertex[T] {
-	return func(ctx context.Context, data T) { output <- x(data) }
+func (x Monad[T]) convert(c *config) (vertex[T], chan T) {
+	output := make(chan T, c.bufferSize)
+
+	return func(ctx context.Context, data T) { output <- x(data) }, output
+
 }
+
 func (x monadList[T]) combine() Monad[T] {
 	if len(x) == 1 {
 		return x[0]
@@ -112,14 +113,16 @@ func (x filterList[T]) and() Filter[T] {
 	}
 }
 
-func (x Filter[T]) component(left, right chan T) vertex[T] {
+func (x Filter[T]) convert(c *config) (vertex[T], chan T, chan T) {
+	left, right := make(chan T, c.bufferSize), make(chan T, c.bufferSize)
+
 	return func(ctx context.Context, data T) {
 		if x(data) {
 			left <- data
 		} else {
 			right <- data
 		}
-	}
+	}, left, right
 }
 
 func (x vertex[T]) wrap(name string) vertex[T] {
