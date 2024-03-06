@@ -124,7 +124,7 @@ func Transform[T, U any](m Machine[T], fn func(d T) U) (Machine[U], error) {
 
 	x.start = func(ctx context.Context, channel chan T) {
 		this.setup(ctx)
-		vertex[T](func(ctx context.Context, payload T) {
+		vertex[T](func(_ context.Context, payload T) {
 			this.output <- fn(payload)
 		}).run(ctx, this.name, channel, x.option)
 	}
@@ -196,7 +196,7 @@ func (x *builder[T]) Memoize(fn Monad[Monad[T]], index func(T) string) Machine[T
 // Drop terminates the data from further processing without passing it on
 func (x *builder[T]) Drop() {
 	x.start = func(ctx context.Context, input chan T) {
-		go transfer(ctx, input, func(ctx context.Context, data T) {}, "", &config{})
+		go transfer(ctx, input, func(_ context.Context, _ T) {}, "", &config{})
 	}
 }
 
@@ -220,7 +220,7 @@ func (x *builder[T]) If(fn Filter[T]) (left, right Machine[T]) {
 func (x *builder[T]) Tee(fn func(T) (a, b T)) (left, right Machine[T]) {
 	return x.filterComponent("tee",
 		func(left, right chan T) vertex[T] {
-			return func(ctx context.Context, payload T) {
+			return func(_ context.Context, payload T) {
 				a, b := fn(payload)
 				left <- a
 				right <- b
@@ -289,7 +289,7 @@ func (x *builder[T]) filterComponent(typeName string, fn filterComponent[T], loo
 		if alreadySetup {
 			if typeName == "while" {
 				go transfer(ctx, channel,
-					func(ctx context.Context, data T) {
+					func(_ context.Context, data T) {
 						x.output <- data
 					},
 					name,

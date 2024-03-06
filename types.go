@@ -80,7 +80,7 @@ type filterList[T any] []Filter[T]
 type filterComponent[T any] func(left, right chan T) vertex[T]
 
 func (x Monad[T]) component(output chan T) vertex[T] {
-	return func(ctx context.Context, data T) { output <- x(data) }
+	return func(_ context.Context, data T) { output <- x(data) }
 }
 func (x monadList[T]) combine() Monad[T] {
 	if len(x) == 1 {
@@ -113,7 +113,7 @@ func (x filterList[T]) and() Filter[T] {
 }
 
 func (x Filter[T]) component(left, right chan T) vertex[T] {
-	return func(ctx context.Context, data T) {
+	return func(_ context.Context, data T) {
 		if x(data) {
 			left <- data
 		} else {
