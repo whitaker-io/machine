@@ -1,6 +1,6 @@
 module github.com/whitaker-io/machine/edge/http
 
-go 1.21.5
+go 1.22.1
 
 require github.com/whitaker-io/machine/v3 v3.2.3
 
