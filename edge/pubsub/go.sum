@@ -82,6 +82,8 @@ github.com/whitaker-io/machine/common v0.1.1 h1:6R+cpbh0wEcv6rJxrXuOqj6GDRBuFrj4
 github.com/whitaker-io/machine/common v0.1.1/go.mod h1:EsCg9PCydROYr/JmFFMSlx5tzGY13BG86UF2prD1/5U=
 github.com/whitaker-io/machine/v3 v3.2.3 h1:I+wRzswgpnp4cuZBIVOf/aW6NPBmcJx3Yb94W4yhrac=
 github.com/whitaker-io/machine/v3 v3.2.3/go.mod h1:s8xvBOWv3LWffDQhVkJvyPQhFrD04tiVg0RDtrjqTzM=
+github.com/whitaker-io/machine/v3 v3.2.4 h1:UDp9vIv8l/8OUZkV//j+XFfru2LiBQWe28MAPAONsv8=
+github.com/whitaker-io/machine/v3 v3.2.4/go.mod h1:+CWz6FLMbzog+XP2jGjKxRGh2IoTEogf2xM6SznuVT0=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 go.einride.tech/aip v0.66.0 h1:XfV+NQX6L7EOYK11yoHHFtndeaWh3KbD9/cN/6iWEt8=
 go.einride.tech/aip v0.66.0/go.mod h1:qAhMsfT7plxBX+Oy7Huol6YUvZ0ZzdUz26yZsQwfl1M=
