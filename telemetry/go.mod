@@ -1,6 +1,6 @@
 module github.com/whitaker-io/machine/telemetry
 
-go 1.22.1
+go 1.22.2
 
 require (
 	github.com/whitaker-io/machine/common v0.1.1

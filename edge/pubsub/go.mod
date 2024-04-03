@@ -1,6 +1,6 @@
 module github.com/whitaker-io/machine/edge/pubsub
 
-go 1.22.1
+go 1.22.2
 
 require (
 	cloud.google.com/go/pubsub v1.37.0
