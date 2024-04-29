@@ -45,3 +45,5 @@ jobs:
         with:
           project-token: ${{ secrets.CODACY_TOKEN }}
           coverage-reports: "coverage.out"
+          force-coverage-parser: go
+          language: go
