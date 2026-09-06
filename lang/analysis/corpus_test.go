@@ -105,6 +105,7 @@ var requiredDisclosures = map[string][]string{
 	"switches":     {"prove coverage"},
 	"errorrouting": {"not the enforcement"},
 	"hostaccess":   {".flow-resident func bodies only", "zero-argument call"},
+	"hostreach":    {"hand-builds a machine with no .flow", "ErrorHandler bodies are not node functions"},
 	"typeinference": {
 		"IT IS NOT REGISTERED",
 		"retyped consumer",
@@ -112,7 +113,7 @@ var requiredDisclosures = map[string][]string{
 	},
 }
 
-// TestAnalyzerDocsCarryTheirDisclosures gates the eight truthfulness statements
+// TestAnalyzerDocsCarryTheirDisclosures gates the nine truthfulness statements
 // the plan mandates.
 //
 // Each exists to stop a consumer over-reading a check's SILENCE as a proof:
@@ -121,7 +122,9 @@ var requiredDisclosures = map[string][]string{
 // qualifier check, switches cannot prove coverage in v1, errorrouting's
 // well-formedness leg is not the enforcement, flowgraph's send modeling is one
 // of two defensible readings, hostaccess reads .flow-resident func bodies only
-// and so cannot clear consumer Go, and typeinference is not registered at all.
+// and so cannot clear consumer Go, hostreach reads consumer Go only when flowc
+// generates and so gates no hand-built machine, and typeinference is not
+// registered at all.
 // Those sentences change nothing observable when dropped, so nothing but a gate
 // catches their omission.
 //
@@ -137,13 +140,14 @@ func TestAnalyzerDocsCarryTheirDisclosures(t *testing.T) {
 		registered[a.Name] = a
 	}
 
-	// THE CONSTRUCTED ANALYZER IS SEEDED EXPLICITLY. typeinference is built by a
-	// constructor rather than registered, so a registry-only walk would skip its
-	// disclosures entirely while every other gate stayed green — which is exactly
-	// the silent gap this one exists to close. nil is safe: only Doc is read here,
-	// and it is a constant.
-	inference := TypeInferenceAnalyzer(nil, "")
-	registered[inference.Name] = inference
+	// THE CONSTRUCTED ANALYZERS ARE SEEDED EXPLICITLY. typeinference and hostreach
+	// are built by constructors rather than registered, so a registry-only walk
+	// would skip their disclosures entirely while every other gate stayed green —
+	// which is exactly the silent gap this one exists to close. nil is safe: only
+	// Doc is read here, and both are constants.
+	for _, constructed := range []*Analyzer{TypeInferenceAnalyzer(nil, ""), HostReachAnalyzer(nil)} {
+		registered[constructed.Name] = constructed
+	}
 
 	// THE CONTROL. A registry-driven gate is exactly the shape that passes
 	// vacuously, so an empty registry is a loud failure rather than a loop that
@@ -181,7 +185,7 @@ func TestAnalyzerDocsCarryTheirDisclosures(t *testing.T) {
 	// THE CENSUS LINE DISCLOSES THAT ITS POPULATION IS NOT All(). Without that
 	// clause a reader comparing this count against the registry is off by one and
 	// concludes the registry grew, which is the opposite of what this plan did.
-	t.Logf("checked %d disclosures across %d analyzers, one of them constructed rather than registered",
+	t.Logf("checked %d disclosures across %d analyzers, two of them constructed rather than registered",
 		len(required), len(registered))
 }
 

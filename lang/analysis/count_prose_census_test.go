@@ -103,7 +103,8 @@ func TestCountProseAcrossLangAgreesWithTheRegistry(t *testing.T) {
 	// catch. The constructors are handed a nil package set because only pointer
 	// IDENTITY is read out of them.
 	gateWalks := map[*Analyzer]bool{}
-	for _, a := range gateRequires(TypeInferenceAnalyzer(nil, ""), SerializationAnalyzer(nil, "")) {
+	for _, a := range gateRequires(TypeInferenceAnalyzer(nil, ""), SerializationAnalyzer(nil, ""),
+		HostReachAnalyzer(nil)) {
 		gateWalks[a] = true
 	}
 	allowed := map[int]bool{registered: true, len(gateWalks): true}

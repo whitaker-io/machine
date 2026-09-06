@@ -36,6 +36,12 @@ type Diagnostic struct {
 	// Path is the file the diagnostic is about, EMPTY when this package raised
 	// it and the caller's own file name is the right answer.
 	Path string
+	// Foreign marks a diagnostic about a file the RUN NEVER PARSED — hand-written
+	// consumer Go an analysis read through the loaded package set rather than a
+	// .flow source this package was handed. It rides along because the two are
+	// rendered differently: a caller knows the file of a refusal it handed in and
+	// does not know this one, so Error names it.
+	Foreign bool
 }
 
 // Error carries every problem found in one assembly run, together with whatever
@@ -61,15 +67,25 @@ type Error struct {
 
 // Error renders the first diagnostic's position and message, plus how many
 // problems were found in total.
+//
+// A FOREIGN DIAGNOSTIC RENDERS ITS FILE AND THE REST DO NOT, which is the same
+// rule Path itself carries. A refusal about one of the caller's own .flow sources
+// is rendered by a caller that knows which file it handed in; a refusal about
+// hand-written Go the run merely loaded names a file the caller never mentioned,
+// and a bare line and column there point at nothing.
 func (e *Error) Error() string {
 	if len(e.Diagnostics) == 0 {
 		return "no diagnostics"
 	}
 	first := e.Diagnostics[0]
-	if rest := len(e.Diagnostics) - 1; rest > 0 {
-		return fmt.Sprintf("%s: %s (and %d more)", first.Pos, first.Message, rest)
+	at := first.Pos.String()
+	if first.Foreign {
+		at = first.Path + ":" + at
 	}
-	return fmt.Sprintf("%s: %s", first.Pos, first.Message)
+	if rest := len(e.Diagnostics) - 1; rest > 0 {
+		return fmt.Sprintf("%s: %s (and %d more)", at, first.Message, rest)
+	}
+	return fmt.Sprintf("%s: %s", at, first.Message)
 }
 
 // diagnosticAt builds a positioned diagnostic spanning a statement.

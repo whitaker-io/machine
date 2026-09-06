@@ -103,6 +103,18 @@ func (s *Server) clientFor(ctx context.Context) (protocol.Client, error) {
 // publish here would tell the editor every file is clean at exactly the moment
 // the server has lost its ability to say, and the previously published state is
 // a better thing to leave standing than a confident lie.
+//
+// A FINDING ABOUT A FILE NO DOCUMENT HOLDS IS NOT PUBLISHED, and that is a
+// decision rather than an oversight. The framework's Diagnostic can carry a file
+// the run never parsed — hand-written Go an analysis read through a loaded
+// package set — and this loop publishes per OPEN DOCUMENT, so such a finding
+// reaches no publish. Publishing it would mean inventing a range in a document
+// this server never read: a Mapper indexes its own document's bytes and answers
+// the zero Position for a line that document does not have, which would put a
+// squiggle on the first character of the wrong file. The finding stays in the
+// snapshot either way. This server cannot currently produce one — it runs the
+// REGISTERED set, and every analysis that reads consumer Go is constructed
+// rather than registered — and a test in this package fails if that changes.
 func (s *Server) refresh(ctx context.Context, client protocol.Client, skip string) error {
 	docs := s.store.Documents()
 	snap, err := analyze(docs)

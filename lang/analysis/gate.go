@@ -69,12 +69,13 @@ type GateResult struct {
 // Gate runs EVERY analyzer this module has over srcs, in one driver run, and
 // lifts out the two tables a generation driver consumes.
 //
-// FIFTEEN ANALYZERS, ONE WALK. The thirteen All() registers plus the two that are
-// constructed because they need a caller-supplied package set — type inference
-// and the serialization derivation, neither of which is registered and neither of
-// which this function registers. Running the three sets separately would walk the
-// sources three times and derive the symbol table three times; naming them all in
-// one capture's Requires lets the driver's own topological order do it once.
+// SIXTEEN ANALYZERS, ONE WALK. The thirteen All() registers plus the three that
+// are constructed because they need a caller-supplied package set — type
+// inference, the serialization derivation and the consumer-Go host-reach check,
+// none of which is registered and none of which this function registers. Running
+// the sets separately would walk the sources several times over and derive the
+// symbol table each time; naming them all in one capture's Requires lets the
+// driver's own topological order do it once.
 //
 // THIS IS THE SEAM BuildGuidance ESTABLISHED AND BuildInferredTypes FOLLOWED: an
 // anonymous capture analyzer names what it wants, runs through the REAL driver,
@@ -88,8 +89,11 @@ type GateResult struct {
 // a nil error, because a caller cannot tell those two apart.
 //
 // PERF SHAPE, from the driver's own measurement: a full structural walk costs
-// 22ns against a 12.278µs parse, so fifteen analyzers cost a few percent of the
-// parse that precedes them. Serial, one pass, no pool.
+// 22ns against a 12.278µs parse, so sixteen analyzers cost a few percent of the
+// parse that precedes them. Serial, one pass, no pool. THE HOST-REACH CHECK IS
+// THE ONE THAT DOES NOT WALK FLOW TREES: it walks the Go the run already loaded,
+// which costs nothing to load and is bounded by the ROOT packages rather than by
+// the index.
 func Gate(srcs []Source, pkgs *loader.Packages, pkgPath string) (*GateResult, error) {
 	if pkgs == nil {
 		return nil, fmt.Errorf("analysis gate: %w", errNoPackages)
@@ -97,12 +101,13 @@ func Gate(srcs []Source, pkgs *loader.Packages, pkgPath string) (*GateResult, er
 
 	inference := TypeInferenceAnalyzer(pkgs, pkgPath)
 	serialization := SerializationAnalyzer(pkgs, pkgPath)
+	hostReach := HostReachAnalyzer(pkgs)
 	out := &GateResult{Boundaries: &Boundaries{flows: map[string][]string{}}}
 
 	capture := &Analyzer{
 		Name:     "gate-capture",
 		Doc:      "captures the inferred types, the registrations and the exported boundaries out of one driver run",
-		Requires: gateRequires(inference, serialization),
+		Requires: gateRequires(inference, serialization, hostReach),
 		Run:      func(p *Pass) (any, error) { return nil, out.capture(p, inference, serialization) },
 	}
 
@@ -127,10 +132,15 @@ func Gate(srcs []Source, pkgs *loader.Packages, pkgPath string) (*GateResult, er
 // facts the signature analyzer exports, so it depends on both directly; relying
 // on All() to keep supplying them would make this capture's correctness a
 // property of a registration list it does not own.
-func gateRequires(inference, serialization *Analyzer) []*Analyzer {
+//
+// THE THREE CONSTRUCTED ANALYZERS ARE PARAMETERS RATHER THAN BUILT HERE, so that
+// the caller holding the package set constructs them once and the count census
+// beside this list derives the gate's own size from this one call rather than
+// from a number somebody typed.
+func gateRequires(inference, serialization, hostReach *Analyzer) []*Analyzer {
 	required := All()
 
-	return append(required, inference, serialization, SymbolsAnalyzer, SignatureAnalyzer)
+	return append(required, inference, serialization, hostReach, SymbolsAnalyzer, SignatureAnalyzer)
 }
 
 // capture lifts the inferred table, the registration table and the per-flow

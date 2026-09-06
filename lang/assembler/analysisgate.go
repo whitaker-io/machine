@@ -195,7 +195,7 @@ func boundaryFacts(boundaries *analysis.Boundaries) map[string]Boundary {
 // than preferred. The analysis module's own vocabulary defines a warning as
 // "suspicious but not provably wrong" and a hint as "an observation an author may
 // reasonably ignore"; run against this repository's own end-to-end fixture the
-// fifteen analyzers report seven findings, six of which say in their own text
+// sixteen analyzers report seven findings, six of which say in their own text
 // that the condition is legal and may be deliberate. Refusing on those refuses
 // every legal program. BOTH NUMBERS ARE GATED rather than remembered:
 // TestPartitionsMeasurementMatchesTheEndToEndFixture stages that fixture, runs
@@ -206,10 +206,16 @@ func boundaryFacts(boundaries *analysis.Boundaries) map[string]Boundary {
 // generating a program an analyzer already refused, which is the silence this
 // whole gate exists to remove.
 //
-// NOTHING IS DROPPED. What does not refuse is returned for the caller to print.
+// NOTHING IS DROPPED, AND NOTHING IS NARROWED. The conversion is field by field,
+// so a field added to the framework's diagnostic and not added here is a fact
+// that reaches this package's own type as a zero value — which is why the census
+// beside this function asserts the fields rather than a sample of them. Foreign
+// travels for that reason: a finding about hand-written Go the run loaded names a
+// file the caller never handed in, and without the mark nothing downstream can
+// tell it from a .flow refusal.
 func partition(diags []analysis.Diagnostic) (refused, disclosed []Diagnostic) {
 	for _, d := range diags {
-		converted := Diagnostic{Pos: d.Pos, End: d.End, Message: d.Message, Path: d.Path}
+		converted := Diagnostic{Pos: d.Pos, End: d.End, Message: d.Message, Path: d.Path, Foreign: d.Foreign}
 		if d.Severity == analysis.SeverityError {
 			refused = append(refused, converted)
 

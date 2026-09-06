@@ -124,6 +124,12 @@ type wireReport struct {
 // ast.Position.Col counts BYTES rather than runes, which lang/ast/position.go
 // states explicitly. A consumer mapping onto UTF-16 code units needs the offset
 // to do it, and dropping it would silently make that consumer impossible.
+//
+// FOREIGN IS CARRIED FOR THE SAME REASON THE PATH IS. An analysis that reads
+// hand-written Go the run never parsed reports a real file at a real position,
+// and a consumer keyed on the run's own sources needs to know which kind of file
+// it is looking at. Dropping the field would leave this document claiming to be
+// lossless while a consumer could no longer tell a .flow finding from a Go one.
 type wireDiagnostic struct {
 	Path      string `json:"path"`
 	Line      int    `json:"line"`
@@ -135,6 +141,7 @@ type wireDiagnostic struct {
 	Severity  string `json:"severity"`
 	Code      string `json:"code"`
 	Message   string `json:"message"`
+	Foreign   bool   `json:"foreign"`
 }
 
 // WriteJSON renders a result as a lossless projection of the Diagnostic
@@ -163,6 +170,7 @@ func WriteJSON(w io.Writer, result Result) error {
 			Severity:  d.Severity.String(),
 			Code:      d.Code,
 			Message:   d.Message,
+			Foreign:   d.Foreign,
 		})
 	}
 

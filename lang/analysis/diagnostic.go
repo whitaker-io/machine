@@ -62,6 +62,17 @@ func (s Severity) String() string {
 // parsed tree starts at offset zero, so two diagnostics in two files routinely
 // carry identical positions. The driver stamps Path from the Source the
 // reporting analyzer named, exactly as it stamps Code.
+//
+// FOREIGN IS THE ONE EXCEPTION, AND IT IS THE DRIVER'S TO SET. An analysis that
+// reads Go the run never parsed — a hand-written consumer package reached
+// through a loaded package set — has a file, a line and a column to report, and
+// no Source to hang them on. Such a finding is reported through
+// Pass.ReportForeign, which keeps the analyzer's own Path and marks it here.
+// THE POSITION IS CARRIED STRUCTURALLY RATHER THAN COMPOSED INTO Message: a
+// consumer that renders `path:line:col` renders the real file, a JSON consumer
+// projects it, and an editor is not handed a position in a document it does not
+// have. Composing it into the message instead is a workaround this type exists
+// to make unnecessary.
 type Diagnostic struct {
 	Pos      ast.Position
 	End      ast.Position
@@ -69,6 +80,11 @@ type Diagnostic struct {
 	Severity Severity
 	Code     string
 	Path     string
+	// Foreign reports that Path names a file the run did not parse, so a
+	// consumer keyed on the run's own sources — an editor publishing per open
+	// document, a suppression keyed on a damaged parse — can tell the two apart
+	// instead of positioning a Go file inside a .flow buffer.
+	Foreign bool
 }
 
 // Source is one file under analysis: its path, its bytes and its parsed tree.

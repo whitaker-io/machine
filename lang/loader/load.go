@@ -51,6 +51,10 @@ const (
 type Packages struct {
 	byPath map[string]*packages.Package
 	paths  []string
+	// roots are the packages the PATTERNS matched, as opposed to paths, which is
+	// every package the load could REACH. The two are different questions, and a
+	// consumer that walks the wrong one walks the standard library on every run.
+	roots []string
 }
 
 // Load type-checks the packages the patterns name, rooted at dir.
@@ -107,6 +111,16 @@ func Load(dir string, patterns []string) (*Packages, error) {
 	}
 
 	sort.Strings(loaded.paths)
+
+	// THE ROOTS ARE RECORDED SEPARATELY FROM THE INDEX, because the walk above
+	// deliberately widened past them: Roots answers what the caller asked to
+	// load, and paths answers what that load could reach.
+	loaded.roots = make([]string, 0, len(roots))
+	for _, root := range roots {
+		loaded.roots = append(loaded.roots, root.PkgPath)
+	}
+
+	sort.Strings(loaded.roots)
 
 	return loaded, nil
 }

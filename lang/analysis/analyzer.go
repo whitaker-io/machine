@@ -63,15 +63,25 @@ func (a *Analyzer) String() string { return a.Name }
 // attribution a COMPILE ERROR instead of an empty string and a silently
 // degraded sort.
 //
+// ReportForeign is that same channel for a finding about a file the run did NOT
+// parse: a hand-written Go file an analysis read through a caller-supplied
+// package set has no Source to name, so it carries its own Path and the driver
+// marks the diagnostic Foreign. It is a SECOND ENTRY POINT rather than a nil
+// Source on the first, because the two differ in what the driver owns — the
+// path is the driver's on Report and the analyzer's here — and a single
+// function whose behavior turned on a zero-valued argument would hide that.
+// A foreign finding that names no file is refused, loudly: see the driver.
+//
 // ImportFact fills the value pointed at by f with a fact previously exported for
 // obj under that same pointer type, reporting whether one was found. ExportFact
 // records one. Both take a POINTER to a fact value; anything else is a
 // programming error and panics rather than silently recording nothing.
 type Pass struct {
-	Analyzer   *Analyzer
-	Sources    []Source
-	Report     func(Source, Diagnostic)
-	ResultOf   map[*Analyzer]any
-	ImportFact func(obj string, f Fact) bool
-	ExportFact func(obj string, f Fact)
+	Analyzer      *Analyzer
+	Sources       []Source
+	Report        func(Source, Diagnostic)
+	ReportForeign func(Diagnostic)
+	ResultOf      map[*Analyzer]any
+	ImportFact    func(obj string, f Fact) bool
+	ExportFact    func(obj string, f Fact)
 }

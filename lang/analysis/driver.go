@@ -62,12 +62,13 @@ func Run(srcs []Source, analyzers []*Analyzer) ([]Diagnostic, error) {
 
 	for _, a := range order {
 		pass := &Pass{
-			Analyzer:   a,
-			Sources:    srcs,
-			Report:     func(src Source, d Diagnostic) { diags = append(diags, stamp(a, src, d)) },
-			ResultOf:   results,
-			ImportFact: func(obj string, f Fact) bool { return importFact(facts, obj, f) },
-			ExportFact: func(obj string, f Fact) { facts[factKey{obj: obj, typ: factType(f)}] = f },
+			Analyzer:      a,
+			Sources:       srcs,
+			Report:        func(src Source, d Diagnostic) { diags = append(diags, stamp(a, src, d)) },
+			ReportForeign: func(d Diagnostic) { diags = append(diags, stampForeign(a, d)) },
+			ResultOf:      results,
+			ImportFact:    func(obj string, f Fact) bool { return importFact(facts, obj, f) },
+			ExportFact:    func(obj string, f Fact) { facts[factKey{obj: obj, typ: factType(f)}] = f },
 		}
 		res, rerr := a.Run(pass)
 		if rerr != nil {
@@ -107,14 +108,39 @@ func describeSource(src Source) string {
 	return src.Path
 }
 
-// stamp fills in the two fields the driver owns rather than the analyzer: the
-// reporting analyzer's Name as the rule Code, and the reported Source's path.
+// stamp fills in the three fields the driver owns rather than the analyzer: the
+// reporting analyzer's Name as the rule Code, the reported Source's path, and
+// the foreign mark, which a finding about one of the run's own sources never
+// carries.
 //
-// Both are stamped here so neither can drift. An analyzer cannot emit under a
-// foreign code, and cannot attribute a finding to a file it was not looking at.
+// All three are stamped here so none can drift. An analyzer cannot emit under a
+// foreign code, cannot attribute a finding to a file it was not looking at, and
+// cannot claim a source finding is about a file the run never parsed.
 func stamp(a *Analyzer, src Source, d Diagnostic) Diagnostic {
 	d.Code = a.Name
 	d.Path = src.Path
+	d.Foreign = false
+	return d
+}
+
+// stampForeign is stamp for a finding about a file the run did not parse: the
+// Code is still the driver's, and the PATH IS THE ANALYZER'S because nothing
+// else knows it. The foreign mark is set here rather than by the analyzer, so
+// the two entry points cannot disagree about which kind of finding this is.
+//
+// A FOREIGN FINDING NAMING NO FILE IS A PROGRAMMING ERROR AND PANICS, on the
+// same terms as a Fact passed by value. There is no file to fall back to: the
+// reporting analyzer read that position out of a file only it was holding. The
+// alternative is a finding that sorts to the front of the run, renders as
+// ":12:14: ..." and sends its reader nowhere — which is worse than a stop, and
+// unlike a stop it ships.
+func stampForeign(a *Analyzer, d Diagnostic) Diagnostic {
+	if d.Path == "" {
+		panic("analysis: analyzer " + a.Name + " reported a finding about a file it did not name; " +
+			"a foreign diagnostic carries the path the analyzer read it out of")
+	}
+	d.Code = a.Name
+	d.Foreign = true
 	return d
 }
 
