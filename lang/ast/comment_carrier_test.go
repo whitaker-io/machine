@@ -74,6 +74,16 @@ func TestEveryCommentIsCarriedWithAByteAccuratePosition(t *testing.T) {
 		if got.Stop.Offset != wantEnd {
 			t.Errorf("comment %d ends at recorded offset %d; the byte past its last is %d", i+1, got.Stop.Offset, wantEnd)
 		}
+
+		// Stop's line and column are asserted as well as its offset: a scanner
+		// that stopped advancing early would record the right Start and a Stop
+		// that lands mid-comment, and an offset-only check shares that blind
+		// spot with the following token's position, which is derived from it.
+		wantStopLine, wantStopCol := lineColAt(starts, wantEnd)
+		if got.Stop.Line != wantStopLine || got.Stop.Col != wantStopCol {
+			t.Errorf("comment %d ends at recorded %d:%d; offset %d is at %d:%d",
+				i+1, got.Stop.Line, got.Stop.Col, wantEnd, wantStopLine, wantStopCol)
+		}
 	}
 }
 
