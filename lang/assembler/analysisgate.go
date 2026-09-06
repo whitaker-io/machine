@@ -208,8 +208,11 @@ func boundaryFacts(boundaries *analysis.Boundaries) map[string]Boundary {
 //
 // NOTHING IS DROPPED, AND NOTHING IS NARROWED. The conversion is field by field,
 // so a field added to the framework's diagnostic and not added here is a fact
-// that reaches this package's own type as a zero value — which is why the census
-// beside this function asserts the fields rather than a sample of them. Foreign
+// that reaches this package's own type as a zero value. The test beside this
+// function lists each carried field BY HAND rather than by reflection, so it
+// catches a field this conversion drops but not a field the framework grows;
+// that second case is caught by the linter's wire-projection test, and both
+// tests are extended together when the framework's type grows. Foreign
 // travels for that reason: a finding about hand-written Go the run loaded names a
 // file the caller never handed in, and without the mark nothing downstream can
 // tell it from a .flow refusal.

@@ -1,9 +1,9 @@
 // Package generated stands in for the package flowc WRITES.
 //
-// Its node functions are the .flow's own, lifted verbatim by the emitter, so a
-// reach here is a reach in a .flow file the author can edit — which is the
-// corpus the .flow-resident host-accessor check already reads. Reporting it here
-// as well would point an author at a file that is rewritten on every generation.
+// The package flowc writes is routinely the consumer's OWN package, so a reach
+// here is reported like a reach in any other consumer file. An earlier draft
+// excluded this package on the reasoning that its node functions are the .flow's
+// own; the seam test showed that wrong, and this positive pins the reversal.
 package generated
 
 import (

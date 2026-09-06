@@ -190,9 +190,12 @@ func TestTheAssemblersOwnErrorRendersTheFileOfAForeignDiagnostic(t *testing.T) {
 // TestPartitionCarriesEveryFieldOfTheAnalysisDiagnostic is the conversion in
 // isolation, beside the seam run above.
 //
-// IT IS A FIELD CENSUS RATHER THAN A SPOT CHECK. partition rebuilds the value
-// field by field, so the failure mode is a field that is simply not mentioned —
-// invisible to a test that asserts the fields it happens to remember.
+// IT LISTS EACH CARRIED FIELD BY HAND; it is not a reflective census. partition
+// rebuilds the value field by field, so it catches a field the conversion drops
+// among those named here. A field the framework GROWS and this conversion never
+// mentions is invisible to this test and is caught instead by the linter's
+// wire-projection test, which walks analysis.Diagnostic reflectively; the two
+// are extended together when the framework's type grows.
 func TestPartitionCarriesEveryFieldOfTheAnalysisDiagnostic(t *testing.T) {
 	source := analysis.Diagnostic{
 		Pos:      ast.Position{Offset: 412, Line: 24, Col: 14},

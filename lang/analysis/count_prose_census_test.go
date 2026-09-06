@@ -84,7 +84,8 @@ var countNumeralRe = regexp.MustCompile(
 // THE RULE IT ENFORCES IS THE ONE THAT IS DECIDABLE: a COMMENT line under lang/
 // that names an analyzer and spells a numeral in this census's window must spell
 // a number the registry currently justifies — either the registered count, or
-// that count plus the two analyzers Gate constructs rather than registers.
+// that count plus the analyzers Gate constructs rather than registers (three
+// today, derived below rather than declared here).
 //
 // TWO BOUNDS, both deliberate and both measured rather than assumed. (1) The
 // GRANULARITY IS THE LINE: a claim that spells its numeral on a different line
@@ -96,7 +97,7 @@ var countNumeralRe = regexp.MustCompile(
 // beside the word analyzer would red on ordinary English.
 func TestCountProseAcrossLangAgreesWithTheRegistry(t *testing.T) {
 	registered := len(All())
-	// Gate runs the registered set plus the two analyzers it constructs, and
+	// Gate runs the registered set plus the analyzers it constructs, and
 	// several shipped sentences state THAT number instead. Both are true claims,
 	// so both are allowed — and the second is DERIVED from gate.go's own require
 	// list rather than declared here, which is the mistake this census exists to
