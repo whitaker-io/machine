@@ -17,12 +17,15 @@ const flowAnalyzersMethod = "flow/analyzers"
 
 // AnalyzerInfo is one analyzer's identity and its documented behavior, VERBATIM.
 //
-// Doc is never truncated, summarized or reformatted on the way out. Six of the
-// analyzers carry required truthfulness disclosures in exactly this field, put
-// there by the analysis core because a Go comment is invisible to a consumer at
-// runtime — the starkest being typeflow's, which states outright that it is not
-// type checking and that its silence is not agreement. Shortening the payload
-// would delete the very thing the field exists to carry.
+// Doc is never truncated, summarized or reformatted on the way out. Several of
+// the analyzers carry required truthfulness disclosures in exactly this field,
+// put there by the analysis core because a Go comment is invisible to a consumer
+// at runtime — the starkest being typeflow's, which states outright that it is
+// not type checking and that its silence is not agreement. Shortening the
+// payload would delete the very thing the field exists to carry. THE COUNT IS
+// NOT STATED HERE, deliberately: the mandated set is the analysis module's and
+// grows with it, and the numeral that used to stand here went stale without
+// reddening anything. That module's own gate is where the population is pinned.
 type AnalyzerInfo struct {
 	Name string `json:"name"`
 	Doc  string `json:"doc"`
@@ -57,7 +60,10 @@ func (s *Server) Request(ctx context.Context, method string, params any) (any, e
 }
 
 // analyzerRoster reports whatever the registry holds, rather than a list copied
-// into this file — so a twelfth analyzer appears here without an edit.
+// into this file — so an analyzer added to the registry appears here without an
+// edit. IT CARRIES NO COUNT, deliberately: the sentence's point is that the
+// roster is registry-driven, which no number improves, and the ordinal that used
+// to stand here went stale twice without reddening anything.
 func analyzerRoster() AnalyzersResult {
 	all := analysis.All()
 	out := make([]AnalyzerInfo, 0, len(all))

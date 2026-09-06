@@ -7,6 +7,7 @@ package analysis
 
 import (
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -93,36 +94,43 @@ func TestStrawmenProduceNoErrors(t *testing.T) {
 	}
 }
 
-// TestAnalyzerDocsCarryTheirDisclosures gates the six truthfulness statements
+// requiredDisclosures is the mandated Doc phrase set, hoisted so the census that
+// couples it to lang/lint's shipped enumeration reads the SAME map the gate below
+// enforces rather than a second copy of it.
+var requiredDisclosures = map[string][]string{
+	"flowgraph":    {"produces its Target name"},
+	"typeflow":     {"not type checking"},
+	"state":        {"denylist"},
+	"resolve":      {"unimported-qualifier", "v82"},
+	"switches":     {"prove coverage"},
+	"errorrouting": {"not the enforcement"},
+	"hostaccess":   {".flow-resident func bodies only", "zero-argument call"},
+	"typeinference": {
+		"IT IS NOT REGISTERED",
+		"retyped consumer",
+		"opt-in stability contract",
+	},
+}
+
+// TestAnalyzerDocsCarryTheirDisclosures gates the eight truthfulness statements
 // the plan mandates.
 //
 // Each exists to stop a consumer over-reading a check's SILENCE as a proof:
 // typeflow's silence is not a type-safety proof, state's bare-type check is a
 // two-name denylist rather than validation, resolve ships no unimported-
 // qualifier check, switches cannot prove coverage in v1, errorrouting's
-// well-formedness leg is not the enforcement, and flowgraph's send modeling is
-// one of two defensible readings. Those sentences change nothing observable when
-// dropped, so nothing but a gate catches their omission.
+// well-formedness leg is not the enforcement, flowgraph's send modeling is one
+// of two defensible readings, hostaccess reads .flow-resident func bodies only
+// and so cannot clear consumer Go, and typeinference is not registered at all.
+// Those sentences change nothing observable when dropped, so nothing but a gate
+// catches their omission.
 //
 // THE HOME IS Analyzer.Doc rather than a source comment, because Doc is what a
 // downstream consumer can read AT RUNTIME — a Go comment is invisible to the LSP
 // and the linter — and because it is assertable over All() regardless of whether
 // the analyzer variables are exported.
 func TestAnalyzerDocsCarryTheirDisclosures(t *testing.T) {
-	required := map[string][]string{
-		"flowgraph":    {"produces its Target name"},
-		"typeflow":     {"not type checking"},
-		"state":        {"denylist"},
-		"resolve":      {"unimported-qualifier", "v82"},
-		"switches":     {"prove coverage"},
-		"errorrouting": {"not the enforcement"},
-		"hostaccess":   {".flow-resident func bodies only", "zero-argument call"},
-		"typeinference": {
-			"IT IS NOT REGISTERED",
-			"retyped consumer",
-			"opt-in stability contract",
-		},
-	}
+	required := requiredDisclosures
 
 	registered := map[string]*Analyzer{}
 	for _, a := range All() {
@@ -156,6 +164,20 @@ func TestAnalyzerDocsCarryTheirDisclosures(t *testing.T) {
 			}
 		}
 	}
+	// THIS GATE'S OWN DOC COMMENT STATES HOW MANY STATEMENTS IT COVERS, and that
+	// sentence is prose beside a table: the table grew by a row when an analyzer
+	// landed and the numeral above it did not move, which is the same defect this
+	// package gates elsewhere for the registry count. So the numeral is read back
+	// out of the comment and compared to the map.
+	spelled := docNumeralsAbove(t, "corpus_test.go", "func TestAnalyzerDocsCarryTheirDisclosures(")
+	if len(spelled) == 0 {
+		t.Fatalf("CONTROL FAILED: this gate's own doc comment spells out no number, so it cannot discriminate")
+	}
+	if !slices.Contains(spelled, len(required)) {
+		t.Errorf("this gate covers %d analyzers' disclosures, and its own doc comment spells out %v",
+			len(required), spelled)
+	}
+
 	// THE CENSUS LINE DISCLOSES THAT ITS POPULATION IS NOT All(). Without that
 	// clause a reader comparing this count against the registry is off by one and
 	// concludes the registry grew, which is the opposite of what this plan did.

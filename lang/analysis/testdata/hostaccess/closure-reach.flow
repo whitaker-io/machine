@@ -1,0 +1,18 @@
+note """positive: the reach is handed to a wrapper rather than made at statement level — once to a `go func()` and once to a func literal passed as a value. The goroutine arm is the one a runtime stack-walk cannot see, because stack ancestry does not cross a goroutine boundary, and it is why this check is static."""
+flow orders
+source ingest Poll
+transform settle Settle from ingest
+sink done audit.Store from settle
+
+func Settle(f machine.Frame[Order]) Order {
+	go func() {
+		_, _, _ = m.Host().Load(f.Context(), totalsCell)
+	}()
+	_ = f.Update(totalsCell, func(n int) int {
+		_ = m.Host().Save(f.Context(), totalsCell, n)
+
+		return n
+	})
+
+	return f.Value()
+}

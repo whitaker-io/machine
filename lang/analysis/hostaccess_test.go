@@ -158,6 +158,62 @@ func TestHostAccessMapsAColumnOnTheDeclarationLine(t *testing.T) {
 	}
 }
 
+// TestHostAccessFollowsTheReachIntoAWrapper is requirement one's wrapper class:
+// the reach handed to a `go func()` and the reach handed to a func literal passed
+// as a value, neither of which is a statement in the node body itself.
+//
+// THE GOROUTINE ARM IS THE RULING'S OWN RATIONALE. A runtime stack-walk guard was
+// rejected as unsound because stack ancestry does not cross a goroutine boundary,
+// so a `go func()` inside a node evades one; a static walk narrowed to the body's
+// top-level statements would reintroduce exactly that blindness, and every other
+// test in this file would stay green while it did.
+func TestHostAccessFollowsTheReachIntoAWrapper(t *testing.T) {
+	path := filepath.Join(hostAccessDir, "closure-reach.flow")
+	want := occurrencesOf(t, path, "m.Host()")
+	if len(want) != 2 {
+		t.Fatalf("CONTROL FAILED: %s carries %d accessor reaches, want the two wrapper arms", path, len(want))
+	}
+
+	// THE ARMS ARE PINNED FROM THE FIXTURE'S OWN BYTES, so a fixture edit that
+	// quietly turned both reaches into ordinary statements fails here rather than
+	// leaving this test asserting the same thing twice.
+	body, err := os.ReadFile(path) //nolint:gosec // a test reading its own corpus
+	if err != nil {
+		t.Fatalf("cannot read %s: %v", path, err)
+	}
+	goStmt := bytes.Index(body, []byte("\tgo func() {"))
+	literal := bytes.Index(body, []byte("func(n int) int {"))
+	if goStmt < 0 || literal < 0 || !(goStmt < want[0].Offset && want[0].Offset < literal && literal < want[1].Offset) {
+		t.Fatalf("CONTROL FAILED: %s no longer carries one reach inside a `go func()` and one inside a func "+
+			"literal passed as a value (go at %d, literal at %d, reaches at %d and %d)",
+			path, goStmt, literal, want[0].Offset, want[1].Offset)
+	}
+
+	got := hostAccessDiags(t, path)
+	if len(got) != len(want) {
+		t.Fatalf("%d hostaccess diagnostics over %s, want %d — a walk that stopped at the body's top-level "+
+			"statements reports neither: %v", len(got), path, len(want), messages(got))
+	}
+	for i, site := range want {
+		// The report sits on the ACCESSOR, so the expectation is the Host token
+		// inside the selector rather than the receiver it hangs off.
+		accessor := ast.Position{
+			Offset: site.Offset + len("m."),
+			Line:   site.Line,
+			Col:    site.Col + len("m."),
+		}
+		if got[i].Pos != accessor {
+			t.Errorf("diagnostic %d sits at %v, want %v (%s)", i, got[i].Pos, accessor, got[i].Message)
+		}
+		if got[i].Severity != SeverityError {
+			t.Errorf("diagnostic %d is reported at %s, want error", i, got[i].Severity)
+		}
+		if !containsAll(got[i].Message, "Settle", "frame") {
+			t.Errorf("diagnostic %d does not name the func and the legitimate route: %q", i, got[i].Message)
+		}
+	}
+}
+
 // TestHostAccessStaysSilentOnItsNearMisses is requirement two: one case per axis
 // the rule claims to discriminate on.
 func TestHostAccessStaysSilentOnItsNearMisses(t *testing.T) {
@@ -198,9 +254,6 @@ func TestHostAccessReportsAnUnparseableBodyAtItsDeclaration(t *testing.T) {
 		t.Errorf("the diagnostic does not name the func and the failure: %q", got[0].Message)
 	}
 	// THE POSITION QUOTED IN THE TEXT IS THE .flow's, not the reconstruction's.
-	// The offending token sits eleven lines into the fixture and four lines into
-	// the reconstructed span, so an untranslated position is off by the whole
-	// preamble rather than by a line.
 	// The COLUMN belongs to whichever token go/parser chose to complain about, so
 	// the line is what this pins: the offending text sits well down the fixture
 	// and only a few lines into the reconstructed span, so an untranslated

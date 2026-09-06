@@ -195,9 +195,12 @@ func boundaryFacts(boundaries *analysis.Boundaries) map[string]Boundary {
 // than preferred. The analysis module's own vocabulary defines a warning as
 // "suspicious but not provably wrong" and a hint as "an observation an author may
 // reasonably ignore"; run against this repository's own end-to-end fixture the
-// fifteen analyzers report eleven findings, six of which say in their own text
+// fifteen analyzers report seven findings, six of which say in their own text
 // that the condition is legal and may be deliberate. Refusing on those refuses
-// every legal program.
+// every legal program. BOTH NUMBERS ARE GATED rather than remembered:
+// TestPartitionsMeasurementMatchesTheEndToEndFixture stages that fixture, runs
+// the same gate and reds when either one drifts, which is what the previous
+// count did without reddening anything.
 //
 // THERE IS NO FLAG FOR IT. A threshold a caller can move is a lever for
 // generating a program an analyzer already refused, which is the silence this
