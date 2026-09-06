@@ -12,10 +12,11 @@ import (
 type stubJournal struct{}
 
 func (stubJournal) Checkpoint(ctx context.Context, r machine.CheckpointRecord) error { return nil }
-func (stubJournal) Claim(ctx context.Context, flow, datum, owner string) (bool, error) {
+func (stubJournal) Claim(ctx context.Context, flow, datum string) (bool, error) {
 	return true, nil
 }
-func (stubJournal) Retire(ctx context.Context, flow, datum string) error { return nil }
+func (stubJournal) Retire(ctx context.Context, flow, datum string) error   { return nil }
+func (stubJournal) AwaitLeadership(ctx context.Context, flow string) error { return nil }
 func (stubJournal) Orphans(ctx context.Context, flow string) ([]machine.CheckpointRecord, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
