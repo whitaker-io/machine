@@ -152,26 +152,45 @@ func (p *parser) skipToEndOfLine() {
 }
 
 // cursor is a restorable parser position: the lexer's byte cursor, the token the
-// parser is holding, and how many diagnostics the lexer had recorded.
+// parser is holding, and how much the lexer had accumulated on the side — its
+// diagnostics and the comments it had consumed as trivia.
+//
+// EVERY LEXER-SIDE ACCUMULATION BELONGS HERE, not just diags. A tentative read
+// re-scans the bytes it rewound past, so anything the lexer appends while
+// scanning them is appended a second time; the field that is missing from this
+// struct is the one that silently doubles.
 type cursor struct {
-	off   int
-	line  int
-	col   int
-	tok   token
-	end   Position
-	diags int
+	off      int
+	line     int
+	col      int
+	tok      token
+	end      Position
+	diags    int
+	comments int
 }
 
 // save captures the parser's position so a tentative read can be undone.
 func (p *parser) save() cursor {
-	return cursor{off: p.lex.off, line: p.lex.line, col: p.lex.col, tok: p.tok, end: p.end, diags: len(p.lex.diags)}
+	return cursor{
+		off: p.lex.off, line: p.lex.line, col: p.lex.col,
+		tok: p.tok, end: p.end,
+		diags: len(p.lex.diags), comments: len(p.lex.comments),
+	}
 }
 
 // restore rewinds to a saved position, discarding anything the tentative read
 // recorded so a re-scan cannot report the same problem twice.
+//
+// THE COMMENTS TRUNCATE FOR THE SAME REASON THE DIAGNOSTICS DO, and this is the
+// seam it matters at: a clause-bearing statement ends on a newline, atClause then
+// advances one token past it to see whether a clause follows, and restores when
+// none does. A comment written on that following line is consumed by the
+// speculative advance and consumed again by the real one, so without this
+// truncation every comment following a clause-bearing statement is carried twice.
 func (p *parser) restore(c cursor) {
 	p.lex.off, p.lex.line, p.lex.col = c.off, c.line, c.col
 	p.lex.diags = p.lex.diags[:c.diags]
+	p.lex.comments = p.lex.comments[:c.comments]
 	p.tok, p.end = c.tok, c.end
 }
 

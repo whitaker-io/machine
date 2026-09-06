@@ -77,8 +77,9 @@ func (l *lexer) scanNoteText() token {
 }
 
 // scanGoSpan scans an opaque run of Go text, tracking depth across (), [] and {}
-// and stopping only at a DEPTH-ZERO member of stop, at a clause keyword, or at a
-// newline.
+// and stopping only at a DEPTH-ZERO member of stop, at a clause keyword, at a
+// line comment's marker, at a separated brace, or at a newline. endsSpanAtDepthZero
+// is the one place those rules live.
 //
 // Depth tracking is what lets a span hold commas: `func(a, b int) error` and
 // `Foo[K, V]` both contain one that must not terminate the span, and
@@ -87,7 +88,7 @@ func (l *lexer) scanNoteText() token {
 // The stop set is a parameter because the EBNF recognizer calls this same helper
 // with sets derived from the grammar's FOLLOW computation.
 func (l *lexer) scanGoSpan(stop ...tokenKind) token {
-	l.skipHorizontal()
+	l.skipSpanLeadingTrivia()
 	p := l.pos()
 	start := l.off
 	depth := 0
@@ -99,9 +100,37 @@ func (l *lexer) scanGoSpan(stop ...tokenKind) token {
 	return token{kind: tokGoSpan, text: l.trimSpanTail(start), pos: p}
 }
 
+// skipSpanLeadingTrivia consumes the horizontal whitespace and the line comments
+// standing between the cursor and where a span's text begins.
+//
+// A SPAN NEVER STARTS AT A COMMENT, and this is what makes that true for BOTH
+// readers rather than only for the parser. The parser reaches a span through its
+// one-token lookahead, and next() has already consumed any comment before that
+// token, so the parser alone would never present one here. The conformance
+// recognizer addresses the source by BYTE OFFSET instead, so it can and does ask
+// for a span at a position a comment occupies — a switch arm is the one place a
+// line-leading marker sits where a span is expected. Without this the two readers
+// disagree on exactly that source: the parser accepts it and the recognizer,
+// scanning an empty span, does not.
+//
+// A COMMENT ON ITS OWN LINE TAKES ITS LINE WITH IT, because scanLineComment
+// consumes the terminator of a line the comment had to itself; the span then
+// begins at the next line's first byte, which is where its author wrote it.
+func (l *lexer) skipSpanLeadingTrivia() {
+	for {
+		l.skipHorizontal()
+		if l.off >= len(l.src) || !l.hasPrefix(lineComment) {
+			return
+		}
+		l.scanLineComment()
+	}
+}
+
 // trimSpanTail rewinds the cursor over the whitespace trailing a span and
-// returns the span's text. The rewind is exact because a span stops at a
-// newline, so its tail can only hold horizontal whitespace.
+// returns the span's text. The rewind is exact because every rule that stops a
+// span at depth zero — a newline, a line comment's marker, a separated brace, a
+// stop token, a clause keyword — leaves only horizontal whitespace between the
+// expression and the cursor.
 func (l *lexer) trimSpanTail(start int) string {
 	text := strings.TrimRight(string(l.src[start:l.off]), spanTrimCutset)
 	back := (l.off - start) - len(text)
@@ -127,32 +156,8 @@ func (l *lexer) goSpanStep(depth *int, stop []tokenKind) bool {
 		l.skipQuoted(c)
 		return false
 	}
-	if *depth == 0 {
-		if c == '\n' {
-			return true
-		}
-		// ADJACENCY DECIDES A BRACE, WHOEVER ASKED. The `{` case is handled ahead
-		// of the stop set rather than inside it because both paths reach this
-		// byte: the parser arrives with no `{` in its stop set and needs the
-		// terminator rule, while the EBNF recognizer derives a FOLLOW set that
-		// DOES contain `{` wherever a production writes one after a goSpan.
-		// Letting the stop set answer first would end the span at an ADJACENT
-		// brace too, truncating `machine.GobCodec[Order]{}` to
-		// `machine.GobCodec[Order]` for the recognizer while the parser kept it
-		// whole — a disagreement reported as grammar drift rather than as the
-		// scanner bug it would be. One rule for the byte keeps them identical.
-		//
-		// AN ADJACENT BRACE MUST FALL THROUGH, not return. Returning false here
-		// would report "the span does not end" without consuming the byte or
-		// counting the depth, and the scan would spin on it forever — measured as
-		// a hung suite rather than reasoned.
-		if c == '{' {
-			if l.atSeparatedBrace() {
-				return true
-			}
-		} else if l.stopSetMatches(stop) {
-			return true
-		}
+	if *depth == 0 && l.endsSpanAtDepthZero(c, stop) {
+		return true
 	}
 	delta := bracketDelta(c)
 	if *depth+delta < 0 {
@@ -161,6 +166,54 @@ func (l *lexer) goSpanStep(depth *int, stop []tokenKind) bool {
 	*depth += delta
 	l.advance()
 	return false
+}
+
+// endsSpanAtDepthZero reports whether the byte under the cursor ends a Go span,
+// given that the span is at bracket depth zero.
+//
+// IT IS ITS OWN FUNCTION FOR THE CYCLOMATIC BUDGET, which this package spends
+// deliberately: gocyclo's limit is 10 and goSpanStep with this block inlined
+// measured past it once the comment rule joined. The in-package answer to that
+// pressure is a named arm, the way the operator scan answers it with a table.
+//
+// A LINE COMMENT ENDS A SPAN, and it belongs HERE rather than in the stop set.
+// spanStopKeywords is keyed by identifier WORD and is consulted only when the
+// cursor sits on an identifier start, which a punctuation marker never is; and
+// the punctuation stop set cannot carry it either, because peekKind maps any
+// byte outside singleByteTokens to tokIllegal, which no caller puts in a stop
+// set. So the marker sits beside the newline and separated-brace rules, which
+// are the other two rules about a byte rather than about a word.
+//
+// THE RULE IS DEPTH-ZERO ONLY, and that is not an oversight. Above depth zero a
+// newline does not end a span either, so `pkg.A(\n 1, // one\n 2,\n)` is one span
+// and the marker inside it is GO's comment, in Go's own text, which this language
+// does not interpret. A depth-unconditional rule would truncate that span.
+//
+// A SINGLE `/` IS DIVISION and stays legal: the rule requires the pair.
+func (l *lexer) endsSpanAtDepthZero(c byte, stop []tokenKind) bool {
+	if c == '\n' || l.hasPrefix(lineComment) {
+		return true
+	}
+	// ADJACENCY DECIDES A BRACE, WHOEVER ASKED. The `{` case is handled ahead of
+	// the stop set rather than inside it because both paths reach this byte: the
+	// parser arrives with no `{` in its stop set and needs the terminator rule,
+	// while the EBNF recognizer derives a FOLLOW set that DOES contain `{`
+	// wherever a production writes one after a goSpan. Letting the stop set
+	// answer first would end the span at an ADJACENT brace too, truncating
+	// `machine.GobCodec[Order]{}` to `machine.GobCodec[Order]` for the recognizer
+	// while the parser kept it whole — a disagreement reported as grammar drift
+	// rather than as the scanner bug it would be. One rule for the byte keeps
+	// them identical.
+	//
+	// AN ADJACENT BRACE MUST REPORT FALSE, not stop the span. The caller then
+	// counts its depth and consumes it; reporting true would truncate the
+	// operand, and an earlier shape that returned without consuming the byte span
+	// forever — measured as a hung suite rather than reasoned.
+	if c == '{' {
+		return l.atSeparatedBrace()
+	}
+
+	return l.stopSetMatches(stop)
 }
 
 // atSeparatedBrace reports whether the depth-zero `{` under the cursor is

@@ -57,6 +57,12 @@ type parser struct {
 
 // Parse parses one .flow source file into a syntax tree.
 //
+// COMMENTS ARE LIFTED OFF THE LEXER RATHER THAN BUILT BY THE PARSER, because the
+// parser never sees one: a line comment is consumed as trivia inside the
+// scanner, which is what keeps it invisible to the conformance recognizer as
+// well. The lexer is therefore the only layer that can record where one was, and
+// this is where its record becomes part of the tree.
+//
 // IT ALWAYS RETURNS A NON-NIL *File, and returns a non-nil *Error exactly when
 // at least one problem was found. Handing back a usable value alongside a
 // non-nil error is unusual Go and is deliberate here: a tolerant parser's whole
@@ -69,6 +75,7 @@ func Parse(src []byte) (*File, error) {
 	p.advance()
 
 	file := p.parseFile()
+	file.Comments = p.lex.comments
 	p.drainLexerDiagnostics()
 	if len(p.diags) == 0 {
 		return file, nil

@@ -9,10 +9,17 @@ package ast
 //
 // Several flows may live in one file and there is no relationship between a
 // flow's name and the file's name.
+//
+// COMMENTS ARE THEIR OWN SLICE rather than entries in Decls. They are trivia:
+// they carry no meaning the language acts on, and every consumer that walks
+// Decls would have to learn to skip them. Keeping them here also keeps them out
+// of the downstream declaration switch that reports an unrecognized Decl as an
+// error. Comment says the whole of it.
 type File struct {
-	Decls []Decl
-	Start Position
-	Stop  Position
+	Decls    []Decl
+	Comments []Comment
+	Start    Position
+	Stop     Position
 }
 
 // Pos returns the file's start.

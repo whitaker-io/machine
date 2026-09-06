@@ -1,0 +1,31 @@
+// every position a line comment may occupy, and the two regions where the
+// marker is not a comment at all
+import billing "github.com/acme/billing" // after an import
+
+flow orders // after a flow declaration
+note """a note body keeps a // marker verbatim, because it is prose"""
+state {
+  // on a line of its own inside a state block
+  processed int // after a state field type
+}
+var attempt int // after a var type
+source events http.Listen[Order](":8080") // after a Go-span operand
+transform charge billing.Charge from events // after a from-list
+  over pubsub.Topic("t") // after a clause operand
+// on a line of its own at statement position
+switch route from charge on charge.Kind {
+  // on a line of its own inside a switch body
+  "card" -> billable // after a switch arm target
+  else -> other
+}
+transform batch pkg.A(
+  1, // inside a Go span above bracket depth zero, where this is Go's own comment
+  2,
+) from billable
+sink done audit.Store from batch, other
+
+func Marked() int {
+	// inside a func body, where the Go-aware span scanner already owns the form
+	return 1
+}
+// after the last declaration in the file

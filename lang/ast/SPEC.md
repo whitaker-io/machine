@@ -148,10 +148,10 @@ checkpoint machine.GobCodec[Order]{}
 
 ## Where a Go expression stops
 
-A Go operand runs to a stop token, a clause keyword, a newline, or a `{`
-**separated** from the expression before it. An **adjacent** `{` is part of the
-expression, so `machine.GobCodec[Order]{}` stays whole while a switch body's
-brace ends the span. That is what lets a clause carrying an operand sit last
+A Go operand runs to a stop token, a clause keyword, a newline, a line comment's
+`//`, or a `{` **separated** from the expression before it. An **adjacent** `{`
+is part of the expression, so `machine.GobCodec[Order]{}` stays whole while a
+switch body's brace ends the span. That is what lets a clause carrying an operand sit last
 before a switch body:
 
 ```flow
@@ -183,3 +183,31 @@ sink hold audit.Store from b
 
 Braces inside a quoted string or a rune are text, never brackets, so
 `over pubsub.Topic("a{b")` is a well-formed operand.
+
+## Comments
+
+`//` begins a comment that runs to the end of its line. A comment may be written
+on a line of its own or after anything a line holds, and it carries no meaning
+the language acts on:
+
+```flow
+// A comment on a line of its own documents whatever follows it.
+flow orders
+source ingest Poll() // A trailing comment annotates the line it ends.
+transform charge Step from ingest
+sink done Store from charge
+```
+
+A comment written on a line of its own is as invisible as a blank line: removing
+every comment from a file leaves the same flows, the same nodes and the same
+edges. The syntax tree still carries each one with both ends of its span, so a
+formatter re-emits comments where their author wrote them.
+
+Two regions own the marker themselves and a comment is not recognized inside
+either. In a `note` body the marker is prose, so a body reading `a // b` keeps
+those bytes verbatim. In Go text the marker is **Go's** comment: inside a `func`
+body, and inside a Go operand carried onto further lines by an unclosed bracket,
+`//` belongs to the Go the toolchain will compile.
+
+There is no block comment. `/* */` inside a `func` body is Go's own and is
+untouched, but it is not a form of this language.

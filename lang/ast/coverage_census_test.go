@@ -190,9 +190,9 @@ func declaredNodeTypes(t *testing.T) []string {
 // a keyword TOKEN in at least one successfully parsed corpus file.
 //
 // The scope is the corpus rather than the canonical examples because the three
-// strawmen exercise only 21 of the 26 keywords — const, else, param, switch and
-// use are round-6 additions that postdate every drawing, and demanding all 26
-// from ratified artifacts would be satisfiable only by editing them.
+// strawmen exercise only 21 of the 27 ruled keywords — const, else, idempotent,
+// param, switch and use postdate every drawing, and demanding all 27 from
+// ratified artifacts would be satisfiable only by editing them.
 func TestEveryKeywordIsExercisedByTheCorpus(t *testing.T) {
 	seen := map[tokenKind]string{}
 	files := 0

@@ -22,11 +22,19 @@ import (
 // grammarPath is the notation this package implements.
 const grammarPath = "grammar.ebnf"
 
-// lexicalTerminals are the seven names the grammar refers to but never defines,
-// because their shape is a scanning rule rather than a production. The header
-// documents each one.
+// lexicalTerminals are the eight names the grammar DECLARES as terminals but
+// never defines, because their shape is a scanning rule rather than a
+// production. The header documents each one.
+//
+// TWO OF THE EIGHT ARE REFERENCED BY NO PRODUCTION and the header says so of
+// each: `number`, because every position a numeral can occupy sits inside an
+// opaque span, and `comment`, because a comment is trivia the lexer consumes
+// before returning any token and so is not a token any reader sees. They are
+// listed here regardless — this slice is the inventory a reference RESOLVES
+// against, so a name absent from it would be reported as an undefined
+// nonterminal the day a production came to mention it.
 var lexicalTerminals = []string{
-	"ident", "string", "number", "newline", "noteText", "goSpan", "goFuncSpan",
+	"ident", "string", "number", "newline", "noteText", "goSpan", "goFuncSpan", "comment",
 }
 
 // exprKind distinguishes the four structural forms of an EBNF expression from
@@ -535,7 +543,13 @@ func assertHeaderNumeralMatches(t *testing.T, header string, rules int) {
 // span stop sets, which is why it is token kinds rather than grammar symbols.
 type kindSet map[tokenKind]bool
 
-// lexicalKinds maps the seven opaque lexical terminals onto their token kinds.
+// lexicalKinds maps the opaque lexical terminals that ARE tokens onto their token
+// kinds — seven of the eight the grammar declares.
+//
+// `comment` IS ABSENT ON PURPOSE and its absence is not an omission to be fixed:
+// it names no token kind because a comment produces no token. The two readers of
+// this map, firstOf and matchName, are asked only about terminals a production
+// references, and no production references a comment.
 var lexicalKinds = map[string]tokenKind{
 	"ident":      tokIdent,
 	"string":     tokString,
@@ -857,7 +871,9 @@ func (r *recognizer) matchTerminal(text string, off int) (int, bool) {
 	return next, true
 }
 
-// matchName matches a nonterminal or one of the seven lexical terminals.
+// matchName matches a nonterminal or one of the lexical terminals that are
+// tokens — seven of the eight the grammar declares, since `comment` names no
+// token kind and no production references it.
 func (r *recognizer) matchName(name string, off int, follow kindSet) (int, bool) {
 	if body, ok := r.sets.doc.productions[name]; ok {
 		return r.match(body, off, follow)

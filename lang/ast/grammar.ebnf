@@ -19,7 +19,7 @@
 //
 // LEXICAL TERMINALS
 //
-// These seven are produced by the lexer and are opaque to the notation: the
+// These eight are produced by the lexer and are opaque to the notation: the
 // grammar names them but never spells them out, because their shape is a
 // scanning rule rather than a production.
 //
@@ -28,8 +28,9 @@
 //   number       a decimal literal with an optional fractional part
 //   newline      a line break; a run of blank lines collapses to one, and horizontal whitespace is never a token
 //   noteText     a raw note body, opened and closed by a triple double-quote, verbatim, with no escapes at all
-//   goSpan       opaque Go text, bracket-depth tracked, ending FOUR WAYS, all at depth zero: at a stop token, at a clause
-//                keyword, at a newline, or at a `{` SEPARATED from the expression before it by a space or a tab; NON-EMPTY
+//   goSpan       opaque Go text, bracket-depth tracked, ending FIVE WAYS, all at depth zero: at a stop token, at a clause
+//                keyword, at a newline, at a line comment's `//`, or at a `{` SEPARATED from the expression before it by a
+//                space or a tab; NON-EMPTY
 //                (an empty span is not a goSpan: `over` and `checkpoint` are the clauses this decides, since a clause written
 //                 bare at end of line, or followed straight by another clause keyword, otherwise scans as a well-formed empty span)
 //                THE ADJACENCY RULE is what lets a clause carrying an operand sit LAST before a switch body. An ADJACENT `{`
@@ -43,11 +44,30 @@
 //                QUOTED LITERALS ARE OPAQUE: a brace inside a string or a rune is text, never a bracket, so
 //                `over pubsub.Topic("a{b")` is a well-formed operand.
 //   goFuncSpan   a func declaration's parameters, results and body as one span, brace balanced, skipping Go's literals and comments
+//   comment      a line comment: `//` to the end of its line. It is TRIVIA — the lexer consumes it before returning any
+//                token, so no reader of this grammar ever sees one — and it is recognized only OUTSIDE the two regions
+//                that own the marker themselves: inside a note body the marker is prose, and inside a goSpan or a
+//                goFuncSpan above bracket depth zero it is Go's own comment, in Go's own text. A comment written on a line
+//                of its own is as invisible to the token stream as a blank line; one written after an expression ends that
+//                expression's span. The syntax tree carries every comment with both ends of its span, so a formatter can
+//                re-emit one where its author wrote it, but the notation below never mentions it.
 //
 // `number` IS REFERENCED BY NO PRODUCTION BELOW, and that is not an omission.
 // The lexer produces number tokens, but every position where a numeric literal
 // can appear — a const value, a param default, a switch arm, a Go type's array
 // bound — sits inside an opaque goSpan, so the notation never sees one.
+//
+// `comment` IS REFERENCED BY NO PRODUCTION EITHER, for a different reason, and
+// the difference is the whole of the design. `number` is unreferenced because
+// every position a numeral can occupy is inside an opaque span; `comment` is
+// unreferenced because it is never a token at all. The lexer consumes one and
+// returns the token AFTER it, so the parser and the conformance recognizer —
+// which builds its own lexer over the same scanner — are blind to it
+// identically. A comment admitted as a token would instead have to be admitted
+// by every production a comment can follow, and a production that forgot would
+// make the recognizer reject a source the parser accepts. That is the
+// disagreement the conformance suite is built to find, and this is how the
+// language declines to create it.
 //
 // PARSER-ONLY RULES
 //

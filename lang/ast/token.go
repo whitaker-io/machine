@@ -31,9 +31,20 @@ const (
 	tokIllegal
 )
 
-// The keyword token kinds, one per ruled spelling. The inventory is closed at
-// 26; keywords below is the authoritative table and keyword_census_test.go
-// states the same list a second time so a divergence in either direction fails.
+// The keyword token kinds, one per ruled spelling. The inventory is closed at 27;
+// keywords below is the authoritative table and keyword_census_test.go states the
+// same list a second time so a divergence in either direction fails.
+//
+// THE 27 IN THIS SENTENCE IS NOT GATED, and a reader deserves to know which
+// numerals here are checked and which are only written down. The spelled-out
+// numeral census reads exactly two anchor declarations — `var spanStopKeywords`
+// and `var clauseStarters` — and names this file among the derived statements it
+// deliberately does not read (keyword_numeral_census_test.go, at its boundary
+// note). What IS gated is the SET rather than the count: len(keywords) is
+// asserted against the second list by keyword_census_test.go, so a keyword added
+// without its census row fails there. The count in this prose is a courtesy to a
+// reader and drifts silently; it read 26 against a measured 27 until the line
+// comment landed and this file was touched.
 const (
 	kwFlow tokenKind = iota + 100
 	kwNote

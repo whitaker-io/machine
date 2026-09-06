@@ -38,6 +38,16 @@ type lexer struct {
 	line  int
 	col   int
 	diags []Diagnostic
+
+	// comments are the line comments consumed so far, in source order.
+	//
+	// THE LEXER ACCUMULATES THEM BECAUSE THE PARSER NEVER SEES ONE. A comment is
+	// consumed as trivia before any token is returned, which is what makes it
+	// invisible to the parser and to the conformance recognizer identically; the
+	// price is that the only layer that can record one is this one. A speculative
+	// read retracts what it recorded here the same way it retracts diags — see
+	// the parser's cursor.
+	comments []Comment
 }
 
 // newLexer returns a lexer positioned at the start of src.
@@ -93,25 +103,96 @@ func (l *lexer) skipHorizontal() {
 }
 
 // next returns the token at the cursor and advances past it.
+//
+// A LINE COMMENT IS TRIVIA AND PRODUCES NO TOKEN. It is consumed here and the
+// loop goes round for the token after it, so neither the parser nor the
+// conformance recognizer — which builds its own lexer over this same scanner —
+// ever sees one. That is what lets the comment terminal be declared in the
+// grammar's lexical header without any production admitting it: a form no reader
+// observes cannot make the two readers disagree.
+//
+// THE MARKER IS TESTED AFTER THE NOTE DELIMITER, never before. A note body is
+// scanned verbatim from delimiter to delimiter and the marker rule must never
+// get a chance to run inside one; testing the delimiter first states that
+// ordering in the dispatch rather than relying on scanNoteText to consume the
+// body before this switch runs again.
 func (l *lexer) next() token {
-	l.skipHorizontal()
-	if l.off >= len(l.src) {
-		return token{kind: tokEOF, pos: l.pos()}
+	for {
+		l.skipHorizontal()
+		if l.off >= len(l.src) {
+			return token{kind: tokEOF, pos: l.pos()}
+		}
+		c := l.src[l.off]
+		switch {
+		case c == '\n':
+			return l.scanNewline()
+		case l.hasPrefix(noteDelim):
+			return l.scanNoteText()
+		case l.hasPrefix(lineComment):
+			l.scanLineComment()
+
+			continue
+		case c == '"':
+			return l.scanString()
+		case isIdentStart(c):
+			return l.scanIdent()
+		case isDigit(c):
+			return l.scanNumber()
+		}
+
+		return l.scanOperator()
 	}
-	c := l.src[l.off]
-	switch {
-	case c == '\n':
-		return l.scanNewline()
-	case l.hasPrefix(noteDelim):
-		return l.scanNoteText()
-	case c == '"':
-		return l.scanString()
-	case isIdentStart(c):
-		return l.scanIdent()
-	case isDigit(c):
-		return l.scanNumber()
+}
+
+// scanLineComment consumes a line comment, records it, and — when the comment
+// had a line to itself — consumes the line with it.
+//
+// A COMMENT ON A LINE OF ITS OWN IS AS INVISIBLE AS A BLANK LINE, and that is
+// the whole of why this is more than an append. Consuming only the comment would
+// leave its line break behind as a newline token the control file never emits,
+// so a file differing from a clean one only by added comment LINES would lex to
+// a longer token stream and parse to a different tree. Consuming the terminator
+// with the comment, and then the blank lines after it, makes the two streams
+// identical — which is exactly what requirement 1 asks a commented file to be.
+//
+// A TRAILING COMMENT KEEPS ITS LINE BREAK, because the statement it trails still
+// has to be terminated by one.
+func (l *lexer) scanLineComment() {
+	ownLine := l.atLineStart()
+	start := l.pos()
+	l.advanceN(len(lineComment))
+	body := l.off
+	for l.off < len(l.src) && l.src[l.off] != '\n' {
+		l.advance()
 	}
-	return l.scanOperator()
+	l.comments = append(l.comments, Comment{Text: string(l.src[body:l.off]), Start: start, Stop: l.pos()})
+
+	if !ownLine || l.off >= len(l.src) {
+		return
+	}
+	l.advance()
+	l.collapseBlankLines()
+}
+
+// atLineStart reports whether only horizontal whitespace stands between the
+// cursor and the start of its line.
+//
+// It is a backward scan rather than a flag carried on the lexer because the
+// scanner is RE-ENTRANT AT AN OFFSET: a caller may reposition the cursor to any
+// byte and re-scan from there, and a flag set by a previous forward pass would
+// then describe a line the lexer is no longer on.
+func (l *lexer) atLineStart() bool {
+	for j := l.off - 1; j >= 0; j-- {
+		switch l.src[j] {
+		case '\n':
+			return true
+		case ' ', '\t', '\r':
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 // scan returns the next token together with the position just past it.
