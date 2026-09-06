@@ -69,7 +69,7 @@ type GateResult struct {
 // Gate runs EVERY analyzer this module has over srcs, in one driver run, and
 // lifts out the two tables a generation driver consumes.
 //
-// FOURTEEN ANALYZERS, ONE WALK. The twelve All() registers plus the two that are
+// FIFTEEN ANALYZERS, ONE WALK. The thirteen All() registers plus the two that are
 // constructed because they need a caller-supplied package set — type inference
 // and the serialization derivation, neither of which is registered and neither of
 // which this function registers. Running the three sets separately would walk the
@@ -88,7 +88,7 @@ type GateResult struct {
 // a nil error, because a caller cannot tell those two apart.
 //
 // PERF SHAPE, from the driver's own measurement: a full structural walk costs
-// 22ns against a 12.278µs parse, so fourteen analyzers cost a few percent of the
+// 22ns against a 12.278µs parse, so fifteen analyzers cost a few percent of the
 // parse that precedes them. Serial, one pass, no pool.
 func Gate(srcs []Source, pkgs *loader.Packages, pkgPath string) (*GateResult, error) {
 	if pkgs == nil {

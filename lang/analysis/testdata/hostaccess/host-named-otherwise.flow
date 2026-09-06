@@ -1,0 +1,15 @@
+note """near miss: a struct field named Host and a call named Host that carries arguments both spell the word this rule keys on, in positions where it is not the accessor."""
+flow orders
+source ingest Poll
+transform route Route from ingest
+sink done audit.Store from route
+
+func Route(f machine.Frame[Request]) Request {
+	req := f.Value()
+	target := req.URL.Host
+	client := edge.Dial(target)
+	_ = client.Host("replica", target)
+	_ = f.Save(routeCell, target)
+
+	return req
+}

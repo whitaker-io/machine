@@ -195,7 +195,7 @@ func boundaryFacts(boundaries *analysis.Boundaries) map[string]Boundary {
 // than preferred. The analysis module's own vocabulary defines a warning as
 // "suspicious but not provably wrong" and a hint as "an observation an author may
 // reasonably ignore"; run against this repository's own end-to-end fixture the
-// fourteen analyzers report eleven findings, six of which say in their own text
+// fifteen analyzers report eleven findings, six of which say in their own text
 // that the condition is legal and may be deliberate. Refusing on those refuses
 // every legal program.
 //

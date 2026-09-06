@@ -213,31 +213,34 @@ func TestInferenceReportsASignatureTheBodyContradicts(t *testing.T) {
 	}
 }
 
-// TestShippedRosterIsExactlyTheTwelveRegisteredAnalyzersInOrder pins the shipped
-// set by NAME IN REGISTRATION ORDER.
+// TestShippedRosterIsExactlyTheThirteenRegisteredAnalyzersInOrder pins the
+// shipped set by NAME IN REGISTRATION ORDER.
 //
 // A COUNT IS NOT ENOUGH and that is why this pins names: a count is green for any
-// arrangement summing to twelve and would bless a swapped or renamed analyzer.
-// Six shipped prose sites across three modules state the number — lang/lint's
-// doc.go and batch.go, this module's budget_test.go and driver.go, and two in
-// lang/lsp's analyze.go — and before this test existed a thirteenth registered
-// analyzer reddened nothing at all: every module suite stayed green and the
-// budget test still passed, because one extra structural walk costs single-digit
-// microseconds against a millisecond budget.
+// arrangement summing to the same total and would bless a swapped or renamed
+// analyzer. Shipped prose sites across FOUR modules state the number — lang/lint's
+// doc.go and batch.go; this module's budget_test.go, driver.go, gate.go,
+// gate_test.go and inference.go; lang/lsp's analyze.go, twice; and lang/assembler's
+// analysisgate.go and cmd/flowc/main.go — and before this test existed an extra
+// registered analyzer reddened nothing at all: every module suite stayed green and
+// the budget test still passed, because one extra structural walk costs
+// single-digit microseconds against a millisecond budget. Those sites are prose a
+// compiler cannot check, so this test's failure message names them.
 //
 // IT ALSO ASSERTS THE INFERENCE ANALYZER IS ABSENT. TypeInferenceAnalyzer is a
 // constructor precisely because it needs a caller-supplied *loader.Packages, and
 // registering it would either force a Pass field change or leave it silent when
 // no package set was supplied.
-func TestShippedRosterIsExactlyTheTwelveRegisteredAnalyzersInOrder(t *testing.T) {
+func TestShippedRosterIsExactlyTheThirteenRegisteredAnalyzersInOrder(t *testing.T) {
 	want := []string{
 		"symbols", "flowgraph", "resolve", "reachability", "cycles", "signature",
 		"state", "switches", "errorrouting", "typeflow", "guidance", "checkpointanchor",
+		"hostaccess",
 	}
 
 	got := All()
 	if len(got) != len(want) {
-		t.Fatalf("All() returns %d analyzers, want %d — six shipped prose sites state the number: %v",
+		t.Fatalf("All() returns %d analyzers, want %d — shipped prose sites in four modules state the number: %v",
 			len(got), len(want), namesOf(got))
 	}
 

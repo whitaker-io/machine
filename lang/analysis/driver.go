@@ -32,7 +32,7 @@ type factKey struct {
 //
 // The run is SERIAL, one walk per analyzer. That is a measurement rather than a
 // preference: a full structural walk of a strawman costs 22ns against a 12.278µs
-// parse, so twelve analyzers cost roughly 3% of the parse they follow and a
+// parse, so thirteen analyzers cost roughly 3% of the parse they follow and a
 // worker pool would be pure overhead.
 //
 // A Requires cycle is returned as an error naming the analyzers in it, and no

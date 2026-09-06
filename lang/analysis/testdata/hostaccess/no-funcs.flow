@@ -1,0 +1,5 @@
+note """near miss: a flow declaring no func at all, so the analyzer has no Go body to read."""
+flow orders
+source ingest Poll
+transform tally Increment from ingest
+sink done audit.Store from tally

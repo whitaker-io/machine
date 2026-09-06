@@ -37,6 +37,7 @@ var rejectedBy = map[string]string{
 	"destructuring-arm.flow":      "switches",
 	"traversal-wide-var.flow":     "state",
 	"wrapper-type-state.flow":     "state",
+	"host-accessor-in-func.flow":  "hostaccess",
 }
 
 // TestSharedContractFixturesAreRejected is this plan's anchor capability gate,
@@ -115,6 +116,7 @@ func TestAnalyzerDocsCarryTheirDisclosures(t *testing.T) {
 		"resolve":      {"unimported-qualifier", "v82"},
 		"switches":     {"prove coverage"},
 		"errorrouting": {"not the enforcement"},
+		"hostaccess":   {".flow-resident func bodies only", "zero-argument call"},
 		"typeinference": {
 			"IT IS NOT REGISTERED",
 			"retyped consumer",

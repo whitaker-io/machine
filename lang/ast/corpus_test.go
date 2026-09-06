@@ -89,6 +89,7 @@ var lockedAnalysisRejectFixtures = []string{
 	"wrapper-type-state",
 	"destructuring-arm",
 	"traversal-wide-var",
+	"host-accessor-in-func",
 }
 
 // corpusFiles lists the .flow sources of one corpus, refusing an empty read.
@@ -214,7 +215,7 @@ func TestInvalidCorpusCoversEveryLockedFixture(t *testing.T) {
 // TestAnalysisRejectCorpusCoversEveryLockedFixture asserts SET EQUALITY: the
 // analysis-reject corpus is a closed set.
 func TestAnalysisRejectCorpusCoversEveryLockedFixture(t *testing.T) {
-	assertSetEquality(t, analysisRejectDir, lockedAnalysisRejectFixtures, 4)
+	assertSetEquality(t, analysisRejectDir, lockedAnalysisRejectFixtures, 5)
 }
 
 // assertSetEquality checks a closed corpus against its locked name list.

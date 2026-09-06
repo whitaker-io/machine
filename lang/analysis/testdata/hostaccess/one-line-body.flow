@@ -1,0 +1,7 @@
+note """positive: the accessor call sits on the func declaration's own line, and the declaration is INDENTED, so the reconstructed Go and the .flow disagree about that line's columns by exactly the indent. Every later line is verbatim and agrees already, which is why this is the only line whose column has to be remapped."""
+flow orders
+source ingest Poll
+transform seed Seed from ingest
+sink done audit.Store from seed
+
+	func Seed(f machine.Frame[Order]) Order { _ = captured.Host().Save(f.Context(), totalsCell, 1); return f.Value() }

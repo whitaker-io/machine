@@ -1,0 +1,12 @@
+note """near miss: every func here reaches storage through the frame alone, which is the legitimate idiom the host-access rule leaves untouched."""
+flow orders
+source ingest Poll
+transform tally Tally from ingest
+sink done audit.Store from tally
+
+func Tally(f machine.Frame[Order]) Order {
+	_ = f.Update(totalsCell, func(n int) int { return n + 1 })
+	_ = f.Save(seenCell, f.Value().ID)
+
+	return f.Value()
+}

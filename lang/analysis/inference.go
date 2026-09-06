@@ -562,7 +562,7 @@ const inferenceDoc = "typeinference resolves every node's Go reference to a real
 //
 // IT IS A CONSTRUCTOR RATHER THAN A REGISTERED VAR because the *loader.Packages it
 // needs is owned by the caller above both modules, and loader.Load is seconds of
-// work called ONCE per generation run. All() therefore still returns twelve, and
+// work called ONCE per generation run. All() therefore still returns thirteen, and
 // the shipped-roster test pins that.
 // pkgPath names the package every bare reference is resolved against, which is
 // the package the generated code joins — matching SerializationAnalyzer's second

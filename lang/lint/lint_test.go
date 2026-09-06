@@ -6,7 +6,9 @@
 package lint
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,6 +149,68 @@ func TestCheckFailsTheRejectCorpusAndCountsByThreshold(t *testing.T) {
 	if wide.Failing <= strict.Failing {
 		t.Errorf("the hint threshold counts %d and the error threshold %d, want strictly more at hint",
 			wide.Failing, strict.Failing)
+	}
+}
+
+// TestCheckReportsTheHostAccessorReachedFromAFlowFuncBody is the linter half of
+// the host-access rule: registration alone has to carry it all the way to a
+// rendered line, positioned on the .flow rather than on the synthetic Go the
+// analyzer parses the body inside.
+//
+// THE EXPECTED POSITION IS SCANNED OUT OF THE FIXTURE in this run rather than
+// typed here, so the assertion cannot drift into agreeing with whatever the
+// analyzer happens to emit.
+func TestCheckReportsTheHostAccessorReachedFromAFlowFuncBody(t *testing.T) {
+	name := "host-accessor-in-func.flow"
+	path := filepath.Join(astTestdata, "analysis-rejects", name)
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("cannot read %s: %v", path, err)
+	}
+	at := bytes.Index(body, []byte("captured.Host()"))
+	if at < 0 {
+		t.Fatalf("CONTROL FAILED: %s carries no host accessor, so this test asserts nothing", path)
+	}
+	accessor := at + len("captured.")
+	line := 1 + bytes.Count(body[:accessor], []byte("\n"))
+	col := accessor - bytes.LastIndex(body[:accessor], []byte("\n"))
+
+	result, out := render(t, path, analysis.SeverityError)
+
+	// The findings arrive sorted by offset, so the FIRST hostaccess one is the
+	// first accessor in the file — the occurrence the scan above located.
+	found := false
+	for _, d := range result.Diagnostics {
+		if d.Code != "hostaccess" {
+			continue
+		}
+		if d.Severity != analysis.SeverityError {
+			t.Errorf("the host accessor at %s is reported at %s, want error", d.Pos, d.Severity)
+		}
+		if found {
+			continue
+		}
+		found = true
+		if d.Pos.Line != line || d.Pos.Col != col {
+			t.Errorf("the first host accessor is reported at %s, want %d:%d in the .flow", d.Pos, line, col)
+		}
+	}
+	if !found {
+		t.Fatalf("the linter reported no hostaccess finding over %s; it reported:\n%s", path, out)
+	}
+	if result.Failing == 0 {
+		t.Errorf("the linter counts %d findings at or above error over a fixture that reaches the host accessor", result.Failing)
+	}
+
+	// AND IT REACHES THE RENDERED REPORT, which is what a flowlint user sees.
+	for _, want := range []string{
+		fmt.Sprintf("%s:%d:%d", name, line, col),
+		"[hostaccess]",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the report does not carry %q; it reads:\n%s", want, out)
+		}
 	}
 }
 

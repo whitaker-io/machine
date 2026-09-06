@@ -1,0 +1,21 @@
+note """analysis check: a node function must reach shared storage through its frame alone. Reaching the machine's host-side accessor from inside a node body is the visible contortion the structural boundary exists to refuse."""
+flow orders
+source ingest Poll
+transform tally Tally from ingest
+transform settle Settle from tally
+sink done audit.Store from settle
+
+func Tally(f machine.Frame[Order]) Order {
+	_ = f.Update(totalsCell, func(n int) int { return n + 1 })
+
+	return f.Value()
+}
+
+func Settle(f machine.Frame[Order]) Order {
+	n, _, _ := captured.Host().Load(f.Context(), totalsCell)
+	if n > 0 {
+		_ = captured.Host().Save(f.Context(), totalsCell, n)
+	}
+
+	return f.Value()
+}

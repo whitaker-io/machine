@@ -27,4 +27,5 @@ func init() {
 	Register(TypeflowAnalyzer)
 	Register(GuidanceAnalyzer)
 	Register(CheckpointAnchorAnalyzer)
+	Register(HostAccessAnalyzer)
 }

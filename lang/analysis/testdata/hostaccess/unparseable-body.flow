@@ -1,0 +1,11 @@
+note """the parse-failure arm: this func body is brace-balanced, so the .flow parses and the span is captured, but the span is not Go."""
+flow orders
+source ingest Poll
+transform tally Tally from ingest
+sink done audit.Store from tally
+
+func Tally(f machine.Frame[Order]) Order {
+	this is not go ++ ==
+
+	return f.Value()
+}

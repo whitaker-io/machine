@@ -31,7 +31,7 @@
 // leave a directory that is neither the old program nor the new one.
 //
 // WHAT REFUSES AND WHAT IS ONLY REPORTED. Before anything is written, flowc runs
-// every analyzer the language has — the twelve registered ones plus type
+// every analyzer the language has — the thirteen registered ones plus type
 // inference and the serialization derivation, which are constructed because they
 // need a loaded package set. A finding at analysis.SeverityError REFUSES the run:
 // nothing is written and the exit status is non-zero. Everything below that line

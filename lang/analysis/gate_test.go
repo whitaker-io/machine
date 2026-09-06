@@ -43,7 +43,7 @@ func runGate(t *testing.T, name string) *GateResult {
 // of the gate's contract in one run.
 //
 // THE DISCRIMINATING CONTROL IS THE SERIALIZATION CODE. Every other assertion
-// here would hold for a gate that ran only All()'s twelve registered analyzers
+// here would hold for a gate that ran only All()'s thirteen registered analyzers
 // and produced empty tables beside a nil error. Requiring a diagnostic stamped
 // with the serialization analyzer's own Name is what proves the two CONSTRUCTED
 // analyzers ran, since neither is in All() and no registered analyzer can emit
